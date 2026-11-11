@@ -23,6 +23,6 @@ export default async function Autorizar({ searchParams }: { searchParams: Promis
   return (
     <FormularioLogin accion="/api/oauth/authorize" titulo="Conectar Claude"
       subtitulo={`${cliente!.n ?? "Claude"} quiere usar Inteligencia de suelo. Ingresa con tu usuario y clave para autorizarlo.`}
-      error={q.error ? "Usuario o clave incorrectos." : null} ocultos={p} />
+      error={q.error ? "Correo o clave incorrectos." : null} ocultos={p} />
   );
 }

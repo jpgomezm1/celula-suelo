@@ -19,8 +19,8 @@ export default function FormularioLogin({ accion, titulo, subtitulo, error, ocul
           {error && <div className="error">{error}</div>}
           {Object.entries(ocultos).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
           <div className="campo">
-            <label htmlFor="usuario">Usuario</label>
-            <input id="usuario" name="usuario" className="entrada" autoComplete="username" required autoFocus />
+            <label htmlFor="usuario">Correo</label>
+            <input id="usuario" name="usuario" className="entrada" type="text" inputMode="email" autoComplete="username" placeholder="nombre@conaltura.com" required autoFocus />
           </div>
           <div className="campo">
             <label htmlFor="clave">Clave</label>
