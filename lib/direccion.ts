@@ -46,13 +46,14 @@ export async function geocodificarCruce(db: Db, direccion: string, dane: string 
   const { rows } = await db.query(
     `WITH a AS (SELECT geom FROM osm_via WHERE clave = $1),
           b AS (SELECT geom FROM osm_via WHERE clave = ANY($2::text[])),
-          c AS (SELECT ST_ClosestPoint(a.geom, b.geom) AS pt, ST_Distance(a.geom::geography, b.geom::geography) AS d
-                FROM a, b WHERE ST_DWithin(a.geom, b.geom, 0.0008))
+          c AS (SELECT ST_Centroid(ST_ShortestLine(a.geom, b.geom)) AS pt, ST_Distance(a.geom::geography, b.geom::geography) AS d
+                FROM a, b WHERE ST_DWithin(a.geom, b.geom, 0.0025))
      SELECT ST_X(c.pt) AS lon, ST_Y(c.pt) AS lat, c.d
      FROM c CROSS JOIN LATERAL (SELECT municipio_dane FROM parcel WHERE ST_DWithin(geom, c.pt, 0.003) ORDER BY geom <-> c.pt LIMIT 1) m
      WHERE m.municipio_dane = $3
      ORDER BY c.d LIMIT 1`, [p.principal, p.cruces, dane]);
-  return rows[0] ? { lon: Number(rows[0].lon), lat: Number(rows[0].lat), via: `${p.principal} × ${p.cruces[0]}` } : null;
+  // Cruce exacto (< 90 m entre vías) o aproximado (tramos sin nombre en OSM, hasta ≈ 275 m).
+  return rows[0] ? { lon: Number(rows[0].lon), lat: Number(rows[0].lat), via: `${p.principal} × ${p.cruces[0]}`, aproximado: Number(rows[0].d) > 90 } : null;
 }
 
 /** Direcciones rurales ("Sector Sajonia", "Vereda La Amapola", "Don Diego - Vía Llanogrande"): nombre de lugar en OSM dentro del municipio. */

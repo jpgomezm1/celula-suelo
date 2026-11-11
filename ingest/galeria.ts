@@ -35,7 +35,8 @@ export async function importarFilasGaleria(filas: Record<string, unknown>[], cor
   let ubicados = 0;
   for (const r of filas) {
     // La base ampliada trae el municipio explícito; si no está entre los 17 cubiertos queda sin municipio (no se asume Medellín).
-    const dane = r.municipio ? mun(r.municipio, null) : mun(r.sub_zona, r.ciudad);
+    // La subzona manda cuando es un municipio (la columna Municipio a veces trae la ciudad del vendedor).
+    const dane = mun(r.sub_zona, null) ?? (r.municipio ? mun(r.municipio, null) : mun(r.sub_zona, r.ciudad));
     const nombreBase = norm(String(r.proyecto).replace(/\(.*?\)|\*|\.+$/g, " ")).trim();
     // Galería cambia el formato del nombre entre cortes ("On Aptos. (Ciudad Veranova)" → "Ciudad Veranova - On Aptos."): se prueban las partes.
     const limpio = (x: string) => norm(x.replace(/\(.*?\)|\*|\.+$/g, " ").replace(/\(vt\)/gi, " ")).replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
@@ -61,7 +62,7 @@ export async function importarFilasGaleria(filas: Record<string, unknown>[], cor
     // 1) Dirección por cruce de vías (OpenStreetMap), validando el municipio.
     if (r.direccion && dane) {
       const g = await geocodificarCruce(db, String(r.direccion), dane);
-      if (g) u = await fijar(g.lon, g.lat, "cruce_vias");
+      if (g) u = await fijar(g.lon, g.lat, g.aproximado ? "cruce_aprox" : "cruce_vias");
     }
     // 2) Nombre contra el catálogo de proyectos (Zonario), solo si queda a menos de 4 km del barrio/municipio reportado.
     if (!u.rowCount) {
@@ -78,11 +79,17 @@ export async function importarFilasGaleria(filas: Record<string, unknown>[], cor
       if (m) {
         const via = `${m[1] === "CRA" || m[1] === "KR" ? "CR" : m[1]} ${m[2]}`.replace(/\s+/g, " ");
         const placa = `${m[3]}-${m[4].padStart(2, "0")}`;
+        // Placa exacta; si es un proyecto nuevo y la placa aún no existe, la placa más cercana de la misma cuadra.
         const res = await fetch(`https://www.medellin.gov.co/servidormapas/rest/services/ServiciosCatastro/Base_Catastral/MapServer/8/query?` +
-          new URLSearchParams({ where: `via = '${via}' AND placa LIKE '${placa}%'`, outFields: "latitud,longitud", returnGeometry: "false", f: "json" }),
+          new URLSearchParams({ where: `via = '${via}' AND placa LIKE '${m[3]}-%'`, outFields: "placa,latitud,longitud", returnGeometry: "false", resultRecordCount: "300", f: "json" }),
           { headers: { "User-Agent": "Mozilla/5.0 (compatible; celula-suelo/0.3)" }, signal: AbortSignal.timeout(15_000) }).then((x) => x.json()).catch(() => ({}));
-        const a = res.features?.[0]?.attributes;
-        if (a?.latitud) u = await fijar(Number(a.longitud), Number(a.latitud), "nomenclatura");
+        const objetivo = Number(m[4]);
+        const candidatas = (res.features ?? []).map((f: any) => f.attributes)
+          .filter((a: any) => a?.latitud && String(a.placa).split("-")[0] === m[3])
+          .map((a: any) => ({ ...a, d: Math.abs(Number(String(a.placa).split("-")[1]?.replace(/\D.*$/, "")) - objetivo) }))
+          .sort((x: any, y: any) => x.d - y.d);
+        const a = candidatas.find((c: any) => String(c.placa).startsWith(placa)) ?? candidatas[0];
+        if (a?.latitud) u = await fijar(Number(a.longitud), Number(a.latitud), String(a.placa).startsWith(placa) ? "nomenclatura" : "nomenclatura_cuadra");
       }
     }
     // 4) Direcciones rurales: vereda o sector con nombre en OpenStreetMap.
