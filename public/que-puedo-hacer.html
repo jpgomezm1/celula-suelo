@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qué puedo hacer · Inteligencia de suelo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --petroleo: #006272; --petroleo-osc: #004b57; --turquesa: #009cb6; --turquesa-2: #02788c; --lima: #84bd00; --lima-osc: #6c9b00;
+    --texto: #3e3e3e; --texto-2: #6f6f6f; --gris: #979797; --linea: #e7e7e7; --fondo: #f6f7f7; --aviso: #f2a900;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font-family: "Work Sans", system-ui, sans-serif; color: var(--texto); background: var(--fondo); line-height: 1.55; font-size: 16px; }
+  a { color: var(--turquesa-2); }
+  h1, h2, h3 { color: var(--petroleo); margin: 0; line-height: 1.2; }
+  code { background: #eaf2f3; color: var(--petroleo-osc); padding: 2px 7px; border-radius: 5px; font-size: 14px; }
+
+  header.portada { background: var(--petroleo); color: #fff; position: relative; }
+  header.portada::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--lima); }
+  .portada .dentro { max-width: 1080px; margin: 0 auto; padding: 48px 24px 56px; }
+  .portada .marca { display: flex; align-items: center; gap: 14px; font-size: 13px; letter-spacing: 1.2px; text-transform: uppercase; font-weight: 600; opacity: .9; }
+  .portada .marca img { height: 28px; }
+  .portada h1 { color: #fff; font-size: 40px; margin: 18px 0 12px; max-width: 760px; }
+  .portada p { font-size: 18px; max-width: 760px; opacity: .92; margin: 0; }
+  .conexion { margin-top: 26px; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .conexion div { background: rgba(255,255,255,.1); border-radius: 10px; padding: 14px 16px; font-size: 14px; }
+  .conexion b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .8px; opacity: .8; margin-bottom: 4px; }
+  .conexion code { background: rgba(255,255,255,.15); color: #fff; }
+
+  nav.indice { position: sticky; top: 0; z-index: 5; background: #fff; border-bottom: 1px solid var(--linea); }
+  nav.indice .dentro { max-width: 1080px; margin: 0 auto; padding: 0 24px; display: flex; gap: 20px; overflow-x: auto; }
+  nav.indice a { white-space: nowrap; text-decoration: none; color: var(--texto-2); font-weight: 600; font-size: 14px; padding: 14px 0; border-bottom: 3px solid transparent; }
+  nav.indice a:hover { color: var(--petroleo); border-bottom-color: var(--lima); }
+
+  main { max-width: 1080px; margin: 0 auto; padding: 8px 24px 70px; }
+  section { padding-top: 44px; }
+  .encabezado { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+  .num { flex: none; width: 38px; height: 38px; border-radius: 50%; background: var(--lima); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: 17px; }
+  h2 { font-size: 26px; }
+  .bajada { color: var(--texto-2); margin: 4px 0 18px 52px; max-width: 760px; }
+  .grilla { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); }
+  .caso { background: #fff; border: 1px solid var(--linea); border-radius: 12px; padding: 18px 18px 14px; display: grid; gap: 10px; align-content: start; }
+  .caso h3 { font-size: 16px; }
+  .caso p { margin: 0; color: var(--texto-2); font-size: 14px; }
+  .prompt { position: relative; background: #f0f6f7; border-left: 3px solid var(--turquesa); border-radius: 8px; padding: 10px 44px 10px 12px; font-size: 14px; color: var(--petroleo-osc); font-style: italic; }
+  .copiar { position: absolute; top: 6px; right: 6px; border: 0; background: #fff; color: var(--petroleo); border-radius: 6px; width: 30px; height: 30px; cursor: pointer; font-size: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .copiar:hover { background: var(--lima); color: #fff; }
+  .copiar.ok { background: var(--lima); color: #fff; }
+  .etiquetas { display: flex; flex-wrap: wrap; gap: 6px; }
+  .etq { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: #eaf2f3; color: var(--petroleo); }
+
+  .flujo { background: #fff; border: 1px solid var(--linea); border-radius: 12px; padding: 18px; display: grid; gap: 12px; }
+  .flujo + .flujo { margin-top: 14px; }
+  .pasos { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+  .pasos span { background: var(--petroleo); color: #fff; padding: 4px 10px; border-radius: 999px; font-weight: 600; }
+  .pasos i { color: var(--gris); font-style: normal; }
+
+  .limites { display: grid; gap: 10px; }
+  .limite { background: #fff; border-left: 4px solid var(--aviso); border-radius: 8px; padding: 12px 16px; font-size: 15px; }
+  .limite.rojo { border-left-color: #c0392b; }
+  .consejos { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .consejo { background: #fff; border-radius: 10px; padding: 14px 16px; border: 1px solid var(--linea); font-size: 14px; }
+  .consejo b { color: var(--petroleo); display: block; margin-bottom: 4px; }
+  footer { text-align: center; color: var(--gris); font-size: 13px; padding: 20px 24px 50px; }
+  @media (max-width: 640px) { .portada h1 { font-size: 30px; } .bajada { margin-left: 0; } main, .portada .dentro, nav.indice .dentro { padding-left: 16px; padding-right: 16px; } }
+</style>
+</head>
+<body>
+
+<header class="portada">
+  <div class="dentro">
+    <div class="marca"><img src="/marca/Logo-Menu-Sup.png" alt="Conaltura"> Inteligencia de suelo · MCP</div>
+    <h1>Qué puedes pedirle a Claude con el MCP conectado</h1>
+    <p>Estudios de competencia, búsqueda de lotes para un edificio, ficha y prefactibilidad de un predio, mercado y proyectos nuevos en 17 municipios del Valle de Aburrá y el Oriente. Se pide en lenguaje normal; cada ejemplo tiene un botón para copiarlo.</p>
+    <div class="conexion">
+      <div><b>Conectar en Claude</b>Configuración → Conectores → Agregar conector personalizado → <code>https://celula-suelo.vercel.app/api/mcp</code> → Conectar, e ingresa con tu correo y clave.</div>
+      <div><b>Workspace web</b><a href="/mapa" style="color:#fff">celula-suelo.vercel.app/mapa</a>, con el mismo correo y clave. Los Excel de los estudios se descargan desde ahí.</div>
+    </div>
+  </div>
+</header>
+
+<nav class="indice"><div class="dentro">
+  <a href="#competencia">Estudio de competencia</a><a href="#perfil">Dónde hacer un edificio</a><a href="#lote">Analizar un lote</a>
+  <a href="#dueno">Llegar al dueño</a><a href="#mercado">Mercado y proyectos</a><a href="#datos">Sobre los datos</a>
+  <a href="#flujos">Flujos encadenados</a><a href="#limites">Límites</a>
+</div></nav>
+
+<main>
+
+<section id="competencia">
+  <div class="encabezado"><div class="num">1</div><h2>Estudio de competencia de un lote</h2></div>
+  <p class="bajada">El estudio de la Etapa 1 (pasos 3 a 9) con el formato de Conaltura, alimentado con Galería Inmobiliaria, y su Excel listo para descargar.</p>
+  <div class="grilla">
+    <div class="caso"><h3>Estudio completo</h3><p>Objetivo, territorio (norma, entorno, restricciones), proyectos de la zona, competencia directa, tabla resumen e insumos para recomendar.</p>
+      <div class="prompt">Hazme el estudio de competencia del lote en la Cl. 6 Sur #50C-104, NO VIS, proyectos de más de 100 unidades, radio de 3 km.</div>
+      <div class="etiquetas"><span class="etq">estudio_competencia</span><span class="etq">Excel</span></div></div>
+    <div class="caso"><h3>Redacción lista para el comité</h3><p>Claude redacta territorio, recomendaciones y conclusión con los datos del estudio y las deja dentro del Excel.</p>
+      <div class="prompt">Redacta las recomendaciones y la conclusión de ese estudio y guárdalas en el Excel.</div>
+      <div class="etiquetas"><span class="etq">completar_estudio</span></div></div>
+    <div class="caso"><h3>Cambiar la zona o los filtros</h3><p>Comparar el mismo lote con otra zona, otro tipo de vivienda o solo ciertos productos.</p>
+      <div class="prompt">Repite el estudio solo con proyectos de Guayabal e Itagüí, sin El Poblado. ¿Cómo cambia el precio y el ritmo?</div></div>
+    <div class="caso"><h3>Rentas cortas o tipo de entrega</h3><p>Enfocar la competencia en proyectos de rentas cortas, obra gris o acabados.</p>
+      <div class="prompt">Haz el estudio de ese lote solo con proyectos de rentas cortas y dime cuántos venden más de 5 unidades al mes.</div></div>
+  </div>
+</section>
+
+<section id="perfil">
+  <div class="encabezado"><div class="num">2</div><h2>Dónde hacer un edificio (estudio general)</h2></div>
+  <p class="bajada">Se describe el producto y Claude revisa todos los lotes del municipio: deja los que la norma permite y los ordena por mercado, ventas de la zona y señales de que el dueño podría vender.</p>
+  <div class="grilla">
+    <div class="caso"><h3>Lotes para un producto</h3><p>Cuántos lotes sirven, en qué barrios están y el ranking con el porqué de cada uno.</p>
+      <div class="prompt">¿Dónde en Medellín cabe un NO VIS de 150 a 300 apartamentos de 65 m² y mínimo 12 pisos?</div>
+      <div class="etiquetas"><span class="etq">oportunidades_por_perfil</span><span class="etq">Excel</span></div></div>
+    <div class="caso"><h3>Con precio objetivo y barrios</h3><p>Compara el precio que quieres vender con el precio real de cada zona.</p>
+      <div class="prompt">Busca lotes en Belén y Guayabal para un VIS de 200 unidades que se pueda vender a $5,5 millones el m².</div></div>
+    <div class="caso"><h3>Lotes fáciles de comprar</h3><p>Filtrar por tamaño y por número de construcciones (menos construcciones, menos dueños).</p>
+      <div class="prompt">Solo lotes de más de 3.000 m² y con menos de 5 construcciones en Envigado y Sabaneta.</div></div>
+    <div class="caso"><h3>Ranking general de oportunidades</h3><p>Los lotes con más potencial de un municipio sin definir producto.</p>
+      <div class="prompt">¿Cuáles son las 10 mejores oportunidades de suelo en Envigado y por qué?</div>
+      <div class="etiquetas"><span class="etq">oportunidades</span></div></div>
+  </div>
+</section>
+
+<section id="lote">
+  <div class="encabezado"><div class="num">3</div><h2>Analizar un lote puntual</h2></div>
+  <p class="bajada">Por CBML, código de predio, dirección de Medellín o coordenada (por ejemplo, la de Google Maps).</p>
+  <div class="grilla">
+    <div class="caso"><h3>Ficha del predio</h3><p>Norma del POT, área construible, viviendas posibles, amenazas, valor del suelo, licencias, mercado y proyectos a 1,5 km.</p>
+      <div class="prompt">Dame la ficha del predio en la coordenada 6.2032, -75.5826.</div>
+      <div class="etiquetas"><span class="etq">ficha_predio</span></div></div>
+    <div class="caso"><h3>¿Este lote da?</h3><p>Prefactibilidad con veredicto, lote máximo pagable, tensión entre compradores y oferta, y sensibilidad.</p>
+      <div class="prompt">Si piden $15.000 millones por el lote 05001:15090030008, ¿da? ¿Cuál es el máximo que se puede pagar?</div>
+      <div class="etiquetas"><span class="etq">prefactibilidad_lote</span></div></div>
+    <div class="caso"><h3>Comparar y englobar</h3><p>Dos o más lotes lado a lado, y cuántas viviendas saldrían si se unen.</p>
+      <div class="prompt">Compara los lotes 05001:15090030007 y 05001:15090030008. ¿Cuántas viviendas salen si se englobaran?</div></div>
+    <div class="caso"><h3>Buscar lotes por características</h3><p>Filtrar por municipio, barrio, área, tratamiento o área construible.</p>
+      <div class="prompt">Lotes de más de 2.000 m² en Sabaneta con tratamiento de renovación urbana.</div>
+      <div class="etiquetas"><span class="etq">buscar_lotes</span></div></div>
+  </div>
+</section>
+
+<section id="dueno">
+  <div class="encabezado"><div class="num">4</div><h2>Llegar al dueño (ruta legal)</h2></div>
+  <p class="bajada">Señales del folio de matrícula y los pasos para contactar al propietario. Nunca entrega nombres ni teléfonos de personas.</p>
+  <div class="grilla">
+    <div class="caso"><h3>Señales de venta</h3><p>Herencia, embargos, copropiedad, empresa propietaria, fiducia, litigios, última compraventa y probabilidad de venta.</p>
+      <div class="prompt">¿Qué señales de venta tiene el lote 05001:15090030008 y cómo llego al dueño?</div>
+      <div class="etiquetas"><span class="etq">contacto_predio</span></div></div>
+    <div class="caso"><h3>Empresa propietaria</h3><p>Estado en Cámara de Comercio, representantes legales, si está en liquidación y procesos judiciales.</p>
+      <div class="prompt">Revisa la empresa con NIT 811026526: ¿está activa? ¿tiene procesos judiciales?</div>
+      <div class="etiquetas"><span class="etq">empresa_propietaria</span></div></div>
+  </div>
+</section>
+
+<section id="mercado">
+  <div class="encabezado"><div class="num">5</div><h2>Mercado y proyectos nuevos</h2></div>
+  <p class="bajada">Oferta y demanda reales (Fynder), proyectos sobre planos (Zonario y Galería) y constructoras.</p>
+  <div class="grilla">
+    <div class="caso"><h3>Mercado de una zona</h3><p>Precios, oferta, compradores buscando, ritmo de venta y tendencia.</p>
+      <div class="prompt">¿Cómo está el mercado de apartamentos en Laureles? ¿Hay más compradores que oferta?</div>
+      <div class="etiquetas"><span class="etq">mercado_zona</span></div></div>
+    <div class="caso"><h3>Proyectos sobre planos</h3><p>Por zona, precio, precio por m², fecha de entrega, VIS o constructora.</p>
+      <div class="prompt">Proyectos sobre planos en Rionegro entre $400 y $600 millones que entreguen antes de 2028.</div>
+      <div class="etiquetas"><span class="etq">buscar_proyectos</span></div></div>
+    <div class="caso"><h3>Ficha de un proyecto</h3><p>Precios, áreas, entrega, historial de precios y competencia a 1,5 km.</p>
+      <div class="prompt">Dame la ficha de Veranova Park y su competencia cercana.</div>
+      <div class="etiquetas"><span class="etq">ficha_proyecto</span></div></div>
+    <div class="caso"><h3>Portafolio de una constructora</h3><p>Proyectos activos, municipios y precios típicos.</p>
+      <div class="prompt">¿Qué proyectos tiene Arquitectura y Concreto y a qué precios por m²?</div>
+      <div class="etiquetas"><span class="etq">constructora</span></div></div>
+  </div>
+</section>
+
+<section id="datos">
+  <div class="encabezado"><div class="num">6</div><h2>Sobre los datos</h2></div>
+  <p class="bajada">Para saber qué tan completa será una respuesta antes de usarla.</p>
+  <div class="grilla">
+    <div class="caso"><h3>Cobertura por municipio</h3><p>Predios, norma, lotes con potencial, mercado y proyectos en cada municipio.</p>
+      <div class="prompt">¿Qué tan confiable es la norma en Itagüí y en Rionegro?</div>
+      <div class="etiquetas"><span class="etq">cobertura</span></div></div>
+    <div class="caso"><h3>Fuentes y fechas</h3><p>De dónde sale cada dato, cuándo se capturó y con qué licencia.</p>
+      <div class="prompt">¿De cuándo son los datos de Galería y de catastro que estás usando?</div>
+      <div class="etiquetas"><span class="etq">fuentes</span></div></div>
+  </div>
+</section>
+
+<section id="flujos">
+  <div class="encabezado"><div class="num">★</div><h2>Flujos encadenados (lo más potente)</h2></div>
+  <p class="bajada">Claude combina varias herramientas en una sola conversación.</p>
+  <div class="flujo">
+    <div class="pasos"><span>Perfil de edificio</span><i>→</i><span>Mejor lote</span><i>→</i><span>Estudio de competencia</span><i>→</i><span>Excel redactado</span></div>
+    <div class="prompt">Busca los 5 mejores lotes en Medellín para un NO VIS de 200 unidades y hazme el estudio de competencia del mejor, con recomendaciones redactadas.</div>
+  </div>
+  <div class="flujo">
+    <div class="pasos"><span>Ficha</span><i>→</i><span>Prefactibilidad</span><i>→</i><span>Competencia</span><i>→</i><span>Ruta al dueño</span></div>
+    <div class="prompt">Para el lote de Cristo Rey 008: ficha, prefactibilidad con $12.000 millones, estudio de competencia y ruta al dueño, todo en un resumen de una página para el comité.</div>
+  </div>
+  <div class="flujo">
+    <div class="pasos"><span>Mercado</span><i>→</i><span>Proyectos</span><i>→</i><span>Recomendación</span></div>
+    <div class="prompt">Compara el mercado de Envigado y Sabaneta para un producto de 70 m² a $11 millones el m². ¿Dónde se vendería más rápido?</div>
+  </div>
+</section>
+
+<section id="limites">
+  <div class="encabezado"><div class="num">!</div><h2>Límites a tener presentes</h2></div>
+  <div class="limites" style="margin-top:14px">
+    <div class="limite"><b>Las unidades son una estimación sobre la norma, no una cabida.</b> Retiros, cesiones y parqueaderos las reducen; estructuración las valida.</div>
+    <div class="limite"><b>La norma está completa en Medellín, Envigado, Sabaneta, Barbosa y Girardota.</b> Itagüí, La Estrella, Caldas y Copacabana publican un POT derogado, Bello va por franjas y el Oriente no publica la norma de tratamiento.</div>
+    <div class="limite"><b>Galería solo trae lo que Conaltura exporte.</b> La base actual (octubre de 2026) es NO VIS; para estudios VIS hay que cargar una exportación VIS desde la pestaña Galería del workspace. Algunos proyectos quedan ubicados en el centro de su barrio y el estudio lo marca.</div>
+    <div class="limite rojo"><b>Datos confidenciales.</b> La información de Galería es de uso interno de Conaltura y no se comparte con terceros.</div>
+  </div>
+  <h3 style="margin:30px 0 12px">Consejos para pedir mejor</h3>
+  <div class="consejos">
+    <div class="consejo"><b>Da el lote con precisión</b>CBML, código de predio o la coordenada de Google Maps (clic derecho sobre el lote).</div>
+    <div class="consejo"><b>Di el producto</b>VIS o NO VIS, unidades, área por unidad, pisos y precio objetivo.</div>
+    <div class="consejo"><b>Define la zona</b>Barrios a incluir o excluir; la zona cambia mucho el precio y el ritmo.</div>
+    <div class="consejo"><b>Pide el Excel</b>"Dame el enlace al Excel" y se descarga con tu correo y clave.</div>
+  </div>
+</section>
+
+</main>
+<footer>Inteligencia de suelo · Guía técnica completa en <a href="/como-funciona.html">cómo funciona</a></footer>
+
+<script>
+  document.querySelectorAll(".prompt").forEach((p) => {
+    const b = document.createElement("button");
+    b.className = "copiar"; b.title = "Copiar"; b.textContent = "⧉";
+    b.onclick = async () => {
+      try { await navigator.clipboard.writeText(p.childNodes[0].textContent.trim()); b.textContent = "✓"; b.classList.add("ok"); }
+      catch { b.textContent = "!"; }
+      setTimeout(() => { b.textContent = "⧉"; b.classList.remove("ok"); }, 1500);
+    };
+    p.appendChild(b);
+  });
+</script>
+</body>
+</html>
