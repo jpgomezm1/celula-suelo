@@ -223,7 +223,7 @@ export default function Mapa() {
         <img src="/marca/Logo-Menu-Sup.png" alt="Conaltura" />
         <div className="sep" />
         <div className="producto">Inteligencia de suelo<small>Estudios de competencia · Valle de Aburrá</small></div>
-        <div className="derecha"><a href="/como-funciona.html" target="_blank" style={{ color: "#fff" }}>Cómo funciona</a></div>
+        <div className="derecha"><a href="/como-funciona.html" target="_blank" style={{ color: "#fff" }}>Cómo funciona</a><a href="/api/logout" style={{ color: "#fff", marginLeft: 14 }}>Salir</a></div>
         <div className="franja" />
       </header>
 

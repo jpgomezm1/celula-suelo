@@ -8,6 +8,8 @@ import { prefactibilidadLote } from "@/lib/prefactibilidad_lote";
 import { buscarProyectos, constructoraPortafolio, fichaProyecto } from "@/lib/proyectos";
 import { contactoPredio, empresaPropietaria } from "@/lib/contacto";
 import { completarEstudio, crearEstudio, crearEstudioPerfil } from "@/lib/estudios";
+import { origen, verificar } from "@/lib/auth";
+import { CORS, opciones } from "@/lib/oauth";
 
 export const maxDuration = 300;
 
@@ -203,14 +205,27 @@ const mcp = createMcpHandler(
   { serverInfo: { name: "inteligencia-suelo", version: "0.3.0" }, instructions: INSTRUCCIONES },
 );
 
-/** Token compartido (MCP_TOKEN): en el encabezado "Authorization: Bearer <token>" o, para clientes que no permiten encabezados, en ?token=<token>. */
+/**
+ * Acceso: 1) OAuth (Claude abre la página de login y obtiene un token firmado), 2) token compartido MCP_TOKEN
+ * en "Authorization: Bearer" o en ?token= (Claude Code y scripts). Sin credencial responde 401 con la ruta a los
+ * metadatos OAuth para que el cliente inicie el login.
+ */
 async function handler(req: Request) {
   const token = process.env.MCP_TOKEN;
+  const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   const enUrl = new URL(req.url).searchParams.get("token");
-  if (token && req.headers.get("authorization") !== `Bearer ${token}` && enUrl !== token) {
-    return new Response("No autorizado: falta el token del MCP", { status: 401 });
+  const autorizado = !token
+    || (bearer && bearer === token) || enUrl === token
+    || (bearer && (await verificar(bearer, "acceso")));
+  if (!autorizado) {
+    const meta = `${origen(req)}/.well-known/oauth-protected-resource/api/mcp`;
+    return new Response(JSON.stringify({ error: "invalid_token", error_description: "Inicia sesión para usar el MCP" }), {
+      status: 401,
+      headers: { "content-type": "application/json", "WWW-Authenticate": `Bearer resource_metadata="${meta}"`, ...CORS },
+    });
   }
   return mcp(req);
 }
 
-export { handler as GET, handler as POST };
+export { handler as GET, handler as POST, handler as DELETE };
+export const OPTIONS = opciones;
