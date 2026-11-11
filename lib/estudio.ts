@@ -16,7 +16,8 @@ export type EstudioInput = {
   min_unidades?: number;
   vocacion?: "vivienda" | "rentas_cortas" | "ambos";
   entrega?: "obra gris" | "acabados" | "todos";
-  corte?: string; // fecha de corte de Galería; por defecto la más reciente
+  corte?: string; // fecha de corte de Galería; por defecto la foto más reciente de cada proyecto
+  tipo_producto?: "Apto" | "Casa" | "Lote" | "todos"; // por defecto apartamentos
   max_competidores?: number;
 };
 
@@ -126,8 +127,10 @@ export async function estudioCompetencia(f: EstudioInput) {
     : sql`ST_Buffer(ST_SetSRID(ST_MakePoint(${lon}, ${lat}), 4326)::geography, ${radio})::geometry`;
   void zonaSql;
   const zonaGeo = f.poligono ? JSON.stringify(f.poligono) : null;
-  const [corteRow] = f.corte ? [{ corte: f.corte }] : await sql`SELECT max(fecha_corte)::text AS corte FROM galeria_proyecto WHERE geom IS NOT NULL`;
-  const corte = corteRow?.corte ?? null;
+  // Sin corte explícito se usa la foto vigente de cada proyecto (galeria_vigente): un corte parcial no borra los demás.
+  const [hay] = await sql`SELECT count(*)::int AS n FROM galeria_proyecto WHERE geom IS NOT NULL`;
+  const corte = f.corte ?? (hay?.n ? "vigente" : null);
+  const tipoProd = f.tipo_producto ?? "Apto";
 
   // ── Paso 5: proyectos a consultar (Galería) ──
   const tipoViv = f.tipo_vivienda ?? "todos";
@@ -136,8 +139,9 @@ export async function estudioCompetencia(f: EstudioInput) {
   const galeria = corte ? await sql`
     SELECT g.*, ST_Y(g.geom) AS lat, ST_X(g.geom) AS lon,
            round(ST_Distance(g.geom::geography, ST_SetSRID(ST_MakePoint(${lon}, ${lat}), 4326)::geography)) AS distancia_m
-    FROM galeria_proyecto g
-    WHERE g.fecha_corte = ${corte}::date AND g.geom IS NOT NULL
+    FROM ${f.corte ? sql`galeria_proyecto` : sql`galeria_vigente`} g
+    WHERE (${f.corte ?? null}::date IS NULL OR g.fecha_corte = ${f.corte ?? null}::date) AND g.geom IS NOT NULL
+      AND (${tipoProd} = 'todos' OR g.tipo IS NULL OR g.tipo ILIKE ${tipoProd} || '%')
       AND CASE WHEN ${zonaGeo}::text IS NOT NULL THEN ST_Intersects(g.geom, ST_SetSRID(ST_GeomFromGeoJSON(${zonaGeo}), 4326))
                ELSE ST_DWithin(g.geom::geography, ST_SetSRID(ST_MakePoint(${lon}, ${lat}), 4326)::geography, ${radio}) END
       AND COALESCE(g.unidades_total, 0) >= ${f.min_unidades ?? 100}
@@ -217,12 +221,16 @@ export async function estudioCompetencia(f: EstudioInput) {
   const ritmosZoom = zoom.map((g: any) => Math.max(Number(g.ventas_prom_semestre_un) || 0, 0));
   const ritmoReferencia = ritmosZoom.length ? Math.round((ritmosZoom.reduce((a, b) => a + b, 0) / ritmosZoom.length) * 10) / 10 : null;
 
+  const cortesUsados = galeria.length
+    ? [...new Set(galeria.map((g: any) => new Date(g.fecha_corte).toISOString().slice(0, 10)))].sort().join(", ")
+    : corte === null ? null : "sin proyectos en la zona";
+  const aproximados = galeria.filter((g: any) => ["barrio", "municipio", "sector"].includes(g.ubicacion_metodo)).length;
   return {
     estudio: f.nombre ?? "Estudio de competencia",
     fecha: new Date().toISOString().slice(0, 10),
-    corte_galeria: corte,
+    corte_galeria: cortesUsados,
     paso3_objetivo: {
-      objetivo: f.objetivo ?? "proyecto_nuevo", tipo_vivienda: tipoViv, vocacion: voc, entrega,
+      objetivo: f.objetivo ?? "proyecto_nuevo", tipo_vivienda: tipoViv, tipo_producto: tipoProd, vocacion: voc, entrega,
       filtros: { min_unidades: f.min_unidades ?? 100, zona: f.poligono ? "polígono dibujado" : `radio de ${radio} m` },
     },
     paso4_territorio: {
@@ -240,14 +248,20 @@ export async function estudioCompetencia(f: EstudioInput) {
       nota: "Hechos verificables para redactar los apartados del paso 4 (zona, referencias, vías, transporte, comercio, desarrollo y valorización).",
     },
     paso5_proyectos_a_consultar: {
-      fuente: corte ? `Galería Inmobiliaria, corte ${corte}` : "Sin datos de Galería cargados",
+      fuente: corte ? `Galería Inmobiliaria, corte ${cortesUsados}` : "Sin datos de Galería cargados",
       cantidad: galeria.length,
+      producto: tipoProd === "todos" ? "apartamentos, casas y lotes" : tipoProd === "Apto" ? "apartamentos" : tipoProd === "Casa" ? "casas" : "lotes",
+      ubicacion_aproximada: aproximados
+        ? `${aproximados} de ${galeria.length} proyectos están ubicados en el centro de su barrio, sector o municipio (dirección sin cruce de vías reconocible): su distancia al lote es aproximada.`
+        : null,
       proyectos: galeria.map((g: any) => ({
         codigo: g.codigo, proyecto: g.proyecto, construye: g.construye, sub_zona: g.sub_zona, tipo_vivienda: g.tipo_vivienda,
         precio_m2: Number(g.precio_m2_oferta), unidades_total: Number(g.unidades_total), ventas_total: Number(g.ventas_total_un),
         disponibles: Number(g.unidades_disponibles), por_lanzar: Number(g.unidades_por_lanzar), pct_vendido: Number(g.pct_vendido),
         ventas_mes_prom_semestre: Number(g.ventas_prom_semestre_un), fecha_inicio: g.fecha_inicio_ventas, entrega: g.entrega,
         estado_obra: g.estado_obra, distancia_m: Number(g.distancia_m), ubicacion: g.ubicacion_metodo,
+        ubicacion_aproximada: ["barrio", "municipio", "sector"].includes(g.ubicacion_metodo), direccion: g.direccion, municipio: g.municipio,
+        tipo: g.tipo, gerenciador: g.gerenciador, descuento: g.descuento && g.descuento !== "---" ? g.descuento : null, corte: new Date(g.fecha_corte).toISOString().slice(0, 10),
       })),
       proyectos_sin_galeria: soloZonario.slice(0, 15).map((z: any) => ({ ...z, nota: "Zonario: sin datos de ventas" })),
     },
@@ -267,7 +281,7 @@ export async function estudioCompetencia(f: EstudioInput) {
       nota: "Con estos insumos se redactan las recomendaciones (tipo de producto, área, tipologías, entrega, precio objetivo, zonas comunes, enfoque, público y diferencial) y la conclusión. Etapa 2 (cotizaciones, zonas comunes, hallazgos arquitectónicos) sigue siendo trabajo de campo.",
     },
     fuentes: [
-      corte && `Galería Inmobiliaria (exportación del cliente, corte ${corte}) — uso interno`,
+      corte && `Galería Inmobiliaria (exportación del cliente, corte ${cortesUsados}) — uso interno`,
       "Zonario, zonario.co (proyectos sin Galería)",
       "Catastro y POT municipal (célula de suelo)",
       "OpenStreetMap (entorno)",

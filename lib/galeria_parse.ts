@@ -20,11 +20,15 @@ export const COLUMNAS: Record<string, string> = {
   "tipo de vivienda (vis o no vis)": "tipo_vivienda", "financiera": "financiera", "fiduciaria": "fiduciaria", "lote futuro": "lote_futuro",
   "estado obra": "estado_obra", "certificacion de sostenibilidad": "certificacion", "entrega (obra gris o acabados)": "entrega",
   "se vende en smlv": "smlv",
+  // Base competitividad (exportación ampliada)
+  "fecha terminacion de obra ult. etapa": "fecha_entrega", "puesto ciudad": "puesto_ciudad", "puesto filtro": "puesto_filtro",
+  "calificacion % valores del filtro": "calificacion_filtro", "nit constructor": "nit_constructor", "gerenciador": "gerenciador",
+  "municipio": "municipio", "descuento": "descuento",
 };
 const NUMERICAS = new Set(["estrato", "precio_m2_oferta", "meses_activo", "ventas_prom_semestre_un", "ventas_prom_semestre_mm", "puesto_zona",
   "calificacion_zona", "unidades_total", "ventas_total_un", "unidades_disponibles", "unidades_por_lanzar", "pct_vendido", "ventas_prom_total_un",
   "capacidad_ventas_mm", "capacidad_oferta_mm", "capacidad_actual_futura_mm", "meses_en_venta", "meses_faltantes", "precio_prom_oferta_mm",
-  "area_prom_ventas", "ventas_mes_un", "ventas_mes_mm", "area_prom_oferta"]);
+  "area_prom_ventas", "ventas_mes_un", "ventas_mes_mm", "area_prom_oferta", "puesto_ciudad", "puesto_filtro", "calificacion_filtro"]);
 const FECHAS = new Set(["fecha_inicio_ventas", "fecha_entrega"]);
 
 function valor(c: ExcelJS.CellValue): unknown {

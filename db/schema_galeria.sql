@@ -65,3 +65,20 @@ CREATE TABLE IF NOT EXISTS estudio (
   creado_en   timestamptz NOT NULL DEFAULT now(),
   actualizado timestamptz NOT NULL DEFAULT now()
 );
+
+-- Columnas de la "Base competitividad" (exportación ampliada de G.A.I.N., oct. 2026).
+ALTER TABLE galeria_proyecto ADD COLUMN IF NOT EXISTS puesto_ciudad integer;
+ALTER TABLE galeria_proyecto ADD COLUMN IF NOT EXISTS puesto_filtro integer;
+ALTER TABLE galeria_proyecto ADD COLUMN IF NOT EXISTS calificacion_filtro numeric;
+ALTER TABLE galeria_proyecto ADD COLUMN IF NOT EXISTS nit_constructor text;
+ALTER TABLE galeria_proyecto ADD COLUMN IF NOT EXISTS gerenciador text;
+ALTER TABLE galeria_proyecto ADD COLUMN IF NOT EXISTS municipio text;
+ALTER TABLE galeria_proyecto ADD COLUMN IF NOT EXISTS descuento text;
+
+-- Foto vigente de cada proyecto: su corte más reciente, entre los cortes de los últimos 12 meses.
+-- Así un corte parcial (p. ej. solo NO VIS) no borra los proyectos VIS de un corte anterior.
+CREATE OR REPLACE VIEW galeria_vigente AS
+SELECT DISTINCT ON (codigo) *
+FROM galeria_proyecto
+WHERE fecha_corte >= (SELECT max(fecha_corte) - interval '12 months' FROM galeria_proyecto)
+ORDER BY codigo, fecha_corte DESC;

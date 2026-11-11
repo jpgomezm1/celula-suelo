@@ -70,10 +70,10 @@ export async function estudioAExcel(e: any, textos: any = {}): Promise<Buffer> {
   const p5 = wb.addWorksheet("E1- Paso 5 Proyectos a con.");
   titulo(p5, "Paso 5:", "Proyectos a consultar por zona");
   p5.addRow([`Listado de proyectos (${e.paso5_proyectos_a_consultar?.cantidad ?? 0}) — ${e.paso5_proyectos_a_consultar?.fuente}`]).font = { italic: true };
-  const cols5 = ["Código", "Proyecto", "Construye", "Sub Zona", "Tipo", "$ m2", "Total unidades", "Ventas totales", "Disponibles", "Por lanzar", "% Vendido", "Ventas mes prom. semestre", "Inicio ventas", "Entrega", "Estado obra", "Distancia (m)"];
+  const cols5 = ["Código", "Proyecto", "Construye", "Sub Zona", "Tipo", "$ m2", "Total unidades", "Ventas totales", "Disponibles", "Por lanzar", "% Vendido", "Ventas mes prom. semestre", "Inicio ventas", "Entrega", "Estado obra", "Distancia (m)", "Dirección", "Ubicación", "Descuento"];
   encabezado(p5.addRow(cols5));
   for (const g of e.paso5_proyectos_a_consultar?.proyectos ?? []) {
-    p5.addRow([g.codigo, g.proyecto, g.construye, g.sub_zona, g.tipo_vivienda, g.precio_m2, g.unidades_total, g.ventas_total, g.disponibles, g.por_lanzar, g.pct_vendido, g.ventas_mes_prom_semestre, f(g.fecha_inicio), g.entrega, g.estado_obra, g.distancia_m]);
+    p5.addRow([g.codigo, g.proyecto, g.construye, g.sub_zona, g.tipo_vivienda, g.precio_m2, g.unidades_total, g.ventas_total, g.disponibles, g.por_lanzar, g.pct_vendido, g.ventas_mes_prom_semestre, f(g.fecha_inicio), g.entrega, g.estado_obra, g.distancia_m, g.direccion ?? "", g.ubicacion_aproximada ? "aproximada (barrio/sector)" : "por dirección", g.descuento ?? ""]);
   }
   p5.getColumn(6).numFmt = "$#,##0"; p5.getColumn(11).numFmt = "0%";
   cols5.forEach((_, i) => (p5.getColumn(i + 1).width = i === 1 ? 34 : 14));

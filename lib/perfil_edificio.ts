@@ -80,7 +80,6 @@ export async function oportunidadesPorPerfil(p: PerfilEdificio) {
   const ids = (candidatos as any[]).slice(0, 300).map((c) => c.id);
   const mercado = ids.length ? await sql`
     WITH c AS (SELECT id, ST_SetSRID(ST_MakePoint(lon, lat), 4326)::geography AS g FROM parcel_profile WHERE id = ANY(${ids}::text[])),
-    corte AS (SELECT max(fecha_corte) AS f FROM galeria_proyecto WHERE geom IS NOT NULL)
     SELECT c.id, m.inventario, m.precio_m2_usados, d.pedidos, pr.proyectos, pr.precio_m2_proyectos,
            ga.galeria_proyectos, ga.galeria_precio_m2, ga.galeria_ventas_mes, ga.galeria_oferta, ga.galeria_por_lanzar,
            s.registro AS matricula, s.sucesion, s.derechos_de_cuota, s.dacion_en_pago, s.señal_empresa AS senal_empresa,
@@ -103,7 +102,7 @@ export async function oportunidadesPorPerfil(p: PerfilEdificio) {
       SELECT count(*)::int AS galeria_proyectos, percentile_cont(0.5) WITHIN GROUP (ORDER BY g.precio_m2_oferta)::bigint AS galeria_precio_m2,
              sum(g.ventas_prom_semestre_un)::numeric AS galeria_ventas_mes, sum(g.unidades_disponibles)::int AS galeria_oferta,
              sum(g.unidades_por_lanzar)::int AS galeria_por_lanzar
-      FROM galeria_proyecto g, corte WHERE g.fecha_corte = corte.f AND g.geom IS NOT NULL AND ST_DWithin(g.geom::geography, c.g, 2000)
+      FROM galeria_vigente g WHERE g.geom IS NOT NULL AND (g.tipo IS NULL OR g.tipo ILIKE 'Apto%') AND ST_DWithin(g.geom::geography, c.g, 2000)
         AND (${tipo} = 'todos' OR (${tipo} = 'VIS' AND g.tipo_vivienda ILIKE '%VIS%' AND g.tipo_vivienda NOT ILIKE 'NO VIS%')
              OR (${tipo} = 'NO VIS' AND g.tipo_vivienda ILIKE '%NO VIS%'))) ga` : [];
   const mk = new Map((mercado as any[]).map((r) => [r.id, r]));
