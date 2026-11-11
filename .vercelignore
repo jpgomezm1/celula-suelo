@@ -1,0 +1,8 @@
+data/raw
+data/ejemplos
+logs
+.playwright-mcp
+*.xlsx
+*.kml
+.env*
+!.env.example

@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inteligencia de suelo · Cómo funciona</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --petroleo: #006272; --petroleo-osc: #004b57; --turquesa: #009cb6; --turquesa-2: #02788c; --lima: #84bd00; --lima-osc: #6c9b00;
+    --texto: #3e3e3e; --texto-2: #6f6f6f; --gris: #979797; --linea: #e7e7e7; --fondo: #f6f7f7; --blanco: #fff; --codigo: #0f2a30;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font-family: "Work Sans", system-ui, sans-serif; color: var(--texto); background: var(--fondo); line-height: 1.6; font-size: 16px; }
+  a { color: var(--turquesa-2); }
+  code, pre { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 13px; }
+  code { background: #eaf2f3; color: var(--petroleo-osc); padding: 1px 6px; border-radius: 4px; }
+  pre { background: var(--codigo); color: #d8eef1; padding: 16px 18px; border-radius: 10px; overflow-x: auto; line-height: 1.5; margin: 12px 0; }
+  pre code { background: none; color: inherit; padding: 0; }
+  h1, h2, h3 { color: var(--petroleo); line-height: 1.2; margin: 0; }
+  h2 { font-size: 28px; margin-bottom: 8px; }
+  h3 { font-size: 18px; margin: 22px 0 6px; }
+  p { margin: 8px 0; }
+
+  header.portada { background: var(--petroleo); color: #fff; position: relative; overflow: hidden; }
+  header.portada::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--lima); }
+  .portada .dentro { max-width: 1100px; margin: 0 auto; padding: 56px 24px 64px; }
+  .portada .marca { font-size: 13px; letter-spacing: 1.4px; text-transform: uppercase; opacity: .8; font-weight: 600; }
+  .portada h1 { color: #fff; font-size: 44px; margin: 12px 0 14px; max-width: 760px; }
+  .portada p { font-size: 18px; max-width: 760px; opacity: .92; }
+  .portada .cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 32px; }
+  .portada .cifra { background: rgba(255,255,255,.1); border-radius: 10px; padding: 14px 16px; }
+  .portada .cifra b { display: block; font-size: 26px; color: #fff; }
+  .portada .cifra span { font-size: 13px; opacity: .85; }
+
+  nav.indice { position: sticky; top: 0; z-index: 5; background: #fff; border-bottom: 1px solid var(--linea); }
+  nav.indice .dentro { max-width: 1100px; margin: 0 auto; padding: 0 24px; display: flex; gap: 22px; overflow-x: auto; }
+  nav.indice a { white-space: nowrap; text-decoration: none; color: var(--texto-2); font-weight: 600; font-size: 14px; padding: 14px 0; border-bottom: 3px solid transparent; }
+  nav.indice a:hover { color: var(--petroleo); border-bottom-color: var(--lima); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 8px 24px 80px; }
+  section { padding: 48px 0 8px; }
+  .bajada { color: var(--texto-2); font-size: 17px; max-width: 780px; }
+  .grilla { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-top: 18px; }
+  .tarjeta { background: #fff; border: 1px solid var(--linea); border-radius: 12px; padding: 20px; }
+  .tarjeta h3 { margin-top: 0; }
+  .tarjeta .num { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--lima); color: #fff; font-weight: 700; margin-bottom: 10px; }
+  .etq { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: #eaf2f3; color: var(--petroleo); margin: 2px 4px 2px 0; }
+  .etq.lima { background: rgba(132,189,0,.15); color: var(--lima-osc); }
+  .etq.alerta { background: rgba(242,169,0,.15); color: #8a5f00; }
+
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--linea); border-radius: 12px; overflow: hidden; font-size: 14px; margin-top: 14px; }
+  th { background: var(--petroleo); color: #fff; text-align: left; font-weight: 600; padding: 10px 12px; font-size: 13px; }
+  td { padding: 10px 12px; border-top: 1px solid var(--linea); vertical-align: top; }
+  tr:nth-child(even) td { background: #fafbfb; }
+  td:first-child { font-weight: 600; color: var(--petroleo); white-space: nowrap; }
+  .tabla-scroll { overflow-x: auto; }
+
+  .diagrama { background: #fff; border: 1px solid var(--linea); border-radius: 12px; padding: 18px; margin-top: 18px; overflow-x: auto; }
+  .diagrama svg { display: block; min-width: 860px; width: 100%; height: auto; }
+  .pesos { display: grid; gap: 8px; margin-top: 12px; }
+  .peso { display: grid; grid-template-columns: 210px 1fr 48px; align-items: center; gap: 12px; font-size: 14px; }
+  .peso .barra { height: 10px; background: var(--linea); border-radius: 5px; overflow: hidden; }
+  .peso .barra i { display: block; height: 100%; background: var(--turquesa); }
+  .peso b { text-align: right; color: var(--petroleo); }
+  .aviso { background: #fff; border-left: 4px solid var(--lima); border-radius: 8px; padding: 14px 18px; margin-top: 16px; }
+  .aviso.rojo { border-left-color: #c0392b; }
+  footer { text-align: center; color: var(--gris); font-size: 13px; padding: 30px 24px 50px; }
+  @media (max-width: 640px) {
+    .portada h1 { font-size: 32px; }
+    .peso { grid-template-columns: 140px 1fr 40px; }
+    main, .portada .dentro, nav.indice .dentro { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="portada">
+  <div class="dentro">
+    <div class="marca">Inteligencia de suelo · v0.3 · noviembre de 2026</div>
+    <h1>Cómo funciona: del predio al estudio de competencia, en minutos</h1>
+    <p>Una base única de suelo, norma, mercado y proyectos para el Valle de Aburrá y el Oriente antioqueño, con tres puertas de entrada: un mapa web, un servidor MCP para conversar con Claude y exportaciones a Excel con el formato de estudio de la constructora.</p>
+    <div class="cifras">
+      <div class="cifra"><b>17</b><span>municipios</span></div>
+      <div class="cifra"><b>663.423</b><span>predios con geometría</span></div>
+      <div class="cifra"><b>≈ 1,8 M</b><span>construcciones</span></div>
+      <div class="cifra"><b>414</b><span>proyectos nuevos (141 constructoras)</span></div>
+      <div class="cifra"><b>8.542</b><span>inmuebles en venta (Fynder)</span></div>
+      <div class="cifra"><b>15</b><span>herramientas MCP</span></div>
+    </div>
+  </div>
+</header>
+
+<nav class="indice"><div class="dentro">
+  <a href="#que-es">Qué es</a><a href="#arquitectura">Arquitectura</a><a href="#datos">Datos</a><a href="#estudios">Estudios</a>
+  <a href="#perfil">Por perfil</a><a href="#mcp">MCP</a><a href="#conectar">Conectar</a><a href="#web">Workspace</a>
+  <a href="#operar">Operación</a><a href="#reglas">Reglas</a><a href="#limites">Límites</a>
+</div></nav>
+
+<main>
+
+<section id="que-es">
+  <h2>Qué es</h2>
+  <p class="bajada">Hoy un estudio de competencia de un lote se arma a mano: buscar la norma del POT, ubicar los proyectos de Galería Inmobiliaria en Google Earth, copiar ventas y ritmos a un Excel y redactar el territorio. Esta herramienta hace la parte mecánica y deja al equipo lo que requiere criterio.</p>
+  <div class="grilla">
+    <div class="tarjeta"><div class="num">1</div><h3>Estudio de competencia de un lote</h3><p>Lote + zona (polígono o radio) + filtros (VIS/NO VIS, más de 100 unidades, vocación). Sale el estudio de la Etapa 1, pasos 3 a 9, en el Excel de la constructora.</p></div>
+    <div class="tarjeta"><div class="num">2</div><h3>Oportunidades por perfil de edificio</h3><p>"Quiero un NO VIS de 150 a 300 unidades de 65 m² y 12 pisos": recorre todos los lotes del municipio y devuelve los que la norma permite, ordenados por mercado y señales de venta.</p></div>
+    <div class="tarjeta"><div class="num">3</div><h3>Ficha y prefactibilidad de un predio</h3><p>Norma, potencial, restricciones, mercado a 1,5 km, proyectos cerca, lote máximo pagable y la ruta legal para llegar al dueño.</p></div>
+  </div>
+</section>
+
+<section id="arquitectura">
+  <h2>Arquitectura</h2>
+  <p class="bajada">Cuatro capas: ingesta desde fuentes públicas y privadas, un modelo canónico en PostGIS, una capa de análisis en TypeScript y tres salidas.</p>
+  <div class="diagrama">
+    <svg viewBox="0 0 1000 380" role="img" aria-label="Diagrama de arquitectura">
+      <defs>
+        <marker id="fl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#979797"/></marker>
+      </defs>
+      <g font-family="Work Sans" font-size="13">
+        <text x="20" y="24" font-weight="700" fill="#006272" font-size="12" letter-spacing="1">FUENTES</text>
+        <g fill="#fff" stroke="#e7e7e7">
+          <rect x="20" y="36" width="210" height="40" rx="8"/><rect x="20" y="84" width="210" height="40" rx="8"/><rect x="20" y="132" width="210" height="40" rx="8"/>
+          <rect x="20" y="180" width="210" height="40" rx="8"/><rect x="20" y="228" width="210" height="40" rx="8"/><rect x="20" y="276" width="210" height="40" rx="8"/>
+          <rect x="20" y="324" width="210" height="40" rx="8"/>
+        </g>
+        <g fill="#3e3e3e">
+          <text x="34" y="61">Catastro y POT (GeoMedellín, IDEM…)</text><text x="34" y="109">Fynder: avisos y compradores</text>
+          <text x="34" y="157">Zonario: proyectos nuevos</text><text x="34" y="205">Galería Inmobiliaria (Excel)</text>
+          <text x="34" y="253">MEData y Croma: folios</text><text x="34" y="301">OpenStreetMap: entorno</text><text x="34" y="349">Normas digitalizadas (CSV)</text>
+        </g>
+        <rect x="300" y="110" width="200" height="170" rx="12" fill="#006272"/>
+        <text x="400" y="150" fill="#fff" text-anchor="middle" font-weight="700" font-size="15">PostGIS (Neon)</text>
+        <g fill="#d8eef1" text-anchor="middle" font-size="12"><text x="400" y="176">parcel · parcel_profile</text><text x="400" y="196">zoning_layer · norma</text><text x="400" y="216">listing · demand_request</text><text x="400" y="236">project · galeria_proyecto</text><text x="400" y="256">parcel_senales · osm_poi</text></g>
+        <rect x="570" y="110" width="190" height="170" rx="12" fill="#fff" stroke="#009cb6" stroke-width="2"/>
+        <text x="665" y="150" fill="#006272" text-anchor="middle" font-weight="700" font-size="15">Análisis (lib/)</text>
+        <g fill="#3e3e3e" text-anchor="middle" font-size="12"><text x="665" y="176">estudio de competencia</text><text x="665" y="196">oportunidades por perfil</text><text x="665" y="216">prefactibilidad (Fynder)</text><text x="665" y="236">mercado · contacto</text><text x="665" y="256">exportación a Excel</text></g>
+        <g fill="#84bd00"><rect x="820" y="80" width="160" height="56" rx="10"/><rect x="820" y="166" width="160" height="56" rx="10"/><rect x="820" y="252" width="160" height="56" rx="10"/></g>
+        <g fill="#fff" text-anchor="middle" font-weight="600"><text x="900" y="104">Servidor MCP</text><text x="900" y="190">Workspace web</text><text x="900" y="276">Excel del estudio</text></g>
+        <g fill="#fff" text-anchor="middle" font-size="11"><text x="900" y="122">/api/mcp → Claude</text><text x="900" y="208">/mapa</text><text x="900" y="294">/api/estudio/{id}/xlsx</text></g>
+        <g stroke="#979797" stroke-width="1.5" fill="none" marker-end="url(#fl)">
+          <path d="M230 56 C 270 56, 270 150, 298 160"/><path d="M230 104 C 265 104, 265 170, 298 175"/><path d="M230 152 L298 190"/>
+          <path d="M230 200 L298 205"/><path d="M230 248 L298 222"/><path d="M230 296 C 265 296, 265 245, 298 240"/><path d="M230 344 C 270 344, 270 265, 298 260"/>
+          <path d="M500 195 L568 195"/><path d="M760 170 L818 110"/><path d="M760 195 L818 194"/><path d="M760 220 L818 278"/>
+        </g>
+      </g>
+    </svg>
+  </div>
+  <p>Todo vive en un solo repositorio Next.js 16: la ingesta (<code>ingest/</code>, <code>sync/</code>, <code>projects/</code>), los esquemas (<code>db/</code>), el análisis (<code>lib/</code>) y las salidas (<code>app/</code>). Se despliega en Vercel; la base es Neon Postgres con PostGIS.</p>
+</section>
+
+<section id="datos">
+  <h2>De dónde salen los datos</h2>
+  <div class="tabla-scroll"><table>
+    <tr><th>Dato</th><th>Fuente</th><th>Cobertura</th><th>Actualización</th></tr>
+    <tr><td>Predios y construcciones</td><td>GeoMedellín, IDEM (Área Metropolitana), GeoAntioquia, Cornare</td><td>17 municipios; construcciones no públicas en Rionegro, El Retiro y Marinilla</td><td>Mensual (<code>refresh:suelo</code>)</td></tr>
+    <tr><td>Norma del POT</td><td>Servicios de cada municipio + normas digitalizadas del acuerdo vigente</td><td>Numérica en Medellín, Envigado, Sabaneta, Barbosa y Girardota. Itagüí, La Estrella, Caldas y Copacabana publican un POT derogado. Bello va por franjas. El Oriente no publica tratamientos.</td><td>Mensual</td></tr>
+    <tr><td>Amenazas y protección</td><td>Capas municipales y Cornare (WFS)</td><td>17 municipios</td><td>Mensual</td></tr>
+    <tr><td>Valor del suelo</td><td>Valores de referencia por zona (Medellín y metropolitano)</td><td>Valle de Aburrá</td><td>Anual</td></tr>
+    <tr><td>Oferta y demanda</td><td>Fynder (vistas de solo lectura, sin datos personales)</td><td>Antioquia</td><td>Diario (cron de Vercel)</td></tr>
+    <tr><td>Proyectos nuevos</td><td>Zonario (con atribución)</td><td>414 proyectos, 240 enlazados a su predio</td><td>Semanal</td></tr>
+    <tr><td>Ventas, ritmo y oferta futura</td><td>Galería Inmobiliaria: exportación mensual que carga el cliente</td><td>La zona que el cliente exporte</td><td>Mensual, manual</td></tr>
+    <tr><td>Señales de venta</td><td>Matrículas de MEData + historia de folios vía Croma (2015–2023)</td><td>Medellín</td><td>Bajo demanda</td></tr>
+    <tr><td>Entorno</td><td>OpenStreetMap: copia local de 3.895 lugares (metro, comercio, colegios, salud, parques, paraderos)</td><td>Valle de Aburrá y Oriente cercano</td><td>Trimestral (<code>osm:poi</code>)</td></tr>
+  </table></div>
+</section>
+
+<section id="estudios">
+  <h2>Estudio de competencia de un lote</h2>
+  <p class="bajada">Reproduce la Etapa 1 (Concepción de producto) del formato de la constructora. La herramienta trae los hechos; Claude redacta; el equipo revisa.</p>
+  <div class="tabla-scroll"><table>
+    <tr><th>Paso</th><th>Qué hace la herramienta</th></tr>
+    <tr><td>3 · Objetivo</td><td>Arma el objetivo con los filtros: tipo de proyecto, VIS o NO VIS, vocación (vivienda o rentas cortas), mínimo de unidades.</td></tr>
+    <tr><td>4 · Territorio</td><td>Ubica el lote (id, CBML, dirección de Medellín o coordenada), trae la norma (tratamiento, índice de construcción, densidad, altura), área construible, valor del suelo, amenazas, y el entorno a 1 km desde OpenStreetMap.</td></tr>
+    <tr><td>5 · Proyectos a consultar</td><td>Todos los proyectos de Galería dentro del polígono o radio que cumplen los filtros, con ventas, ritmo, % vendido, oferta disponible y por lanzar; más los de Zonario que Galería no trae.</td></tr>
+    <tr><td>7 · Zoom</td><td>Elige la competencia directa por cercanía, ritmo de ventas y oferta vigente.</td></tr>
+    <tr><td>8 · Tabla resumen</td><td>Comparativo de la competencia directa y métricas de zona: ventas al mes, meses de inventario (con y sin oferta futura), precio por m² p25 / mediana / p75.</td></tr>
+    <tr><td>9 · Recomendaciones</td><td>Insumos calculados: área objetivo, rango de precio, entrega predominante, ritmo de referencia, unidades posibles por norma y meses para vender. Claude redacta la recomendación y la guarda con <code>completar_estudio</code>.</td></tr>
+  </table></div>
+  <div class="aviso"><b>Ejemplo real (lote BONEM, Guayabal).</b> La herramienta eligió la misma competencia directa que el estudio manual y agregó dos proyectos que venden 21 unidades al mes. También encontró que la densidad del POT limita el lote a 239 viviendas (308 comprando derechos), frente a las 450 del estudio original: una pregunta para estructuración.</div>
+</section>
+
+<section id="perfil">
+  <h2>Oportunidades por perfil de edificio</h2>
+  <p class="bajada">El estudio general: se define el producto y la herramienta recorre todos los predios urbanos del municipio.</p>
+  <h3>1. Filtro normativo (todos los lotes)</h3>
+  <p>Quedan los predios urbanos desarrollables (no propiedad horizontal), sin amenaza alta, sin suelo de protección, sin espacio público ni uso dotacional, con la altura pedida y donde caben las unidades:</p>
+  <pre><code>unidades posibles = mín( área construible × eficiencia ÷ área por unidad ,  densidad máxima × área del lote )
+eficiencia = 0,8 por defecto · si no alcanza con la norma base, se prueba con compra de derechos (IC total)</code></pre>
+  <p>Ejemplo: en Medellín, un NO VIS de 150 a 300 unidades de 65 m² y 12 pisos o más da <b>228 lotes</b> que cumplen, agrupados por barrio.</p>
+  <h3>2. Puntaje de 0 a 100 (los 300 mejores candidatos)</h3>
+  <div class="pesos">
+    <div class="peso"><span>Encaje normativo</span><div class="barra"><i style="width:100%"></i></div><b>30</b></div>
+    <div class="peso"><span>Precio frente a la zona</span><div class="barra"><i style="width:66.7%"></i></div><b>20</b></div>
+    <div class="peso"><span>Absorción (Galería)</span><div class="barra"><i style="width:50%"></i></div><b>15</b></div>
+    <div class="peso"><span>Compradores vs oferta (Fynder)</span><div class="barra"><i style="width:50%"></i></div><b>15</b></div>
+    <div class="peso"><span>Señales de venta del folio</span><div class="barra"><i style="width:33.3%"></i></div><b>10</b></div>
+    <div class="peso"><span>Facilidad (lote libre, pocos dueños)</span><div class="barra"><i style="width:33.3%"></i></div><b>10</b></div>
+  </div>
+  <p style="margin-top:14px">Cada lote trae su porqué en lenguaje de negocio ("caben ≈ 266 unidades con la norma base", "la zona vende a $12,9 M/m²", "17 construcciones: probablemente muchos dueños, exige englobe") y se exporta a un Excel con resumen, ranking y barrios.</p>
+</section>
+
+<section id="mcp">
+  <h2>El servidor MCP</h2>
+  <p class="bajada">Con el MCP conectado, Claude puede consultar toda la base y armar estudios conversando. Es la pieza más potente: "busca dónde cabe un VIS de 200 unidades en Bello y arma el estudio de competencia del mejor lote".</p>
+  <div class="tabla-scroll"><table>
+    <tr><th>Herramienta</th><th>Para qué</th></tr>
+    <tr><td>cobertura</td><td>Qué datos hay en cada municipio y qué tan completa será una respuesta. Úsala primero.</td></tr>
+    <tr><td>oportunidades_por_perfil</td><td>Estudio general: lotes de un municipio donde cabe un perfil de edificio, con ranking, barrios y Excel.</td></tr>
+    <tr><td>estudio_competencia</td><td>Estudio de competencia de un lote (pasos 3 a 9) con enlace al Excel.</td></tr>
+    <tr><td>completar_estudio</td><td>Guarda los textos redactados (territorio, recomendaciones, conclusión) para que salgan en el Excel.</td></tr>
+    <tr><td>ficha_predio</td><td>Ficha completa de un predio: norma, potencial, restricciones, mercado, proyectos, prefactibilidad rápida.</td></tr>
+    <tr><td>prefactibilidad_lote</td><td>"¿Este lote da?": veredicto, lote máximo pagable, tensión, absorción y sensibilidad.</td></tr>
+    <tr><td>buscar_lotes</td><td>Filtra predios por municipio, barrio, área, tratamiento y área construible.</td></tr>
+    <tr><td>oportunidades</td><td>Ranking general rápido de lotes con potencial, sin perfil de producto.</td></tr>
+    <tr><td>mercado_zona</td><td>Oferta, demanda real de compradores, ritmo y tendencia de una zona.</td></tr>
+    <tr><td>buscar_proyectos</td><td>Proyectos nuevos por zona, constructora, precio, entrega o VIS.</td></tr>
+    <tr><td>ficha_proyecto</td><td>Detalle de un proyecto con su competencia a 1,5 km.</td></tr>
+    <tr><td>constructora</td><td>Portafolio de una constructora.</td></tr>
+    <tr><td>contacto_predio</td><td>Señales de venta del folio y ruta legal para contactar al dueño (sin datos personales).</td></tr>
+    <tr><td>empresa_propietaria</td><td>Ficha pública de una empresa por NIT (RUES, procesos judiciales).</td></tr>
+    <tr><td>fuentes</td><td>Catálogo de fuentes con fecha de captura y licencia.</td></tr>
+  </table></div>
+  <p>Detalles de diseño: cada herramienta declara si es de solo lectura; los errores vuelven como mensajes claros (no tumban la conversación); el servidor trae instrucciones con los flujos recomendados y las reglas de privacidad; el tiempo máximo por llamada es de 300 s.</p>
+</section>
+
+<section id="conectar">
+  <h2>Conectar el MCP</h2>
+  <p class="bajada">La URL es <code>https://celula-suelo.vercel.app/api/mcp</code> y requiere el token <code>MCP_TOKEN</code> (pídeselo a JP).</p>
+  <h3>Claude Code</h3>
+  <pre><code>claude mcp add --transport http inteligencia-suelo https://celula-suelo.vercel.app/api/mcp \
+  --header "Authorization: Bearer &lt;MCP_TOKEN&gt;"</code></pre>
+  <h3>Claude Desktop, Cursor u otro cliente con archivo de configuración</h3>
+  <pre><code>{
+  "mcpServers": {
+    "inteligencia-suelo": {
+      "type": "http",
+      "url": "https://celula-suelo.vercel.app/api/mcp",
+      "headers": { "Authorization": "Bearer &lt;MCP_TOKEN&gt;" }
+    }
+  }
+}</code></pre>
+  <h3>Clientes que no permiten encabezados</h3>
+  <p>El token también se acepta en la URL: <code>https://celula-suelo.vercel.app/api/mcp?token=&lt;MCP_TOKEN&gt;</code>. Úsalo solo en clientes privados: la URL completa equivale a la clave.</p>
+  <h3>Probarlo</h3>
+  <pre><code>npm run probar -- https://celula-suelo.vercel.app/api/mcp</code></pre>
+  <p>Llama las 15 herramientas en Medellín, Envigado y Rionegro, prueba los errores controlados y confirma que sin token responde 401.</p>
+</section>
+
+<section id="web">
+  <h2>Workspace web</h2>
+  <p class="bajada"><code>/mapa</code>, con usuario y clave (<code>APP_USER</code> / <code>APP_PASSWORD</code>).</p>
+  <div class="grilla">
+    <div class="tarjeta"><h3>Mapa</h3><p>Predios coloreados por potencial (desde zoom 14), proyectos nuevos, inmuebles en venta y la herramienta para dibujar la zona del estudio.</p></div>
+    <div class="tarjeta"><h3>Estudio</h3><p>Lote y zona, objetivo y filtros; resultado en tarjetas y botón para descargar el Excel.</p></div>
+    <div class="tarjeta"><h3>Oportunidades</h3><p>Por perfil de edificio (los lotes recomendados aparecen numerados en el mapa) o ranking general.</p></div>
+    <div class="tarjeta"><h3>Galería</h3><p>Se arrastra la exportación mensual. El navegador lee el Excel (aunque pese 30 MB) y solo envía las filas; el servidor ubica cada proyecto.</p></div>
+  </div>
+</section>
+
+<section id="operar">
+  <h2>Operación</h2>
+  <h3>Correrlo en local</h3>
+  <pre><code>git clone https://github.com/jpgomezm1/celula-suelo && cd celula-suelo
+npm install
+cp .env.example .env.local      # y llenar los valores
+npm run dev                     # http://localhost:3000/mapa</code></pre>
+  <h3>Actualizar datos</h3>
+  <div class="tabla-scroll"><table>
+    <tr><th>Comando</th><th>Qué hace</th><th>Frecuencia</th></tr>
+    <tr><td>npm run refresh:fynder</td><td>Sincroniza avisos, compradores y cambios de precio de Fynder</td><td>Diario (cron de Vercel)</td></tr>
+    <tr><td>npm run refresh:proyectos</td><td>Lee Zonario y resuelve proyectos duplicados</td><td>Semanal</td></tr>
+    <tr><td>npm run refresh:suelo</td><td>Catastro, normas y recálculo del perfil de cada predio</td><td>Mensual</td></tr>
+    <tr><td>npm run galeria -- archivo.xlsx --corte 2026-11-01</td><td>Carga una exportación de Galería desde la consola</td><td>Mensual</td></tr>
+    <tr><td>npm run osm:poi</td><td>Recarga los lugares de OpenStreetMap</td><td>Trimestral</td></tr>
+    <tr><td>npm run croma:folios</td><td>Trae la historia de folios de los lotes con potencial</td><td>Bajo demanda (tiene costo)</td></tr>
+    <tr><td>npm run verificar</td><td>Compara predios al azar contra la fuente en vivo</td><td>Después de cada carga</td></tr>
+  </table></div>
+  <h3>Variables de entorno</h3>
+  <p>Ver <code>.env.example</code>: <code>DATABASE_URL</code>, <code>FYNDER_READ_URL</code>, <code>MCP_TOKEN</code>, <code>APP_USER</code>, <code>APP_PASSWORD</code>, <code>CRON_SECRET</code>, <code>CROMA_API_KEY</code>, <code>PUBLIC_URL</code>. Nunca se suben al repositorio.</p>
+</section>
+
+<section id="reglas">
+  <h2>Reglas de datos</h2>
+  <div class="aviso rojo"><b>Datos personales (Ley 1581 de 2012).</b> La base no guarda nombres, teléfonos ni correos de personas naturales. Para llegar a un dueño solo se ofrece la ruta legal: certificado de tradición, RUES para empresas, carta a la dirección del predio y Fynder con llave.</div>
+  <div class="aviso"><b>Galería Inmobiliaria.</b> Su información es confidencial y de uso interno de quien la contrata. Se carga por cliente, no se publica ni se mezcla con otros clientes, y los Excel que la contienen no van al repositorio. Está pendiente pedirle a Galería por escrito una entrega automática y la autorización de uso.</div>
+  <div class="aviso"><b>Fynder</b> se lee solo por vistas sin datos personales con un usuario de solo lectura. <b>Zonario</b> se usa con atribución. Fincaraíz y La Haus se descartaron porque sus términos prohíben la extracción automatizada.</div>
+</section>
+
+<section id="limites">
+  <h2>Límites conocidos</h2>
+  <p><span class="etq alerta">Inferencia</span> Las unidades y el área construible salen de la norma del POT; no son una cabida arquitectónica (retiros, cesiones y parqueaderos pueden reducirlas).</p>
+  <p><span class="etq alerta">Norma</span> Itagüí, La Estrella, Caldas y Copacabana publican capas de un POT derogado; Bello va por franjas; el Oriente no publica tratamientos. Ahí no hay potencial calculado.</p>
+  <p><span class="etq alerta">Galería</span> Solo cubre las zonas que el cliente exporte; donde no hay Galería, la absorción se aproxima con Zonario.</p>
+  <p><span class="etq alerta">Folios</span> La historia de folios cubre 2015–2023 y solo Medellín.</p>
+  <p><span class="etq">Siguiente</span> Etapa 2 del estudio (cotizaciones, zonas comunes, hallazgos arquitectónicos), importar los lotes de estructuración desde KML con alertas, y datos de turismo (DANE) para rentas cortas.</p>
+</section>
+
+</main>
+<footer>Inteligencia de suelo · irrelevant club · Datos © sus fuentes (OpenStreetMap ODbL, Zonario, entidades públicas)</footer>
+</body>
+</html>

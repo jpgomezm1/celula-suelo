@@ -1,0 +1,29 @@
+# Actualización programada de la célula (requiere repo privado en GitHub con los secretos DATABASE_URL y FYNDER_READ_URL).
+# Fynder se sincroniza a diario con el cron de Vercel (/api/cron/fynder); aquí van suelo (mensual) y proyectos (semanal).
+name: refresh
+on:
+  schedule:
+    - cron: "0 7 * * 1"      # lunes 02:00 Colombia: proyectos
+    - cron: "0 6 1 * *"      # día 1 de cada mes 01:00 Colombia: suelo
+  workflow_dispatch:
+    inputs:
+      que: { description: "suelo | proyectos", required: true, default: "proyectos" }
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      FYNDER_READ_URL: ${{ secrets.FYNDER_READ_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: npm ci
+      - run: touch .env.local
+      - name: Proyectos
+        if: github.event.schedule == '0 7 * * 1' || inputs.que == 'proyectos'
+        run: npm run refresh:proyectos
+      - name: Suelo
+        if: github.event.schedule == '0 6 1 * *' || inputs.que == 'suelo'
+        run: npm run refresh:suelo -- --reanudar

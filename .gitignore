@@ -1,0 +1,21 @@
+node_modules/
+.next/
+.env*
+data/raw/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
+.vercel
+.env*
+
+# Datos confidenciales o pesados: nunca al repositorio
+logs/
+data/ejemplos/
+data/fynder-*.json
+*.xlsx
+*.xls
+*.kml
+.playwright-mcp/
+tsconfig.tsbuildinfo
+!.env.example
