@@ -71,6 +71,11 @@ export async function fichaProyecto(id: number) {
     },
     historial_precios: historia,
     competencia_1500m: competencia,
+    ...(p.lat === null
+      ? { aviso_ubicacion: "La fuente no publica coordenadas de este proyecto: no se puede calcular su competencia cercana." }
+      : competencia.length === 0
+        ? { aviso_ubicacion: "No hay otros proyectos a 1,5 km. Si el proyecto está en zona urbana, revisa su ubicación: algunas fuentes publican coordenadas aproximadas." }
+        : {}),
     predio: predio[0] ?? null,
     fuentes,
     atribucion: ATRIBUCION,
