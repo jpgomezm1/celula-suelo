@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Cifra, interpretarBusqueda, m2, num, Vacio } from "./comunes";
-import { FichaProyecto, PanelCartera, PanelComparar, PanelLote, PanelPot, PanelZona, ResultadoEstudio } from "./paneles";
+import { FichaProyecto, PanelCartera, PanelComparar, PanelInicio, PanelLote, PanelPot, PanelZona, ResultadoEstudio } from "./paneles";
+import { PopupLote } from "./PopupLote";
+import { createRoot, type Root } from "react-dom/client";
 
 const MUNICIPIOS: [string, number, number][] = [
   ["Medellín", -75.5736, 6.2442], ["Envigado", -75.5906, 6.1716], ["Sabaneta", -75.6159, 6.1515], ["Itagüí", -75.6115, 6.1846],
@@ -16,10 +18,10 @@ const MUNICIPIOS: [string, number, number][] = [
 
 const C = { oscuro: "#1a1a1f", lila: "#a28df5", morado: "#6c4de7", gris: "#8a8a93", ambar: "#f2a900", verde: "#3f8f4a", rojo: "#c0392b" };
 
-type Seccion = "lote" | "oportunidades" | "estudio" | "cartera" | "comparar" | "zona" | "pot";
+type Seccion = "inicio" | "lote" | "oportunidades" | "estudio" | "cartera" | "comparar" | "zona" | "pot";
 const SECCIONES: [Seccion, string, string][] = [
-  ["lote", "⌖", "Lote"], ["oportunidades", "★", "Dónde construir"], ["estudio", "◎", "Competencia"], ["cartera", "▤", "Cartera"],
-  ["comparar", "⇄", "Comparar"], ["zona", "⬠", "Zona"], ["pot", "◆", "POT 2026"],
+  ["inicio", "⌂", "Inicio"], ["lote", "⌖", "Un lote"], ["pot", "◆", "POT 2026"], ["oportunidades", "★", "Dónde construir"],
+  ["estudio", "◎", "Competencia"], ["comparar", "⇄", "Comparar"], ["cartera", "▤", "Cartera"], ["zona", "⬠", "Zona"],
 ];
 type ModoCapa = "potencial" | "cambio" | "ninguno";
 
@@ -36,7 +38,7 @@ const PINTURA: Record<ModoCapa, { color: any; opacidad: any }> = {
 export default function Mapa() {
   const contenedor = useRef<HTMLDivElement>(null);
   const mapa = useRef<maplibregl.Map | null>(null);
-  const [seccion, setSeccion] = useState<Seccion>("lote");
+  const [seccion, setSeccion] = useState<Seccion>("inicio");
   const [seleccion, setSeleccion] = useState<{ tipo: "predio" | "proyecto"; id: string; datos?: any } | null>(null);
   const [cargando, setCargando] = useState<string | null>(null);
   const [municipio, setMunicipio] = useState("Medellín");
@@ -55,6 +57,21 @@ export default function Mapa() {
   const [resPerfil, setResPerfil] = useState<any>(null);
   const [oportunidades, setOportunidades] = useState<any>(null);
   const rankingRef = useRef<any[]>([]);
+  const compararRef = useRef<string[]>([]);
+  useEffect(() => { compararRef.current = comparar; }, [comparar]);
+  const popupRef = useRef<{ popup: maplibregl.Popup; root: Root } | null>(null);
+  const accionesRef = useRef<{ ficha: (id: string) => void; comparar: (id: string) => void }>({ ficha: () => {}, comparar: () => {} });
+  function abrirPopup(id: string, lngLat: maplibregl.LngLatLike) {
+    const m = mapa.current; if (!m) return;
+    if (popupRef.current) { popupRef.current.popup.remove(); }
+    const div = document.createElement("div");
+    const root = createRoot(div);
+    const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "340px", className: "popup-lote", offset: 8 }).setLngLat(lngLat).setDOMContent(div).addTo(m);
+    popup.on("close", () => setTimeout(() => root.unmount(), 0));
+    popupRef.current = { popup, root };
+    root.render(<PopupLote id={id} enComparacion={compararRef.current.includes(id)}
+      onFicha={() => { accionesRef.current.ficha(id); }} onComparar={() => accionesRef.current.comparar(id)} />);
+  }
   // Ancho del panel: por defecto ~45 % de la pantalla, ajustable arrastrando el borde y recordado en el navegador.
   const [anchoPanel, setAnchoPanel] = useState<number | null>(null);
   useEffect(() => {
@@ -77,6 +94,7 @@ export default function Mapa() {
   const amplio = anchoPanel !== null && typeof window !== "undefined" && anchoPanel > window.innerWidth * 0.55;
 
   const loteId = seleccion?.tipo === "predio" ? seleccion.id : null;
+  const agregarComparar = (id: string) => setComparar((c) => (c.includes(id) || c.length >= 5 ? c : [...c, id]));
 
   /* ---------- mapa ---------- */
   function marcarLote(id: string | null) { mapa.current?.setFilter("lote-sel", ["==", ["get", "id"], id ?? "__ninguno__"]); }
@@ -177,7 +195,8 @@ export default function Mapa() {
       m.on("click", "predios-relleno", (e) => {
         if (dibujandoRef.current) return;
         if (m.queryRenderedFeatures(e.point, { layers: ["proyectos", "galeria", "ranking"] }).length) return;
-        const f = e.features?.[0]; if (f) abrirLote(String(f.properties.id));
+        const f = e.features?.[0]; if (!f) return;
+        const id = String(f.properties.id); marcarLote(id); abrirPopup(id, e.lngLat);
       });
       for (const l of ["proyectos", "predios-relleno", "galeria", "ranking"]) {
         m.on("mouseenter", l, () => { if (!dibujandoRef.current) m.getCanvas().style.cursor = "pointer"; });
@@ -234,12 +253,14 @@ export default function Mapa() {
     finally { setCargando(null); }
   }
 
+  accionesRef.current = { ficha: (id) => { abrirLote(id); }, comparar: agregarComparar };
   const zonaLista = vertices.length >= 3;
   const titulos: Record<Seccion, [string, string]> = {
-    lote: ["Lote", "Norma, cabida, semáforo, cesiones y valor residual"], oportunidades: [`Dónde construir · ${municipio}`, "Lotes donde cabe tu edificio, en todo el municipio"],
+    inicio: ["¿Qué quieres hacer?", "Elige una herramienta o haz clic en un lote del mapa"],
+    lote: ["Un lote", "Norma, cabida, semáforo, cesiones y valor residual"], oportunidades: [`Dónde construir · ${municipio}`, "Lotes donde cabe tu edificio, en todo el municipio"],
     estudio: ["Estudio de competencia", "Etapa 1 · pasos 3 a 9, con Excel"], cartera: ["Cartera de lotes", "Analiza hasta 250 lotes de una vez"],
-    comparar: ["Comparar lotes", "De 2 a 5 lotes lado a lado"], zona: ["Analizar una zona", "Norma, POT 2026, competencia y mercado de un polígono"],
-    pot: ["POT 2026", "Quién gana y quién pierde con la revisión del POT de Medellín"],
+    comparar: ["Comparar lotes", "Agrega lotes con “+ Comparar” desde el mapa o la ficha"], zona: ["Analizar una zona", "Norma, POT 2026, competencia y mercado de un polígono"],
+    pot: ["POT 2026 de Medellín", "Qué cambia con la revisión del POT y a quién beneficia"],
   };
 
   return (
@@ -280,6 +301,13 @@ export default function Mapa() {
               ))}
             </div>
           </div>
+          {comparar.length > 0 && seccion !== "comparar" && (
+            <div className="bandeja">
+              <span className="titulo-bandeja">Comparar</span>
+              {comparar.map((id) => <span key={id} className="chip-lote" onClick={() => abrirLote(id)}>{id.split(":")[1]}<b onClick={(e) => { e.stopPropagation(); setComparar((c) => c.filter((x) => x !== id)); }}>×</b></span>)}
+              <button className="btn btn-primario" disabled={comparar.length < 2} onClick={() => setSeccion("comparar")}>{comparar.length < 2 ? "Agrega otro lote" : `Comparar ${comparar.length} →`}</button>
+            </div>
+          )}
           {dibujando && <div className="aviso-dibujo">Haz clic en el mapa para marcar los vértices de la zona. Mínimo 3 puntos.</div>}
           {cargando && <div className="cargando-mapa"><span className="giro" />{cargando}</div>}
           <div className="leyenda">
@@ -338,10 +366,11 @@ export default function Mapa() {
             {seccion === "lote" && (
               !seleccion ? <Vacio icono="⌖" titulo="Busca o selecciona un lote" texto="Escribe arriba un CBML, una matrícula, una dirección de Medellín o una coordenada de Google Maps, o acércate en el mapa y haz clic en un predio." />
               : seleccion.tipo === "predio" ? <PanelLote id={seleccion.id} enComparacion={comparar.includes(seleccion.id)}
-                  onComparar={(id) => setComparar((c) => (c.includes(id) || c.length >= 5 ? c : [...c, id]))} onEstudio={() => setSeccion("estudio")} />
+                  onComparar={agregarComparar} onEstudio={() => setSeccion("estudio")} />
               : seleccion.datos?.encontrado ? <FichaProyecto d={seleccion.datos} /> : <div className="error">No encontré el proyecto.</div>
             )}
 
+            {seccion === "inicio" && <PanelInicio ir={(k: string) => setSeccion(k as Seccion)} />}
             {seccion === "comparar" && <PanelComparar ids={comparar} quitar={(id) => setComparar((c) => c.filter((x) => x !== id))} abrir={(id) => abrirLote(id)} />}
             {seccion === "cartera" && <PanelCartera pintar={pintarRanking} abrir={(id) => abrirLote(id)} />}
             {seccion === "zona" && <PanelZona vertices={vertices} dibujar={empezarDibujo} borrar={borrarZona} onEstudio={() => setSeccion("estudio")} />}

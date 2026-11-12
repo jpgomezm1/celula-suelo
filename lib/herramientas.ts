@@ -151,7 +151,15 @@ export async function cambioPot(f: { agrupar?: "barrio" | "poligono"; barrio?: s
       AND NOT COALESCE(pp.amenaza_alta, false)
       AND (${f.barrio ?? null}::text IS NULL OR norm_txt(pp.barrio_catastral) LIKE '%' || norm_txt(${f.barrio ?? null}) || '%')
     ORDER BY diferencia_m2 DESC LIMIT ${limite}`;
+  const [t] = await sql`
+    SELECT count(*) FILTER (WHERE n.ic_residencial > pp.ic_max)::int AS suben, count(*) FILTER (WHERE n.ic_residencial < pp.ic_max)::int AS bajan,
+           count(*) FILTER (WHERE n.ic_residencial = pp.ic_max)::int AS iguales,
+           round(sum(pp.area_lote * n.ic_residencial) - sum(pp.area_construible_inferida))::bigint AS m2_netos,
+           round(sum(n.densidad_viv_ha * pp.area_lote / 10000) - sum(pp.viviendas_max_inferidas))::bigint AS viviendas_netas
+    FROM parcel_profile pp JOIN norma_pot2026_equivalencia e ON e.c14 = pp.codigo_tratamiento JOIN norma_pot2026 n ON n.codigo = e.c26
+    WHERE pp.municipio_dane = '05001' AND pp.tipo_desarrollable AND pp.area_construible_inferida > 0`;
   return {
+    resumen: { predios_que_suben: t.suben, predios_que_bajan: t.bajan, predios_iguales: t.iguales, m2_construibles_netos: Number(t.m2_netos), viviendas_netas: Number(t.viviendas_netas) },
     agrupado_por: agrupar, grupos_analizados: conPct.length,
     mas_ganan: orden("diferencia_m2").slice(0, limite), mas_pierden: orden("diferencia_m2", 1).slice(0, limite).filter((g: any) => Number(g.diferencia_m2) < 0),
     lotes_que_mas_ganan: lotes, estado: ESTADO_2026,
@@ -166,4 +174,23 @@ export async function novedadesNormativas(dias = 30) {
                          ORDER BY publicado_en DESC NULLS LAST LIMIT 60`;
   const [u] = await sql`SELECT to_char(max(revisado_en), 'YYYY-MM-DD HH24:MI') AS ultima FROM norma_monitor`;
   return { ultima_revision: u?.ultima ?? null, novedades: rows, nota: "El monitor revisa a diario lo que publica la Alcaldía de Medellín (documentos del POT, decretos, anexos, cartografía, planes parciales). Cuando aparezca el texto final del POT 2026 o su cartografía, se recarga la norma." };
+}
+
+/** Resumen rápido de un lote para la ventana emergente del mapa (sin mercado, < 1 s). */
+export async function resumenLote(id: string) {
+  const p = await encontrarPredio({ id });
+  if (!p) return { encontrado: false };
+  const a = await analizarLote(p, { con_mercado: false });
+  const esc = a.cabida.escenarios as any[];
+  const b: any = a.pot_2026_preliminar;
+  return {
+    encontrado: true, id: p.id, barrio: p.barrio_catastral, municipio: p.municipio, area_lote_m2: Math.round(Number(p.area_lote)), area_util_m2: a.area_util.area_util_m2,
+    tratamiento: p.tratamiento, uso: p.uso, potencial: !!p.potencial_preliminar, construcciones: n(p.construcciones),
+    semaforo: a.semaforo.general, alertas: a.semaforo.items.filter((i: any) => i.luz === "rojo" || i.luz === "amarillo").map((i: any) => i.categoria),
+    unidades: { conservador: esc[0]?.unidades ?? null, base: esc[1]?.unidades ?? null, maximo: esc[2]?.unidades ?? null }, pisos_base: esc[1]?.pisos_sobre_rasante ?? null,
+    pot_2026: b?.disponible ? { codigo: b.codigo_2026, ic_2014: b.frente_a_2014.indice_construccion.pot2014, ic_2026: b.frente_a_2014.indice_construccion.pot2026,
+      construible_2014: b.frente_a_2014.area_construible_m2.pot2014, construible_2026: b.frente_a_2014.area_construible_m2.pot2026, cambio: b.frente_a_2014.area_construible_m2.cambio }
+      : p.municipio_dane === "05001" ? { sin_dato: true } : null,
+    valor_suelo_m2: n(p.valor_suelo_m2) ? Math.round(n(p.valor_suelo_m2)!) : null,
+  };
 }

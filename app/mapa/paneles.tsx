@@ -3,6 +3,33 @@
 import { useEffect, useState } from "react";
 import { Cambio, Cifra, Luz, Seccion, Vacio, m2, millones, num, pct } from "./comunes";
 
+/* ───────────── Inicio ───────────── */
+const HERRAMIENTAS: [string, string, string, string][] = [
+  ["lote", "⌖", "Consultar un lote", "Qué se puede construir, semáforo, cesiones, valor residual y ficha PDF. Busca por CBML, matrícula, dirección o coordenada, o haz clic en el mapa."],
+  ["pot", "◆", "POT 2026 de Medellín", "La revisión del POT cambia lo que se puede construir. Mira qué barrios y lotes ganan o pierden, y colorea el mapa."],
+  ["oportunidades", "★", "Dónde construir", "Describe tu edificio (VIS/NO VIS, unidades, m², pisos) y encuentra los lotes de todo un municipio donde cabe."],
+  ["estudio", "◎", "Estudio de competencia", "Proyectos de Galería alrededor de un lote: ventas, ritmo, oferta y precio. Sale el Excel de la Etapa 1."],
+  ["comparar", "⇄", "Comparar lotes", "Pon de 2 a 5 lotes lado a lado. Agrégalos con “+ Comparar” desde el mapa."],
+  ["cartera", "▤", "Analizar una cartera", "Sube un KMZ o pega una lista de hasta 250 lotes y obtén un ranking con semáforo y Excel."],
+  ["zona", "⬠", "Analizar una zona", "Dibuja un polígono: norma, cambio POT, competencia y mercado de esa zona."],
+];
+export function PanelInicio({ ir }: { ir: (k: string) => void }) {
+  return (
+    <>
+      <div className="consejo-mapa">💡 Haz clic en cualquier predio del mapa (acercándote a nivel de manzana) para ver su resumen.</div>
+      <div className="herramientas-inicio">
+        {HERRAMIENTAS.map(([k, ic, t, d]) => (
+          <button key={k} className={`tarjeta-inicio ${k === "pot" ? "destacada-pot" : ""}`} onClick={() => ir(k)}>
+            <span className="ic">{ic}</span>
+            <span className="tx"><b>{t}</b><span>{d}</span></span>
+            <span className="flecha">→</span>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
 /* ───────────── Ficha completa del lote ───────────── */
 export function PanelLote({ id, onComparar, onEstudio, enComparacion }: { id: string; onComparar: (id: string) => void; onEstudio: () => void; enComparacion: boolean }) {
   const [f, setF] = useState<any>(null);
@@ -29,6 +56,13 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion }: { id: st
         </div>
         <div className="semaforo-grande" title={`Semáforo ${a.semaforo.general}`}><Luz luz={a.semaforo.general} tam={18} /></div>
       </div>
+      {b26?.disponible && (
+        <div className={`banda-pot ${String(b26.frente_a_2014.area_construible_m2.cambio).startsWith("-") ? "baja" : b26.frente_a_2014.area_construible_m2.cambio === "+0 %" ? "igual" : "sube"}`}>
+          <div className="etq-pot">POT 2026</div>
+          <div><b>{String(b26.frente_a_2014.area_construible_m2.cambio).startsWith("-") ? "Este lote pierde" : b26.frente_a_2014.area_construible_m2.cambio === "+0 %" ? "Este lote queda igual" : "Este lote gana"} {b26.frente_a_2014.area_construible_m2.cambio !== "+0 %" ? b26.frente_a_2014.area_construible_m2.cambio.replace(/^[+-]/, "") : ""} de área construible</b>
+            <span>{m2(b26.frente_a_2014.area_construible_m2.pot2014)} con el POT 2014 → {m2(b26.frente_a_2014.area_construible_m2.pot2026)} con el proyecto 2026{b26.que_se_puede_hacer?.con_derechos ? ` · hasta ${num(b26.que_se_puede_hacer.con_derechos.viviendas_max_por_densidad)} viviendas comprando derechos` : ""}</span></div>
+        </div>
+      )}
       <div className="cifras tres">
         <Cifra v={m2(f.area_lote_m2)} k="área del lote" />
         <Cifra v={m2(a.area_util.area_util_m2)} k="área útil" />
@@ -177,18 +211,28 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion }: { id: st
 export function PanelComparar({ ids, quitar, abrir }: { ids: string[]; quitar: (id: string) => void; abrir: (id: string) => void }) {
   const [r, setR] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
+  useEffect(() => { if (ids.length >= 2) comparar(); else setR(null); }, [ids.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   async function comparar() {
     setCargando(true); setR(null);
     try { setR(await (await fetch("/api/analisis/comparar", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lotes: ids.map((id) => ({ id })) }) })).json()); }
     finally { setCargando(false); }
   }
-  if (!ids.length) return <Vacio icono="⇄" titulo="Agrega lotes para comparar" texto="Abre un lote y pulsa “+ Comparar”. Puedes comparar de 2 a 5." />;
+  if (ids.length < 2) return (
+    <>
+      <ol className="pasos-guia">
+        <li className={ids.length >= 1 ? "hecho" : ""}><b>Haz clic en un lote del mapa</b> y pulsa <span className="etiqueta">+ Comparar</span> en la ventana que aparece.</li>
+        <li className={ids.length >= 2 ? "hecho" : ""}><b>Agrega otro lote</b> (hasta 5). Los verás en la bandeja de abajo del mapa.</li>
+        <li><b>La comparación aparece aquí sola</b>: unidades, semáforo, cambio POT 2026, cesiones y valor residual.</li>
+      </ol>
+      {ids.length === 1 && <div className="etiquetas"><span className="etiqueta chip" onClick={() => abrir(ids[0])}>{ids[0]} <b onClick={(e) => { e.stopPropagation(); quitar(ids[0]); }}>×</b></span></div>}
+    </>
+  );
   const lotes = (r?.lotes ?? []).filter((l: any) => l.encontrado);
   const fila = (k: string, f: (l: any) => React.ReactNode) => <tr key={k}><td>{k}</td>{lotes.map((l: any) => <td key={l.predio}>{f(l)}</td>)}</tr>;
   return (
     <>
       <div className="etiquetas">{ids.map((id) => <span key={id} className="etiqueta chip" onClick={() => abrir(id)}>{id} <b onClick={(e) => { e.stopPropagation(); quitar(id); setR(null); }}>×</b></span>)}</div>
-      <button className="btn btn-primario btn-bloque" disabled={ids.length < 2 || cargando} onClick={comparar}>{cargando ? "Comparando…" : `Comparar ${ids.length} lotes`}</button>
+      {cargando && <div className="cargando-panel"><span className="giro" />Comparando {ids.length} lotes…</div>}
       {r?.error && <div className="error">{r.error}</div>}
       {lotes.length > 0 && (
         <div className="tarjeta" style={{ overflowX: "auto" }}>
@@ -386,11 +430,25 @@ export function PanelPot({ abrir, verCapa }: { abrir: (id: string, lon?: number,
     finally { setCargando(false); }
   }
   useEffect(() => { cargar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const s = r?.resumen;
   return (
     <>
+      <div className="explica-pot">
+        <p><b>¿Qué es?</b> El Concejo de Medellín aprobó el 5 de noviembre de 2026 la revisión del POT (Proyecto de Acuerdo 104 de 2026). Cambia el índice de construcción, la densidad y los derechos que se pueden comprar en cada polígono.</p>
+        <p><b>¿Por qué importa?</b> Un lote vale por lo que se puede construir en él: si su norma sube, vale más; si baja, vale menos. Aquí ves quién gana y quién pierde.</p>
+        <p className="nota">Cifras del proyecto de acuerdo v3 (julio de 2026), preliminares hasta que se publique el texto final y la cartografía. No incluye la Zona 1.</p>
+      </div>
+      {s && (
+        <div className="cifras">
+          <Cifra v={<span style={{ color: "#3f8f4a" }}>{num(s.predios_que_suben)}</span>} k="predios suben su índice" />
+          <Cifra v={<span style={{ color: "#c0392b" }}>{num(s.predios_que_bajan)}</span>} k="predios bajan su índice" />
+          <Cifra v={<span style={{ color: s.m2_construibles_netos >= 0 ? "#3f8f4a" : "#c0392b" }}>{s.m2_construibles_netos >= 0 ? "+" : ""}{num(s.m2_construibles_netos / 1e6, 1)} M m²</span>} k="área construible base (neto)" />
+          <Cifra v={<span style={{ color: s.viviendas_netas >= 0 ? "#3f8f4a" : "#c0392b" }}>{s.viviendas_netas >= 0 ? "+" : ""}{num(s.viviendas_netas)}</span>} k="viviendas por densidad (neto)" />
+        </div>
+      )}
       <div className="acciones">
         <div className="segmento" style={{ flex: 1 }}>{(["barrio", "poligono"] as const).map((v) => <button key={v} className={agrupar === v ? "on" : ""} onClick={() => { setAgrupar(v); cargar(v); }}>{v === "barrio" ? "Por barrio" : "Por polígono"}</button>)}</div>
-        <button className="btn btn-oscuro" onClick={verCapa}>Ver en el mapa</button>
+        <button className="btn btn-oscuro" onClick={verCapa}>🗺 Colorear el mapa</button>
       </div>
       {cargando && <div className="cargando-panel"><span className="giro" />Comparando POT 2014 y 2026…</div>}
       {r && !r.error && (
