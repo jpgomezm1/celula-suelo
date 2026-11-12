@@ -17,6 +17,12 @@ export async function proxy(request: NextRequest) {
   }
 
   const { pathname, search } = request.nextUrl;
+  // Vínculo de red de Google Earth Pro: token firmado de solo lectura para el KMZ de una cartera.
+  const kmz = pathname.match(/^\/api\/estudio\/([^/]+)\/kmz$/);
+  if (kmz) {
+    const t = await verificar<{ est: string }>(request.nextUrl.searchParams.get("t"), "earth");
+    if (t && t.est === kmz[1]) return NextResponse.next();
+  }
   if (pathname.startsWith("/api/") && !pathname.match(/^\/api\/estudio\/[^/]+\/xlsx$/)) {
     return NextResponse.json({ error: "Sesión vencida: vuelve a iniciar sesión." }, { status: 401 });
   }
@@ -25,4 +31,4 @@ export async function proxy(request: NextRequest) {
   return NextResponse.redirect(login);
 }
 
-export const config = { matcher: ["/mapa/:path*", "/api/tiles/:path*", "/api/datos/:path*", "/api/estudio/:path*", "/api/estudio", "/api/perfil", "/api/norma", "/api/ficha", "/api/analisis/:path*", "/api/kmz"] };
+export const config = { matcher: ["/mapa/:path*", "/api/tiles/:path*", "/api/datos/:path*", "/api/estudio/:path*", "/api/estudio", "/api/perfil", "/api/norma", "/api/ficha", "/api/analisis/:path*", "/api/kmz", "/api/fachada"] };

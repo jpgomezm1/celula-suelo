@@ -106,7 +106,11 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, goo
         <div className="nota">{a.cabida.supuestos.area_unidad_m2} m²/unidad · 80 % vendible · IO {a.cabida.supuestos.indice_ocupacion} · {a.cabida.nota}</div>
       </Seccion>
 
+      <PanelFachada id={f.predio} />
+
       <Panel3D id={f.predio} ver3D={ver3D} google3D={google3D} />
+
+      <PanelTopografia id={f.predio} />
 
       <Seccion titulo="Norma: POT 2014 y proyecto POT 2026">
         <div className="etiquetas">
@@ -209,12 +213,98 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, goo
   );
 }
 
+/* ───────────── Fachada (Google Street View) ───────────── */
+function PanelFachada({ id }: { id: string }) {
+  const [d, setD] = useState<any>(null);
+  const [giro, setGiro] = useState(0);
+  useEffect(() => { setD(null); setGiro(0); fetch(`/api/fachada?id=${encodeURIComponent(id)}`).then((r) => r.json()).then(setD).catch(() => setD({ disponible: false })); }, [id]);
+  if (!d) return <Seccion titulo="Fachada (Street View)"><div className="cargando-panel"><span className="giro" />Buscando la vista de calle…</div></Seccion>;
+  if (!d.disponible) return <Seccion titulo="Fachada (Street View)" abierta={false}><div className="nota">{d.motivo ?? "Sin vista de calle para este lote."}</div></Seccion>;
+  const h = (d.heading + giro + 360) % 360;
+  return (
+    <Seccion titulo="Fachada (Street View)" extra={d.fecha ? <span className="nota">Imagen de {d.fecha}</span> : null}>
+      <img className="fachada" src={`/api/fachada?id=${encodeURIComponent(id)}&img=1&heading=${h}`} alt="Vista de calle del lote" />
+      <div className="acciones">
+        <button className="btn btn-borde" onClick={() => setGiro(giro - 60)}>↶ Girar</button>
+        <button className="btn btn-borde" onClick={() => setGiro(giro + 60)}>Girar ↷</button>
+        <a className="btn btn-borde" href={d.abrir} target="_blank" rel="noreferrer">Abrir en Street View</a>
+      </div>
+      <div className="nota">{d.atribucion}. La imagen puede tener varios años: confírmela en visita.</div>
+    </Seccion>
+  );
+}
+
+/* ───────────── Topografía ───────────── */
+function PerfilTerreno({ perfil, volumen }: { perfil: { d: number; z: number }[]; volumen?: number | null }) {
+  if (perfil.length < 3) return null;
+  const W = 560, H = 190, P = 34;
+  const dMax = perfil[perfil.length - 1].d || 1;
+  const zMin = Math.min(...perfil.map((p) => p.z)), zMaxT = Math.max(...perfil.map((p) => p.z));
+  const zTop = zMaxT + (volumen ?? 0) + 2, zBot = zMin - 2;
+  // Escala vertical igual a la horizontal cuando cabe (sin exagerar la pendiente); si no, se ajusta.
+  const kx = (W - 2 * P) / dMax, kz = Math.min(kx, (H - 2 * P) / (zTop - zBot));
+  const X = (d: number) => P + d * kx, Y = (z: number) => H - P - (z - zBot) * kz;
+  const linea = perfil.map((p, i) => `${i ? "L" : "M"}${X(p.d).toFixed(1)},${Y(p.z).toFixed(1)}`).join(" ");
+  const media = perfil.reduce((s, p) => s + p.z, 0) / perfil.length;
+  const exagerado = kz < kx * 0.999;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="perfil-svg" role="img" aria-label="Perfil del terreno">
+      <path d={`${linea} L${X(dMax)},${H - P} L${X(0)},${H - P} Z`} fill="var(--terreno, #d9cbb0)" opacity="0.7" />
+      <path d={linea} fill="none" stroke="#7a5c2e" strokeWidth="2" />
+      {volumen ? <rect x={X(dMax * 0.2)} y={Y(media + volumen)} width={X(dMax * 0.8) - X(dMax * 0.2)} height={Y(media) - Y(media + volumen)} fill="#6c4de7" opacity="0.55" /> : null}
+      <line x1={X(0)} x2={X(dMax)} y1={Y(media)} y2={Y(media)} stroke="#6c4de7" strokeDasharray="4 3" strokeWidth="1" />
+      <text x={P} y={14} fontSize="11" fill="currentColor">{Math.round(zMaxT)} m s.n.m.</text>
+      <text x={P} y={H - 8} fontSize="11" fill="currentColor">0 m</text>
+      <text x={W - P} y={H - 8} fontSize="11" fill="currentColor" textAnchor="end">{Math.round(dMax)} m · {exagerado ? "altura exagerada" : "escala real"}</text>
+    </svg>
+  );
+}
+
+function PanelTopografia({ id }: { id: string }) {
+  const [d, setD] = useState<any>(null);
+  const [vol, setVol] = useState<number | null>(null);
+  useEffect(() => {
+    setD(null); setVol(null);
+    fetch(`/api/analisis/topografia?id=${encodeURIComponent(id)}`).then((r) => r.json()).then(setD).catch(() => setD({ disponible: false, motivo: "No se pudo calcular" }));
+    fetch(`/api/analisis/volumen?id=${encodeURIComponent(id)}`).then((r) => r.json()).then((v) => setVol(v?.volumenes?.find((x: any) => x.clave === "base")?.altura_m ?? null)).catch(() => {});
+  }, [id]);
+  if (!d) return <Seccion titulo="Topografía"><div className="cargando-panel"><span className="giro" />Leyendo el modelo del terreno…</div></Seccion>;
+  if (!d.disponible) return <Seccion titulo="Topografía" abierta={false}><div className="nota">{d.motivo}</div></Seccion>;
+  const mt = d.movimiento_tierras;
+  return (
+    <Seccion titulo="Topografía" extra={<span className="etiqueta">{d.clase}</span>}>
+      <div className="cifras tres">
+        <Cifra v={`${num(d.pendiente_pct, 1)} %`} k={`pendiente media${d.cae_hacia ? ` · cae hacia el ${d.cae_hacia}` : ""}`} />
+        <Cifra v={`${num(d.desnivel_m, 1)} m`} k="desnivel en el lote" />
+        <Cifra v={d.via ? d.via.lectura : "—"} k={d.via ? `frente a ${d.via.nombre}` : "relación con la vía"} />
+      </div>
+      <PerfilTerreno perfil={d.perfil ?? []} volumen={vol} />
+      <div className="nota">Corte en la dirección de la pendiente; en morado, el edificio base sobre la plataforma a la cota media.</div>
+      <ul className="lista-simple">
+        <li>Pendiente máxima local: {num(d.pendiente_max_local_pct, 0)} %.</li>
+        <li>{d.sotanos}</li>
+        <li>Plataforma única a {num(mt.cota_plataforma_m, 1)} m: unos {num(mt.corte_m3)} m³ de corte y {num(mt.lleno_m3)} m³ de lleno (orden de magnitud).</li>
+      </ul>
+      <div className="nota">Fuente: {d.fuente.nombre} ({d.fuente.resolucion_m} m). {d.fuente.advertencia ?? ""} {d.aviso}</div>
+    </Seccion>
+  );
+}
+
 /* ───────────── Edificio posible en 3D ───────────── */
+function lectura(pisos: number, e: any) {
+  const p90 = e.pisos_p90 ?? e.pisos_mediana;
+  if (pisos <= p90) return `Los ${pisos} pisos están dentro de lo que ya hay alrededor.`;
+  if (e.pisos_max != null && pisos <= e.pisos_max) return `Los ${pisos} pisos sobresalen del entorno típico, aunque ya hay edificios de hasta ${e.pisos_max} pisos cerca.`;
+  return `Con ${pisos} pisos sería el edificio más alto a la redonda: revise vistas, sombras y la reacción de vecinos.`;
+}
+
 function Panel3D({ id, ver3D, google3D }: { id: string; ver3D: (d: any, clave: string) => void; google3D: (d: any, clave: string) => void }) {
   const [clave, setClave] = useState("base");
   const [tipo, setTipo] = useState<"plataforma" | "torres">("plataforma");
   const [d, setD] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
+  const [ent, setEnt] = useState<any>(null);
+  useEffect(() => { setEnt(null); fetch(`/api/analisis/entorno?id=${encodeURIComponent(id)}`).then((r) => r.json()).then(setEnt).catch(() => {}); }, [id]);
   async function cargar(t = tipo) {
     setCargando(true);
     try { const j = await (await fetch(`/api/analisis/volumen?id=${encodeURIComponent(id)}${t === "torres" ? "&ocupacion=0.3" : ""}`)).json(); setD(j); return j; }
@@ -226,15 +316,16 @@ function Panel3D({ id, ver3D, google3D }: { id: string; ver3D: (d: any, clave: s
     <Seccion titulo="Edificio posible en 3D">
       <div className="fila">
         <div className="campo"><label>Escenario</label>
-          <div className="segmento">{[["conservador", "Conservador"], ["base", "Base"], ["maximo", "Máximo"]].map(([k, t]) => <button key={k} className={clave === k ? "on" : ""} onClick={() => { setClave(k); if (d) ver3D(d, k); }}>{t}</button>)}</div>
+          <div className="segmento">{[["conservador", "Conservador"], ["base", "Base"], ["maximo", "Máximo"]].map(([k, t]) => <button key={k} className={clave === k ? "on" : ""} onClick={() => { setClave(k); if (d) ver3D({ ...d, entorno: ent?.geojson }, k); }}>{t}</button>)}</div>
         </div>
         <div className="campo"><label>Tipología</label>
-          <div className="segmento">{[["plataforma", "Plataforma"], ["torres", "Torres"]].map(([k, t]) => <button key={k} className={tipo === k ? "on" : ""} onClick={async () => { setTipo(k as any); if (d) { const j = await cargar(k as any); ver3D(j, clave); } }}>{t}</button>)}</div>
+          <div className="segmento">{[["plataforma", "Plataforma"], ["torres", "Torres"]].map(([k, t]) => <button key={k} className={tipo === k ? "on" : ""} onClick={async () => { setTipo(k as any); if (d) { const j = await cargar(k as any); ver3D({ ...j, entorno: ent?.geojson }, clave); } }}>{t}</button>)}</div>
         </div>
       </div>
       {v && <div className="cifras tres"><Cifra v={`${v.pisos} pisos`} k={`${num(v.altura_m, 1)} m de altura`} /><Cifra v={m2(v.huella_m2)} k="huella" /><Cifra v={num(v.unidades)} k="unidades" /></div>}
+      {ent && <div className="nota">Entorno a 150 m (catastro): la mitad de los predios tiene hasta {ent.pisos_mediana} pisos; el más alto, {ent.pisos_max}. {v ? lectura(v.pisos, ent) : ""}</div>}
       <div className="acciones">
-        <button className="btn btn-primario" disabled={cargando} onClick={async () => ver3D(d ?? (await cargar()), clave)}>{cargando ? "Calculando…" : "Ver en el mapa 3D"}</button>
+        <button className="btn btn-primario" disabled={cargando} onClick={async () => ver3D({ ...(d ?? (await cargar())), entorno: ent?.geojson }, clave)}>{cargando ? "Calculando…" : "Ver en el mapa 3D"}</button>
         <a className="btn btn-borde" href={`/api/kmz?id=${encodeURIComponent(id)}${tipo === "torres" ? "&ocupacion=0.3" : ""}`}>Google Earth (KMZ)</a>
         <button className="btn btn-borde" disabled={cargando} onClick={async () => google3D(d ?? (await cargar()), clave)}>Vista fotorrealista</button>
       </div>
@@ -367,7 +458,7 @@ export function PanelCartera({ pintar, abrir }: { pintar: (l: any[]) => void; ab
           <div className="tarjeta destacada">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
               <div><h3 style={{ fontSize: 17 }}>{r.resumen.encontrados} de {r.resumen.lotes} lotes</h3><div style={{ fontSize: 12, opacity: 0.85 }}>{num(r.resumen.unidades_base_total)} unidades posibles en total</div></div>
-              <div style={{ display: "flex", gap: 6 }}><a className="btn btn-primario" href={`/api/estudio/${r.id}/xlsx`}>⤓ Excel</a><a className="btn btn-borde" href={`/api/estudio/${r.id}/kmz`}>Google Earth</a></div>
+              <div style={{ display: "flex", gap: 6 }}><a className="btn btn-primario" href={`/api/estudio/${r.id}/xlsx`}>⤓ Excel</a><a className="btn btn-borde" href={`/api/estudio/${r.id}/kmz`} title="KMZ con carpetas, volúmenes y recorrido para comité">Google Earth</a><a className="btn btn-borde" href={`/api/estudio/${r.id}/vivo`} title="Para Google Earth Pro: se actualiza sola cada 24 h">Cartera viva</a></div>
             </div>
             <div className="cifras tres">
               <Cifra v={<span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><Luz luz="verde" />{r.resumen.verdes}</span>} k="verdes" />

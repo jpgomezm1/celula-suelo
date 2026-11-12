@@ -3,6 +3,8 @@ import { consultaNorma } from "@/lib/consulta_norma";
 import { encontrarPredio } from "@/lib/ficha";
 import { analizarLote } from "@/lib/analisis_lote";
 import { fichaPdf } from "@/lib/pdf_ficha";
+import { topografiaLote } from "@/lib/topografia";
+import { entornoLote } from "@/lib/entorno";
 
 export const maxDuration = 120;
 
@@ -15,7 +17,8 @@ export async function GET(req: Request) {
   const p = await encontrarPredio({ id: c.predio });
   const a = await analizarLote(p, { area_unidad_m2: num("area_unidad_m2"), tipo_vivienda: (q.get("tipo_vivienda") as any) ?? undefined, actividad: q.get("actividad") ?? undefined });
   if (q.get("formato") === "json") return Response.json({ ...c, analisis: a });
-  const pdf = await fichaPdf(c, a);
+  const [topografia, entorno] = await Promise.all([topografiaLote(c.predio).catch(() => null), entornoLote(c.predio).catch(() => null)]);
+  const pdf = await fichaPdf(c, a, { topografia, entorno });
   const nombre = `Ficha normativa ${String(c.predio).replace(":", "-")} ${new Date().toISOString().slice(0, 10)}.pdf`;
   return new Response(new Uint8Array(pdf), { headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="${nombre}"` } });
 }

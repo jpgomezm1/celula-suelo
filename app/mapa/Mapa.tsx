@@ -56,7 +56,7 @@ export default function Mapa() {
   const [form, setForm] = useState({ nombre: "", tipo_vivienda: "NO VIS", vocacion: "ambos", min_unidades: 100, radio_m: 3000 });
   const [estudio, setEstudio] = useState<any>(null);
   const [modoOp, setModoOp] = useState<"perfil" | "rapidas">("perfil");
-  const [perfil, setPerfil] = useState({ tipo_vivienda: "NO VIS", unidades_min: 150, unidades_max: 300, area_unidad_m2: 65, pisos_min: 12, area_lote_min: "", precio_m2_objetivo: "", barrios: "", norma: "2014" });
+  const [perfil, setPerfil] = useState({ tipo_vivienda: "NO VIS", unidades_min: 150, unidades_max: 300, area_unidad_m2: 65, pisos_min: 12, area_lote_min: "", precio_m2_objetivo: "", barrios: "", norma: "2014", topografia: "indiferente" });
   const [resPerfil, setResPerfil] = useState<any>(null);
   const [oportunidades, setOportunidades] = useState<any>(null);
   const rankingRef = useRef<any[]>([]);
@@ -173,6 +173,10 @@ export default function Mapa() {
           "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
       m.addLayer({ id: "edificios-3d", type: "fill-extrusion", source: "openmaptiles", "source-layer": "building", minzoom: 14, layout: { visibility: "none" },
         paint: { "fill-extrusion-color": "#d9d5cc", "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6], "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0], "fill-extrusion-opacity": 0.8 } });
+      m.addSource("entorno", { type: "geojson", data: { type: "FeatureCollection", features: [] } as any });
+      m.addLayer({ id: "entorno-3d", type: "fill-extrusion", source: "entorno",
+        paint: { "fill-extrusion-color": ["interpolate", ["linear"], ["get", "pisos"], 1, "#e8e4da", 5, "#c9c2b3", 10, "#a39a88", 20, "#7d7462"],
+                 "fill-extrusion-height": ["get", "altura"], "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.9 } });
       m.addSource("volumen", { type: "geojson", data: { type: "FeatureCollection", features: [] } as any });
       m.addLayer({ id: "volumen-lote", type: "line", source: "volumen", filter: ["==", ["get", "tipo"], "lote"], paint: { "line-color": "#f2a900", "line-width": 3 } });
       m.addLayer({ id: "volumen-3d", type: "fill-extrusion", source: "volumen", filter: ["==", ["get", "tipo"], "volumen"],
@@ -239,10 +243,14 @@ export default function Mapa() {
       ...(v?.geojson ? [{ type: "Feature", properties: { tipo: "volumen", altura: v.altura_m, color: COLOR_ESC[v.clave] ?? "#6c4de7" }, geometry: v.geojson }] : []),
     ] } as any);
     setModo3d(true);
-    if (m.getLayer("edificios-3d")) m.setLayoutProperty("edificios-3d", "visibility", "visible");
+    // Con alturas del catastro se apagan los edificios de OpenStreetMap para no duplicar.
+    (m.getSource("entorno") as maplibregl.GeoJSONSource | undefined)?.setData((datos.entorno ?? { type: "FeatureCollection", features: [] }) as any);
+    if (m.getLayer("edificios-3d")) m.setLayoutProperty("edificios-3d", "visibility", datos.entorno?.features?.length ? "none" : "visible");
     m.flyTo({ center: [datos.centro.lon, datos.centro.lat], zoom: 17.2, pitch: 62, bearing: -25, duration: 1400 });
   }
-  function quitarVolumen() { (mapa.current?.getSource("volumen") as maplibregl.GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: [] } as any); }
+  function quitarVolumen() {
+    for (const f of ["volumen", "entorno"]) (mapa.current?.getSource(f) as maplibregl.GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: [] } as any);
+  }
 
   function empezarDibujo() {
     setVertices([]); pintarZona([]); setDibujando(true); dibujandoRef.current = true;
@@ -269,7 +277,7 @@ export default function Mapa() {
     const n = (v: any) => (v === "" || v === null || v === undefined ? undefined : Number(v));
     const body = { municipio, tipo_vivienda: perfil.tipo_vivienda, unidades_min: n(perfil.unidades_min), unidades_max: n(perfil.unidades_max), area_unidad_m2: n(perfil.area_unidad_m2),
       pisos_min: n(perfil.pisos_min), area_lote_min: n(perfil.area_lote_min), precio_m2_objetivo: perfil.precio_m2_objetivo ? Number(perfil.precio_m2_objetivo) * 1e6 : undefined,
-      barrios: perfil.barrios ? perfil.barrios.split(",").map((x) => x.trim()).filter(Boolean) : undefined, limite: 30, norma: perfil.norma };
+      barrios: perfil.barrios ? perfil.barrios.split(",").map((x) => x.trim()).filter(Boolean) : undefined, limite: 30, norma: perfil.norma, topografia: perfil.topografia };
     try {
       const j = await (await fetch("/api/perfil", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json();
       setResPerfil(j); if (!j.error) pintarRanking(j.oportunidades ?? []);
@@ -470,6 +478,10 @@ export default function Mapa() {
                       <div className="campo"><label>Norma (Medellín)</label>
                         <div className="segmento">{[["2014", "POT 2014 vigente"], ["2026", "Proyecto POT 2026"]].map(([v, t]) => <button key={v} className={perfil.norma === v ? "on" : ""} onClick={() => setPerfil({ ...perfil, norma: v })}>{t}</button>)}</div>
                       </div>
+                      <div className="campo"><label>Topografía preferida</label>
+                        <div className="segmento">{[["indiferente", "Indiferente"], ["plano", "Plano"], ["ladera_moderada", "Ladera moderada"], ["ladera_fuerte", "Ladera fuerte"]].map(([v, t]) => <button key={v} className={perfil.topografia === v ? "on" : ""} onClick={() => setPerfil({ ...perfil, topografia: v })}>{t}</button>)}</div>
+                        <div className="nota">No es buena ni mala: plano para torres con sótanos o VIS rápido; ladera para proyectos escalonados con vista.</div>
+                      </div>
                       <div className="campo"><label>Barrios (opcional)</label><input className="entrada" placeholder="p. ej. Guayabal, Belén" value={perfil.barrios} onChange={(e) => setPerfil({ ...perfil, barrios: e.target.value })} /></div>
                     </div>
                     <button className="btn btn-primario btn-bloque" disabled={!!cargando} onClick={estudioPerfil}>Buscar lotes para este edificio</button>
@@ -494,6 +506,7 @@ export default function Mapa() {
                               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span className="n">{i + 1}. {o.barrio ?? o.municipio}</span><span className="etiqueta lima">{o.puntaje} pts</span></div>
                               <span className="sub">{m2(o.area_lote_m2)} · ≈ {o.unidades_posibles} unidades{o.requiere_compra_derechos ? " (con derechos)" : ""} · {o.tratamiento}</span>
                               <span className="nota">{o.por_que.slice(1, 3).join(" · ")}</span>
+                              {o.topografia && <span className="nota">Terreno: {o.topografia.clase} ({num(o.topografia.pendiente_pct ?? o.topografia.pendiente_aprox_pct, 0)} %){o.topografia.desnivel_m != null ? `, ${num(o.topografia.desnivel_m, 0)} m de desnivel` : ""}{o.topografia.via ? `, ${o.topografia.via}` : ""}</span>}
                             </li>))}</ul>
                         </div>
                         <div className="nota">{resPerfil.metodo}</div>

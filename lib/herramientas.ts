@@ -61,7 +61,7 @@ export async function compararLotes(lotes: RefLote[], opts: { area_unidad_m2?: n
 }
 
 /** Cartera de lotes (hasta 250): KML/KMZ o lista. Norma, cabida, semáforo, cesiones y ranking; guarda el resultado y entrega Excel. */
-export async function analizarCartera(entrada: { nombre?: string; kml?: string; lotes?: RefLote[]; area_unidad_m2?: number; tipo_vivienda?: "VIS" | "NO VIS"; con_valor_residual?: boolean }) {
+export async function analizarCartera(entrada: { nombre?: string; kml?: string; lotes?: RefLote[]; area_unidad_m2?: number; tipo_vivienda?: "VIS" | "NO VIS"; con_valor_residual?: boolean; actualizar_id?: string }) {
   type Ref = RefLote & { carpeta?: string | null; notas?: string | null; datos?: Record<string, string>; poligono?: [number, number][] };
   let refs: Ref[] = entrada.lotes ?? [];
   if (entrada.kml) refs = leerKml(entrada.kml).map((l) => {
@@ -104,8 +104,10 @@ export async function analizarCartera(entrada: { nombre?: string; kml?: string; 
     metodo: "Puntaje 0–100: unidades posibles con la norma base (60) + valor residual frente al valor de referencia del suelo (hasta 20) + 15 base + 5 si el proyecto de POT 2026 sube el aprovechamiento − 10 (amarillo) o − 35 (rojo) del semáforo.",
     aviso_legal: AVISO_LEGAL,
   };
-  const id = `c_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}_${randomBytes(4).toString("hex")}`;
-  await sql`INSERT INTO estudio (id, nombre, entrada, resultado) VALUES (${id}, ${resultado.estudio}, ${JSON.stringify({ ...entrada, kml: entrada.kml ? "(kml)" : undefined })}, ${JSON.stringify(resultado)})`;
+  // Cartera viva: se reescribe el mismo estudio (mismo enlace) en lugar de crear uno nuevo.
+  const id = entrada.actualizar_id ?? `c_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}_${randomBytes(4).toString("hex")}`;
+  if (entrada.actualizar_id) await sql`UPDATE estudio SET resultado = ${JSON.stringify(resultado)} WHERE id = ${id}`;
+  else await sql`INSERT INTO estudio (id, nombre, entrada, resultado) VALUES (${id}, ${resultado.estudio}, ${JSON.stringify({ ...entrada, kml: entrada.kml ? "(kml)" : undefined })}, ${JSON.stringify(resultado)})`;
   return { id, ...resultado, excel: `${base()}/api/estudio/${id}/xlsx`, kmz_google_earth: `${base()}/api/estudio/${id}/kmz` };
 }
 

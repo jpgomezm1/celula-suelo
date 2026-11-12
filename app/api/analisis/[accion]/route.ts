@@ -2,6 +2,8 @@
 import { analizarCartera, analizarZona, cambioPot, compararLotes, novedadesNormativas, resumenLote } from "@/lib/herramientas";
 import { sql } from "@/lib/db";
 import { volumenesLote } from "@/lib/volumen";
+import { topografiaLote } from "@/lib/topografia";
+import { entornoLote } from "@/lib/entorno";
 
 export const maxDuration = 300;
 
@@ -27,6 +29,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ accion: string 
     if (!v.encontrado) return Response.json(v, { status: 404 });
     const { analisis, ...resto } = v;
     return Response.json(resto);
+  }
+  if (accion === "topografia") {
+    const q = new URL(req.url).searchParams;
+    return Response.json(await topografiaLote(String(q.get("id") ?? ""), { recalcular: q.get("recalcular") === "1" }));
+  }
+  if (accion === "entorno") {
+    const q = new URL(req.url).searchParams;
+    return Response.json(await entornoLote(String(q.get("id") ?? ""), Math.min(400, Number(q.get("radio") ?? 150))));
   }
   if (accion === "resumen") return Response.json(await resumenLote(String(new URL(req.url).searchParams.get("id") ?? "")));
   if (accion === "novedades") return Response.json(await novedadesNormativas(Number(new URL(req.url).searchParams.get("dias") ?? 60)));

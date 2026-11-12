@@ -16,6 +16,8 @@ import { analizarLote, cabida, usosPermitidos, afectaciones } from "@/lib/analis
 import { analizarCartera, analizarZona, cambioPot, compararLotes, novedadesNormativas } from "@/lib/herramientas";
 import { bloque2026Predio } from "@/lib/norma2026";
 import { volumenesLote } from "@/lib/volumen";
+import { topografiaLote } from "@/lib/topografia";
+import { entornoLote } from "@/lib/entorno";
 
 const URL_BASE = () => process.env.PUBLIC_URL ?? "https://celula-suelo.vercel.app";
 const urlFicha = (c: any) => `${URL_BASE()}/api/ficha?id=${encodeURIComponent(c.predio)}`;
@@ -50,7 +52,7 @@ const LECTURA = { readOnlyHint: true, openWorldHint: false } as const;
 const ESCRITURA = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 const INSTRUCCIONES = `Inteligencia de suelo para 17 municipios del Valle de Aburrá y el Oriente antioqueño: catastro, norma del POT, mercado (Fynder), proyectos nuevos (Zonario y Galería Inmobiliaria) y señales de venta de los folios.
 Flujos recomendados:
-0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
+0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
 1. "¿Dónde puedo hacer este edificio?" → oportunidades_por_perfil (perfil de producto sobre todo un municipio) → ficha_predio de los mejores → contacto_predio.
 2. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 3. "¿Este lote da?" → ficha_predio → prefactibilidad_lote (con el precio pedido por el lote).
@@ -200,7 +202,7 @@ const mcp = createMcpHandler(
     server.registerTool("oportunidades_por_perfil", {
       annotations: ESCRITURA,
       title: "Oportunidades por perfil de edificio",
-      description: "Estudio general de suelo: dado un perfil de edificio (VIS o NO VIS, número de unidades, área por unidad, pisos mínimos, rango de área de lote, precio objetivo por m²), recorre TODOS los predios urbanos del municipio, deja los que la norma del POT permite para ese producto (sin amenaza alta, protección, espacio público ni uso dotacional) y los ordena 0–100 por encaje normativo, precio frente a la zona, absorción según Galería, compradores frente a oferta (Fynder), señales de venta del folio y facilidad (poca construcción existente). Devuelve el resumen (cuántos lotes cumplen, barrios con más lotes), el ranking con el porqué de cada lote y un enlace al Excel. Tarda 5–15 s. Ejemplo: {municipio:'Medellín', tipo_vivienda:'NO VIS', unidades_min:150, unidades_max:300, area_unidad_m2:65, pisos_min:12}.",
+      description: "Estudio general de suelo: dado un perfil de edificio (VIS o NO VIS, número de unidades, área por unidad, pisos mínimos, rango de área de lote, precio objetivo por m²), recorre TODOS los predios urbanos del municipio, deja los que la norma del POT permite para ese producto (sin amenaza alta, protección, espacio público ni uso dotacional) y los ordena 0–100 por encaje normativo, precio frente a la zona, absorción según Galería, compradores frente a oferta (Fynder), señales de venta del folio y facilidad (poca construcción existente). Devuelve el resumen (cuántos lotes cumplen, barrios con más lotes), el ranking con el porqué de cada lote y un enlace al Excel. Tarda 5–15 s (hasta 40 s si se pide topografía). Ejemplo: {municipio:'Medellín', tipo_vivienda:'NO VIS', unidades_min:150, unidades_max:300, area_unidad_m2:65, pisos_min:12}.",
       inputSchema: z.object({
         municipio: z.string().optional().describe("Por defecto Medellín. La norma numérica completa está en Medellín, Envigado, Sabaneta, Barbosa y Girardota."),
         barrios: z.array(z.string()).optional().describe("Limitar a estos barrios catastrales (coincidencia parcial)"),
@@ -216,6 +218,7 @@ const mcp = createMcpHandler(
         permitir_compra_derechos: z.boolean().optional().describe("Incluir lotes que solo llegan comprando derechos de construcción (defecto sí)"),
         max_construcciones: z.number().int().min(0).optional().describe("Excluir lotes con más construcciones que esto (muchos dueños)"),
         norma: z.enum(["2014", "2026"]).optional().describe("Medellín: '2026' usa la norma del proyecto de revisión del POT (v3, julio de 2026, preliminar); por defecto la del POT 2014"),
+        topografia: z.enum(["plano", "ladera_moderada", "ladera_fuerte", "indiferente"]).optional().describe("Topografía que prefiere la constructora (no es buena ni mala: plano para torres con sótanos o VIS rápido; ladera para proyectos escalonados con vista). Suma hasta 10 puntos por encaje y calcula el detalle de los 15 primeros."),
         limite: z.number().int().min(1).max(100).optional().describe("Lotes en el ranking (defecto 25)"),
       }),
     }, seguro(async (a: any) => crearEstudioPerfil(a)));
@@ -301,6 +304,20 @@ const mcp = createMcpHandler(
       if (!p) return c;
       const an = await analizarLote(p, { costo_lote: a.costo_lote, area_unidad_m2: a.area_unidad_m2 });
       return { predio: c.predio, barrio: c.barrio, area_lote_m2: c.area_lote_m2, ...an.valor_residual, precio_pedido: a.costo_lote ?? null };
+    }));
+
+    server.registerTool("topografia_lote", {
+      annotations: LECTURA,
+      title: "Topografía previa de un lote",
+      description: "Topografía de un lote desde modelos públicos del terreno (Medellín: MDT 2024 de 1 m de la Alcaldía; Valle de Aburrá: AMVA 10 m; Sabaneta, La Estrella, Caldas, Guarne, La Ceja, Marinilla: IGAC 2 m; resto: Google Elevation): pendiente media y máxima local, desnivel, clase (plano, ladera suave/moderada/fuerte), hacia dónde cae, si queda por encima o por debajo de la vía, sótanos semienterrados, movimiento de tierras aproximado y perfil del terreno. Incluye la altura del entorno según el catastro (pisos de los vecinos a 150 m). Es un análisis previo: no reemplaza el levantamiento topográfico ni el estudio de suelos. La pendiente no es buena ni mala: explique el encaje según el producto de la constructora.",
+      inputSchema: z.object({ ...LOTE }),
+    }, seguro(async (a: any) => {
+      const { c, p } = await loteDe(a);
+      if (!p) return c;
+      const [t, e]: any = await Promise.all([topografiaLote(c.predio), entornoLote(c.predio)]);
+      const { geojson, ...ent } = e;
+      return { predio: c.predio, barrio: c.barrio, area_lote_m2: c.area_lote_m2, topografia: t, entorno_alturas: ent,
+        fachada_street_view: `${URL_BASE()}/mapa`, nota: "Para ver el perfil dibujado y la fachada de Street View, abra la ficha del lote en la plataforma." };
     }));
 
     server.registerTool("volumen_3d", {

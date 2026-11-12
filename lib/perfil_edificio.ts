@@ -4,6 +4,7 @@
 import { sql } from "./db";
 import { resolverMunicipio } from "./mercado";
 import { avisoPOT } from "./norma_aviso";
+import { clasePendiente, encajeTopografia, pendientesRapidas, topografiaLote, type PreferenciaTopo } from "./topografia";
 
 export type PerfilEdificio = {
   municipio?: string;
@@ -21,6 +22,8 @@ export type PerfilEdificio = {
   permitir_compra_derechos?: boolean;
   max_construcciones?: number;
   norma?: "2014" | "2026";
+  /** Topografía que prefiere la constructora: no es buena ni mala, es encaje con su forma de construir. */
+  topografia?: PreferenciaTopo;
   limite?: number;
 };
 
@@ -185,16 +188,44 @@ export async function oportunidadesPorPerfil(p: PerfilEdificio) {
         senales.length ? `Folio: ${senales.join(", ")}` : m.matricula ? "Folio sin señales particulares 2015–2023" : null,
       ].filter(Boolean),
     };
-  }).sort((a, b) => b.puntaje - a.puntaje);
+  });
+
+  // Topografía: pendiente rápida (ráster AMVA) para todos los evaluados; si hay preferencia, suma hasta 10 puntos por encaje.
+  const pref = p.topografia ?? "indiferente";
+  const pend = await pendientesRapidas(evaluados.map((e) => ({ id: e.id, lon: e.lon, lat: e.lat })));
+  for (const e of evaluados as any[]) {
+    const pc = pend.get(e.id);
+    e.topografia = pc == null ? null : { pendiente_aprox_pct: pc, clase: clasePendiente(pc), fuente: "Pendiente del AMVA (10 m) en el centro del lote" };
+    const enc = encajeTopografia(pc, pref);
+    if (enc.encaje != null) { e.factores.topografia = Math.round(10 * enc.encaje); e.puntaje += e.factores.topografia; e.por_que.push(enc.texto); }
+  }
+  evaluados.sort((a, b) => b.puntaje - a.puntaje);
 
   const top = evaluados.slice(0, limite);
+  // Detalle (MDT de 1 m en Medellín) para los primeros cuando el perfil pide una topografía: confirma el encaje con el lote completo.
+  if (pref !== "indiferente") {
+    const det = top.slice(0, 15);
+    for (let i = 0; i < det.length; i += 5) await Promise.all(det.slice(i, i + 5).map(async (e: any) => {
+      const t: any = await topografiaLote(e.id).catch(() => null);
+      if (!t?.disponible) return;
+      e.topografia = { pendiente_pct: t.pendiente_pct, clase: t.clase, desnivel_m: t.desnivel_m, cae_hacia: t.cae_hacia, via: t.via?.lectura ?? null, fuente: t.fuente.nombre };
+      // Recalcula el encaje con el lote completo (la pendiente del centro puede engañar).
+      const enc = encajeTopografia(t.pendiente_pct, pref);
+      if (enc.encaje != null) {
+        e.puntaje += Math.round(10 * enc.encaje) - (e.factores.topografia ?? 0);
+        e.factores.topografia = Math.round(10 * enc.encaje);
+        e.por_que = [...e.por_que.filter((x: string) => !/preferencia de|frente a su preferencia/.test(x)), enc.texto];
+      }
+    }));
+    top.sort((a, b) => b.puntaje - a.puntaje);
+  }
   const precios = top.map((t) => Number(t.mercado.precio_m2_referencia)).filter(Boolean);
   return {
     estudio: p.nombre ?? `Oportunidades por perfil · ${mun.nombre}`,
     fecha: new Date().toISOString().slice(0, 10),
     perfil: { municipio: mun.nombre, barrios: p.barrios ?? null, tipo_vivienda: tipo, unidades_min: umin, unidades_max: umax, area_unidad_m2: au,
       pisos_min: pisos, area_lote_min: p.area_lote_min ?? null, area_lote_max: p.area_lote_max ?? null, precio_m2_objetivo: p.precio_m2_objetivo ?? null,
-      eficiencia: ef, permitir_compra_derechos: derechos, norma: usa26 ? "Proyecto POT 2026 (v3, julio de 2026), preliminar" : "POT vigente cargado (Medellín: 2014)" },
+      eficiencia: ef, permitir_compra_derechos: derechos, topografia_preferida: pref, norma: usa26 ? "Proyecto POT 2026 (v3, julio de 2026), preliminar" : "POT vigente cargado (Medellín: 2014)" },
     resumen: {
       lotes_que_cumplen_la_norma: total,
       con_norma_base: (candidatos as any[]).filter((c) => c.u_base >= umin).length,
@@ -204,7 +235,7 @@ export async function oportunidadesPorPerfil(p: PerfilEdificio) {
       precio_m2_mediano_zonas_top: mediana(precios),
     },
     oportunidades: top,
-    metodo: "Filtro normativo sobre todos los predios urbanos desarrollables del municipio (sin amenaza alta, suelo de protección, espacio público ni uso dotacional): unidades posibles = mín(área construible × eficiencia ÷ área por unidad, densidad máxima). Puntaje 0–100 = encaje normativo (30; 18 si exige comprar derechos) + precio frente a la zona (20) + absorción según Galería (15) + compradores frente a oferta en Fynder (15) + señales de venta del folio (10) + facilidad por poca construcción existente y pocas construcciones, es decir pocos dueños probables (10). El mercado se calcula para los 300 primeros lotes ordenados por encaje y lote más libre.",
+    metodo: "Filtro normativo sobre todos los predios urbanos desarrollables del municipio (sin amenaza alta, suelo de protección, espacio público ni uso dotacional): unidades posibles = mín(área construible × eficiencia ÷ área por unidad, densidad máxima). Puntaje 0–100 = encaje normativo (30; 18 si exige comprar derechos) + precio frente a la zona (20) + absorción según Galería (15) + compradores frente a oferta en Fynder (15) + señales de venta del folio (10) + facilidad por poca construcción existente y pocas construcciones, es decir pocos dueños probables (10) + encaje con la topografía preferida si se indica (10; la pendiente no es buena ni mala, depende del producto). El mercado se calcula para los 300 primeros lotes ordenados por encaje y lote más libre.",
     advertencias: [
       ...(usa26 ? ["Calculado con la norma del Proyecto de Acuerdo 104 de 2026 (Tomo V v3, julio de 2026): preliminar, puede cambiar con el texto aprobado; la altura máxima y la clase de tratamiento se toman aún del POT 2014. La Zona 1 no está incluida (tabla no legible en el PDF)."] : avisoPOT(mun.dane) ? [avisoPOT(mun.dane)!] : []),
       "Las unidades posibles son una inferencia sobre la norma del POT; no son una cabida arquitectónica (retiros, cesiones y parqueaderos pueden reducirlas).",

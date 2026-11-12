@@ -1,8 +1,13 @@
 // Arma los KMZ para Google Earth: de un lote (tres volúmenes) y de una cartera o estudio guardado.
 import { sql } from "./db";
 import { volumenesBase, volumenesLote } from "./volumen";
-import { carpeta, construirKmz, geometriaKml, globoLote, placemark } from "./kmz";
+import { carpeta, construirKmz, geometriaKml, globoLote, placemark, recorrido } from "./kmz";
 import { obtenerEstudio } from "./estudios";
+
+const centroide = (g: any): [number, number] => {
+  const a: number[][] = g?.type === "MultiPolygon" ? g.coordinates[0][0] : g?.coordinates?.[0] ?? [];
+  return a.length ? [a.reduce((s, p) => s + p[0], 0) / a.length, a.reduce((s, p) => s + p[1], 0) / a.length] : [NaN, NaN];
+};
 
 const BASE = () => process.env.PUBLIC_URL ?? "https://celula-suelo.vercel.app";
 
@@ -73,7 +78,22 @@ export async function kmzEstudio(estudioId: string) {
     );
   }
   const pintar = (n: Nodo): string[] => [...n.marcas, ...[...n.hijos.entries()].map(([nom, h]) => carpeta(nom, pintar(h), true))];
-  const cuerpo = pintar(raiz);
+  const paradas = filas.filter((f) => vols[f.predio ?? f.id]).slice(0, 40).map((f) => {
+    const v = vols[f.predio ?? f.id]; const c = centroide(v.lote);
+    return { nombre: f.nombre, lat: Number(f.lat ?? c[1]), lon: Number(f.lon ?? c[0]) };
+  }).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+  const cuerpo = [...pintar(raiz), ...(paradas.length ? [recorrido(`Recorrido para comité (${paradas.length} lotes)`, paradas)] : [])];
   const nombre = `${r.estudio} · Inteligencia de suelo`;
   return { nombre, buffer: await construirKmz(nombre, `${r.estudio} (${r.fecha}). Color del lote = semáforo; volumen morado = edificio posible con la norma base. Haz clic en un lote para ver su ficha.`, cuerpo) };
+}
+
+/** Cartera viva: si el análisis tiene más de un día, se vuelve a correr sobre los mismos lotes (con sus carpetas y notas). */
+export async function refrescarCartera(estudioId: string) {
+  const e: any = await obtenerEstudio(estudioId);
+  if (!e || e.resultado?.tipo !== "cartera") return;
+  const fecha = new Date(e.resultado.fecha + "T00:00:00-05:00").getTime();
+  if (Date.now() - fecha < 20 * 3600 * 1000) return;
+  const { analizarCartera } = await import("./herramientas");
+  const lotes = (e.resultado.ranking as any[]).map((f) => ({ id: f.predio, nombre: f.nombre, carpeta: f.carpeta, notas: f.notas, datos: f.datos_google_earth, poligono: f.poligono ?? undefined }));
+  await analizarCartera({ nombre: e.resultado.estudio, lotes: lotes as any, actualizar_id: estudioId });
 }

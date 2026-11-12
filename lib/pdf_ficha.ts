@@ -10,7 +10,7 @@ const fmt = (v: any, d = 0) => (v === null || v === undefined || Number.isNaN(Nu
 const m2 = (v: any) => (v === null || v === undefined ? "—" : `${fmt(v)} m²`);
 const mill = (v: any) => (v ? `$${fmt(Number(v) / 1e6, Number(v) < 1e8 ? 2 : 0)} M` : "—");
 
-export async function fichaPdf(c: any, a: any): Promise<Uint8Array> {
+export async function fichaPdf(c: any, a: any, extra: { topografia?: any; entorno?: any } = {}): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle(`Ficha normativa ${c.predio}`); doc.setAuthor("irrelevant · Inteligencia de suelo"); doc.setCreationDate(new Date());
   const f = await doc.embedFont(StandardFonts.Helvetica), fb = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -119,6 +119,34 @@ export async function fichaPdf(c: any, a: any): Promise<Uint8Array> {
     ["Equipamiento construido", m2(a.cesiones.equipamiento_construido_m2), a.cesiones.regla_equipamiento],
   ], [150, 80, 285]);
   parrafo(`${au.nota} ${a.cesiones.nota}`, 7, f, C.gris);
+
+  // Topografía y entorno
+  const tp = extra.topografia, en = extra.entorno;
+  if (tp?.disponible || en?.pisos_mediana != null) {
+    seccion("Topografía y entorno (análisis previo)");
+    const filas: string[][] = [];
+    if (tp?.disponible) {
+      filas.push(["Pendiente media", `${tp.pendiente_pct} % (${tp.clase})${tp.cae_hacia ? `, cae hacia el ${tp.cae_hacia}` : ""}`, `máx. local ${tp.pendiente_max_local_pct} %`]);
+      filas.push(["Desnivel en el lote", `${tp.desnivel_m} m`, `cotas ${tp.cota_min_m}–${tp.cota_max_m} m s.n.m.`]);
+      if (tp.via) filas.push(["Relación con la vía", tp.via.lectura, tp.via.nombre]);
+      filas.push(["Movimiento de tierras (plataforma)", `${tp.movimiento_tierras.corte_m3.toLocaleString("es-CO")} m3 corte / ${tp.movimiento_tierras.lleno_m3.toLocaleString("es-CO")} m3 lleno`, "orden de magnitud"]);
+    }
+    if (en?.pisos_mediana != null) filas.push(["Altura del entorno (150 m)", `mitad hasta ${en.pisos_mediana} pisos; máx. ${en.pisos_max}`, `${en.predios_con_construccion} predios (catastro)`]);
+    tabla(["Concepto", "Valor", "Detalle"], filas, [170, 200, 145]);
+    // Perfil del terreno
+    const pf: { d: number; z: number }[] = tp?.perfil ?? [];
+    if (pf.length > 3) {
+      espacio(90);
+      const x0 = M, ancho = W - 2 * M, alto = 70, base = y - alto;
+      const dMax = pf[pf.length - 1].d || 1, zMin = Math.min(...pf.map((p) => p.z)), zMax = Math.max(...pf.map((p) => p.z));
+      const k = Math.min(ancho / dMax, alto / Math.max(zMax - zMin + 2, 1));
+      for (let i = 1; i < pf.length; i++) page.drawLine({ start: { x: x0 + pf[i - 1].d * (ancho / dMax), y: base + (pf[i - 1].z - zMin) * k }, end: { x: x0 + pf[i].d * (ancho / dMax), y: base + (pf[i].z - zMin) * k }, thickness: 1.6, color: C.morado });
+      page.drawLine({ start: { x: x0, y: base }, end: { x: x0 + ancho, y: base }, thickness: 0.4, color: C.linea });
+      y = base - 12;
+      parrafo(`Perfil del terreno en la dirección de la pendiente (${Math.round(dMax)} m${k < ancho / dMax ? ", altura exagerada" : ", escala real"}). ${tp.sotanos}`, 7, f, C.gris);
+    }
+    if (tp?.disponible) parrafo(`Fuente: ${tp.fuente.nombre} (${tp.fuente.resolucion_m} m). ${tp.fuente.advertencia ?? ""} ${tp.aviso}`, 7, f, C.gris);
+  }
 
   // Usos
   seccion(`Usos del suelo · ${a.usos.area_de_actividad}`);

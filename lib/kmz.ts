@@ -45,7 +45,7 @@ export const carpeta = (nombre: string, contenido: string[], abierta = false, vi
 
 export async function construirKmz(nombre: string, descripcion: string, cuerpo: string[]): Promise<Buffer> {
   const kml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${esc(nombre)}</name><open>1</open>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2"><Document><name>${esc(nombre)}</name><open>1</open>
 <description><![CDATA[${descripcion}]]></description>${ESTILOS}
 ${cuerpo.join("\n")}
 </Document></kml>`;
@@ -75,4 +75,21 @@ ${o.alertas?.length ? `<div style="font-size:11px;color:#8a5f00;margin-top:6px">
 ${o.notas ? `<div style="font-size:11px;margin-top:6px;padding:6px;background:#f4f2ff;border-radius:6px"><b>Notas:</b> ${esc(o.notas)}</div>` : ""}
 <div style="margin-top:8px;font-size:12px"><a href="${o.base}/api/ficha?id=${encodeURIComponent(o.id)}">Ficha normativa PDF</a> · <a href="${o.base}/mapa">Abrir Inteligencia de suelo</a></div>
 <div style="font-size:9px;color:#8a8a93;margin-top:6px">Volumen esquemático sobre la norma pública; no reemplaza el concepto de norma ni la curaduría. irrelevant · Inteligencia de suelo</div></div>`;
+}
+
+/** Recorrido de Google Earth (gx:Tour): vuela de lote en lote con la cámara inclinada; se reproduce desde la carpeta y se graba como video en Earth Pro. */
+export function recorrido(nombre: string, paradas: { nombre: string; lat: number; lon: number; rango?: number }[], segundos = 5) {
+  const pasos = paradas.map((p, i) => `
+    <gx:FlyTo><gx:duration>${i ? 4 : 3}</gx:duration><gx:flyToMode>smooth</gx:flyToMode>
+      <LookAt><longitude>${p.lon}</longitude><latitude>${p.lat}</latitude><altitude>0</altitude><heading>${(i * 40) % 360}</heading><tilt>62</tilt><range>${p.rango ?? 380}</range><altitudeMode>relativeToGround</altitudeMode></LookAt>
+    </gx:FlyTo><gx:Wait><gx:duration>${segundos}</gx:duration></gx:Wait>`).join("");
+  return `<gx:Tour><name>${esc(nombre)}</name><description>Reproduce el recorrido: Google Earth vuela por cada lote. En Google Earth Pro se puede grabar como video (Herramientas → Creador de películas).</description><gx:Playlist>${pasos}</gx:Playlist></gx:Tour>`;
+}
+
+/** KML con vínculo de red (NetworkLink) que Google Earth Pro refresca solo. */
+export function kmlVinculo(nombre: string, url: string, horas = 24) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><NetworkLink><name>${esc(nombre)}</name><open>1</open><refreshVisibility>0</refreshVisibility><flyToView>1</flyToView>
+<description>Cartera viva de Inteligencia de suelo: se actualiza cada ${horas} h con la norma, el POT 2026 y el semáforo al día.</description>
+<Link><href>${esc(url)}</href><refreshMode>onInterval</refreshMode><refreshInterval>${horas * 3600}</refreshInterval></Link></NetworkLink></kml>`;
 }
