@@ -16,10 +16,10 @@ const MUNICIPIOS: [string, number, number][] = [
 
 const C = { oscuro: "#1a1a1f", lila: "#a28df5", morado: "#6c4de7", gris: "#8a8a93", ambar: "#f2a900", verde: "#3f8f4a", rojo: "#c0392b" };
 
-type Seccion = "lote" | "oportunidades" | "estudio" | "cartera" | "comparar" | "zona" | "pot" | "galeria";
+type Seccion = "lote" | "oportunidades" | "estudio" | "cartera" | "comparar" | "zona" | "pot";
 const SECCIONES: [Seccion, string, string][] = [
   ["lote", "⌖", "Lote"], ["oportunidades", "★", "Dónde construir"], ["estudio", "◎", "Competencia"], ["cartera", "▤", "Cartera"],
-  ["comparar", "⇄", "Comparar"], ["zona", "⬠", "Zona"], ["pot", "◆", "POT 2026"], ["galeria", "⇪", "Galería"],
+  ["comparar", "⇄", "Comparar"], ["zona", "⬠", "Zona"], ["pot", "◆", "POT 2026"],
 ];
 type ModoCapa = "potencial" | "cambio" | "ninguno";
 
@@ -50,7 +50,6 @@ export default function Mapa() {
   const [capas, setCapas] = useState({ proyectos: true, galeria: true, avisos: false });
   const [form, setForm] = useState({ nombre: "", tipo_vivienda: "NO VIS", vocacion: "ambos", min_unidades: 100, radio_m: 3000 });
   const [estudio, setEstudio] = useState<any>(null);
-  const [galeria, setGaleria] = useState<{ archivo: File | null; corte: string; msg: string; ok?: boolean }>({ archivo: null, corte: "", msg: "" });
   const [modoOp, setModoOp] = useState<"perfil" | "rapidas">("perfil");
   const [perfil, setPerfil] = useState({ tipo_vivienda: "NO VIS", unidades_min: 150, unidades_max: 300, area_unidad_m2: 65, pisos_min: 12, area_lote_min: "", precio_m2_objetivo: "", barrios: "", norma: "2014" });
   const [resPerfil, setResPerfil] = useState<any>(null);
@@ -215,27 +214,12 @@ export default function Mapa() {
     finally { setCargando(null); }
   }
 
-  async function subirGaleria() {
-    if (!galeria.archivo) return;
-    setGaleria((g) => ({ ...g, msg: "Leyendo el Excel en tu navegador…", ok: undefined }));
-    try {
-      const [{ default: ExcelJS }, { leerLibroGaleria }] = await Promise.all([import("exceljs"), import("@/lib/galeria_parse")]);
-      const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await galeria.archivo.arrayBuffer());
-      const filas = leerLibroGaleria(wb);
-      if (!filas.length) { setGaleria((g) => ({ ...g, ok: false, msg: "No encontré proyectos: el archivo debe tener una fila de encabezado con 'Código' y 'Proyecto'." })); return; }
-      setGaleria((g) => ({ ...g, msg: `${filas.length} proyectos leídos. Cargando y ubicando en el mapa…` }));
-      const j = await (await fetch("/api/galeria", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ filas, corte: galeria.corte || undefined, nombre: galeria.archivo.name }) })).json();
-      setGaleria((g) => ({ ...g, ok: !j.error, msg: j.error ? j.error : `${j.proyectos} proyectos cargados · ${j.ubicados} ubicados en el mapa` }));
-      (mapa.current?.getSource("galeria") as maplibregl.GeoJSONSource | undefined)?.setData(`${window.location.origin}/api/analisis/galeria?t=${Date.now()}`);
-    } catch (e) { setGaleria((g) => ({ ...g, ok: false, msg: (e as Error).message })); }
-  }
-
   const zonaLista = vertices.length >= 3;
   const titulos: Record<Seccion, [string, string]> = {
     lote: ["Lote", "Norma, cabida, semáforo, cesiones y valor residual"], oportunidades: [`Dónde construir · ${municipio}`, "Lotes donde cabe tu edificio, en todo el municipio"],
     estudio: ["Estudio de competencia", "Etapa 1 · pasos 3 a 9, con Excel"], cartera: ["Cartera de lotes", "Analiza hasta 250 lotes de una vez"],
     comparar: ["Comparar lotes", "De 2 a 5 lotes lado a lado"], zona: ["Analizar una zona", "Norma, POT 2026, competencia y mercado de un polígono"],
-    pot: ["POT 2026", "Quién gana y quién pierde con la revisión del POT de Medellín"], galeria: ["Galería Inmobiliaria", "Carga la exportación mensual"],
+    pot: ["POT 2026", "Quién gana y quién pierde con la revisión del POT de Medellín"],
   };
 
   return (
@@ -426,19 +410,6 @@ export default function Mapa() {
               </>
             )}
 
-            {seccion === "galeria" && (
-              <>
-                <label className="soltar">
-                  <input type="file" accept=".xlsx" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) setGaleria((g) => ({ ...g, archivo: f, msg: "" })); }} />
-                  <b>{galeria.archivo ? galeria.archivo.name : "Sube el Excel exportado de G.A.I.N."}</b>
-                  <span className="nota">{galeria.archivo ? `${(galeria.archivo.size / 1e6).toFixed(1)} MB` : "Se lee en tu navegador; funciona con archivos grandes"}</span>
-                </label>
-                <div className="campo"><label>Fecha de corte</label><input className="entrada" type="date" value={galeria.corte} onChange={(e) => setGaleria((g) => ({ ...g, corte: e.target.value }))} /></div>
-                <button className="btn btn-primario btn-bloque" disabled={!galeria.archivo} onClick={subirGaleria}>Cargar a la plataforma</button>
-                {galeria.msg && <div className={galeria.ok === false ? "error" : "alerta"}>{galeria.msg}</div>}
-                <div className="nota">Los datos de Galería son confidenciales y de uso interno de la empresa que los contrata. No se comparten con terceros.</div>
-              </>
-            )}
           </div>
         </aside>
       </div>
