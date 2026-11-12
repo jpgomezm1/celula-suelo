@@ -172,7 +172,7 @@ export default function Anteproyecto3D({ escena, onCerrar }: { escena: any; onCe
     const fachadaPiso = (t: any, n: any, corte: boolean) => {
       const f = T(t), out: Record<string, THREE.BufferGeometry[]> = { muro: [], losa: [], vidrio: [], marco: [] };
       const pr = (k: string, pts: P[], z0: number, h: number) => { if (h > 0.01) out[k].push(prismaGeo(pts.map(f), z0, h)); };
-      const z = n.z, H = corte ? Math.min(2.4, n.altura) : n.altura, e = 0.2, s0 = 0.24;
+      const z = n.z, H = corte ? 1.45 : n.altura, e = 0.2, s0 = 0.24; // corte de planta a 1,2 m sobre el piso
       pr("losa", rectP(-e, -e, t.L + e, t.D + e), z, s0);
       const lobby = n.tipo === "primero" ? t.aptos.filter((a: any) => a.convertido).map((a: any) => { const xs2 = a.poly.map((p: P) => p[0]); return [Math.min(...xs2), Math.max(...xs2), a.lado] as [number, number, string]; }) : [];
       for (const [q0, q1, lado] of [[-e, 0, "sur"], [t.D, t.D + e, "norte"]] as [number, number, string][]) {
@@ -254,7 +254,7 @@ export default function Anteproyecto3D({ escena, onCerrar }: { escena: any; onCe
         const conv = new Set((t.aptos as any[]).filter((a) => n.tipo === "primero" && a.convertido).map((a) => a.id));
         for (const e of t.espacios) {
           if (conv.has(e.apto)) continue;
-          const mesh = new THREE.Mesh(prismaGeo((e.poly as P[]).map(f), n.z + 0.24, 0.03), new THREE.MeshStandardMaterial({ color: COL_ESP[e.tipo] ?? 0xeeeeee, roughness: 0.75 }));
+          const mesh = new THREE.Mesh(prismaGeo((e.poly as P[]).map(f), n.z + 0.24, 0.03), new THREE.MeshStandardMaterial({ color: COL_ESP[e.tipo] ?? 0xeeeeee, roughness: 0.75, emissive: COL_ESP[e.tipo] ?? 0xeeeeee, emissiveIntensity: 0.18 }));
           mesh.receiveShadow = true;
           const ap = t.aptos.find((a: any) => a.id === e.apto);
           mesh.userData.etiqueta = `${e.nombre} · ${e.area.toFixed(1)} m²  —  Apto ${t.id}-${String(n.nombre).replace(/\D/g, "")}${String(e.apto).replace(/\D/g, "").padStart(2, "0")} · ${ap?.nombre ?? ""} ${ap ? ap.area.toFixed(1) + " m²" : ""}`;
@@ -271,7 +271,7 @@ export default function Anteproyecto3D({ escena, onCerrar }: { escena: any; onCe
           if (mu.tipo === "fachada") continue;
           const c = (mu.poly as P[]).reduce((u, q) => [u[0] + q[0] / 4, u[1] + q[1] / 4], [0, 0]);
           if (n.tipo === "primero" && mu.tipo === "interior" && t.aptos.some((a: any) => a.convertido && dentro(c as P, a.poly))) continue;
-          muros.push(prismaGeo((mu.poly as P[]).map(f), n.z + 0.24, 2.16));
+          muros.push(prismaGeo((mu.poly as P[]).map(f), n.z + 0.24, 1.2));
         }
       }
       // Fachadas cortadas y muros interiores con poché (cara superior oscura, como en un corte arquitectónico)
