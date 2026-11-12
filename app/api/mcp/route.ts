@@ -382,7 +382,7 @@ const mcp = createMcpHandler(
       const { flujo, ...resto } = f;
       return { predio: c.predio, barrio: m.barrio, anteproyecto: { torres: m.resumen.torres, pisos: m.resumen.pisos_totales, unidades: m.resumen.unidades, area_vendible_m2: m.resumen.area_vendible_m2, sotanos: m.resumen.sotanos },
         ...resto, flujo_trimestral: flujo.filter((x: any) => x.mes % 3 === 0).map((x: any) => ({ mes: x.mes, neto: x.neto, acumulado: x.acumulado })),
-        excel: `${URL_BASE()}/api/finanzas?${qs}&formato=xlsx`, aviso: "Prefactibilidad con supuestos explícitos; los costos de referencia deben calibrarse con los de la constructora." };
+        excel: `${URL_BASE()}/api/finanzas?${qs}&formato=xlsx`, carpeta_comite_pdf: `${URL_BASE()}/api/comite?${qs}`, aviso: "Prefactibilidad con supuestos explícitos; los costos de referencia deben calibrarse con los de la constructora." };
     }));
 
     server.registerTool("fachada_street_view", {

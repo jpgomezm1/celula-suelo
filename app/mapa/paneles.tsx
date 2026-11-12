@@ -346,7 +346,7 @@ function PanelNumeros({ qs }: { qs: string }) {
               <tbody>{f.mercado.lista.map((c: any) => <tr key={c.proyecto}><td>{c.proyecto}</td><td>{c.estrato}</td><td>{num(c.precio_m2 / 1e6, 1)} M</td><td>{c.area_m2}</td><td>{num(c.ventas_mes, 1)}</td></tr>)}</tbody></table>
             <ul className="lista-simple">{f.supuestos.map((x: string) => <li key={x}>{x}</li>)}</ul>
           </details>
-          <div className="acciones"><a className="btn btn-primario" href={`/api/finanzas?${q()}&formato=xlsx`}>Descargar Excel de prefactibilidad</a></div>
+          <div className="acciones"><a className="btn btn-primario" href={`/api/comite?${q()}`} target="_blank" rel="noreferrer">Carpeta para comité (PDF)</a><a className="btn btn-borde" href={`/api/finanzas?${q()}&formato=xlsx`}>Excel de prefactibilidad</a></div>
         </>
       )}
     </Seccion>
