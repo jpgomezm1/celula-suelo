@@ -133,7 +133,7 @@ export async function cabidaArquitectonica(id: string, o: Opciones = {}) {
   if (!torres.length) return { encontrado: true as const, disponible: false, mensaje: `No cabe una torre de ${D} m de profundidad y al menos 16 m de largo con estos retiros. Pruebe una profundidad menor (p. ej. 11 m, crujía sencilla) o retiros menores.` };
 
   // ---------- Planta tipo de cada torre: núcleo central, pasillo y apartamentos a lado y lado ----------
-  const pasillo = 1.8, nucleoAncho = 8;
+  const pasillo = 1.8, nucleoAncho = 7, nucleoProf = 12;
   const planta = torres.map((t, ti) => {
     const horizontal = t[1][0] - t[0][0] >= t[2][1] - t[1][1];
     // Se trabaja en coordenadas de la torre (a lo largo = s, a lo ancho = q) y se devuelven al marco local.
@@ -143,8 +143,12 @@ export async function cabidaArquitectonica(id: string, o: Opciones = {}) {
     const prof = sencilla ? ancho - pasillo : (ancho - pasillo) / 2;
     const qPas = sencilla ? 0 : prof;
     const n0 = (largo - nucleoAncho) / 2, n1 = n0 + nucleoAncho;
+    // Punto fijo de 7 × 12 m centrado sobre el pasillo; lo que sobra a lado y lado es área común (hall).
+    const qn0 = Math.max(0, qPas + pasillo / 2 - nucleoProf / 2), qn1 = Math.min(ancho, qn0 + nucleoProf);
     const elementos: { capa: string; poligono: Pt[]; etiqueta?: string }[] = [
-      { capa: "NUCLEO", poligono: P(n0, 0, n1, ancho), etiqueta: "Punto fijo" },
+      { capa: "NUCLEO", poligono: P(n0, qn0, n1, qn1), etiqueta: "Punto fijo" },
+      ...(qn0 > 0.5 ? [{ capa: "CIRCULACION", poligono: P(n0, 0, n1, qn0), etiqueta: "Área común" }] : []),
+      ...(ancho - qn1 > 0.5 ? [{ capa: "CIRCULACION", poligono: P(n0, qn1, n1, ancho), etiqueta: "Área común" }] : []),
       { capa: "CIRCULACION", poligono: P(0, qPas, n0, qPas + pasillo) },
       { capa: "CIRCULACION", poligono: P(n1, qPas, largo, qPas + pasillo) },
     ];
