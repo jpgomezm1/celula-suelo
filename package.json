@@ -37,6 +37,7 @@
   "dependencies": {
     "@modelcontextprotocol/server": "^2.4.0",
     "@neondatabase/serverless": "^1.2.0",
+    "@tarikjabiri/dxf": "^2.10.0",
     "earcut": "^3.2.4",
     "exceljs": "^4.4.0",
     "jszip": "^3.10.1",

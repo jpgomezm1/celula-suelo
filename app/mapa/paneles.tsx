@@ -217,54 +217,97 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, goo
   );
 }
 
-/* ───────────── Cabida arquitectónica (3D + DXF) ───────────── */
+/* ───────────── Anteproyecto esquemático (planos, 3D, Excel) ───────────── */
+function VisorPlanchas({ qs, planchas, onCerrar }: { qs: string; planchas: any[]; onCerrar: () => void }) {
+  const [n, setN] = useState(1);
+  const [zoom, setZoom] = useState(1);
+  const p = planchas[n - 1];
+  return (
+    <div className="modal-3d completo">
+      <div className="caja-3d">
+        <div className="cabeza-3d">
+          <b>Plancha {n}/{planchas.length} · {p?.titulo}</b><span>Escala 1:{p?.escala} en A1 · usa + / − para acercar</span>
+          <button onClick={() => setZoom(Math.max(1, zoom - 0.5))} title="Alejar">−</button>
+          <button onClick={() => setZoom(Math.min(4, zoom + 0.5))} title="Acercar">+</button>
+          <button onClick={() => setN(Math.max(1, n - 1))} disabled={n <= 1} title="Anterior">‹</button>
+          <button onClick={() => setN(Math.min(planchas.length, n + 1))} disabled={n >= planchas.length} title="Siguiente">›</button>
+          <button onClick={onCerrar} title="Cerrar">✕</button>
+        </div>
+        <div className="visor-planchas">
+          <img key={n} src={`/api/cabida?${qs}&formato=svg&plancha=${n}&ancho=2400`} alt={p?.titulo} style={{ width: `${zoom * 100}%` }} />
+        </div>
+        <div className="miniaturas-planchas">{planchas.map((x) => <button key={x.numero} className={x.numero === n ? "on" : ""} onClick={() => setN(x.numero)}>{x.numero}. {x.titulo}</button>)}</div>
+      </div>
+    </div>
+  );
+}
+
 function PanelCabida({ id }: { id: string }) {
-  const [o, setO] = useState<any>({ escenario: "base", area_unidad_m2: 65, retiro_frontal_m: 5, retiro_lateral_m: 3, separacion_torres_m: 12, profundidad_torre_m: 18, pisos_plataforma: 0 });
+  const [o, setO] = useState<any>({ escenario: "base", estrato: "", pisos_plataforma: 0, crujia_m: 7.6, estudio: 0, a1: 20, a2: 55, a3: 25, retiro_frontal_m: "", retiro_lateral_m: "", separacion_torres_m: "" });
   const [m, setM] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
-  const [ver, setVer] = useState(false);
-  useEffect(() => { setM(null); setVer(false); }, [id]);
-  const qs = () => new URLSearchParams({ id, ...Object.fromEntries(Object.entries(o).map(([k, v]) => [k, String(v)])) }).toString();
+  const [ver, setVer] = useState<"3d" | "planchas" | null>(null);
+  useEffect(() => { setM(null); setVer(null); }, [id]);
+  const qs = () => {
+    const mezcla = [["estudio", o.estudio], ["1A", o.a1], ["2A", o.a2], ["3A", o.a3]].filter(([, v]) => Number(v) > 0).map(([k, v]) => `${k}:${v}`).join(",");
+    const q: Record<string, string> = { id, escenario: o.escenario, pisos_plataforma: String(o.pisos_plataforma), crujia_m: String(o.crujia_m), mezcla };
+    for (const k of ["estrato", "retiro_frontal_m", "retiro_lateral_m", "separacion_torres_m"]) if (o[k] !== "" && o[k] != null) q[k] = String(o[k]);
+    return new URLSearchParams(q).toString();
+  };
   async function generar() {
     setCargando(true);
     try { setM(await (await fetch(`/api/cabida?${qs()}`)).json()); } catch (e) { setM({ disponible: false, mensaje: (e as Error).message }); } finally { setCargando(false); }
   }
-  const campo = (k: string, t: string, paso = 1) => (
-    <div className="campo"><label>{t}</label><input className="entrada" type="number" step={paso} value={o[k]} onChange={(e) => setO({ ...o, [k]: Number(e.target.value) })} /></div>);
+  const campo = (k: string, t: string, paso = 1, ph = "") => (
+    <div className="campo"><label>{t}</label><input className="entrada" type="number" step={paso} placeholder={ph} value={o[k]} onChange={(e) => setO({ ...o, [k]: e.target.value === "" ? "" : Number(e.target.value) })} /></div>);
   const r = m?.resumen;
+  const sumaMezcla = Number(o.estudio || 0) + Number(o.a1 || 0) + Number(o.a2 || 0) + Number(o.a3 || 0);
   return (
-    <Seccion titulo="Cabida arquitectónica (3D y DXF)">
-      <div className="nota">Ubica torres dentro del lote con retiros, núcleo, pasillos, apartamentos por piso, plataforma y sótanos con parqueaderos. Exporta a DXF (AutoCAD, Revit, SketchUp, Rhino).</div>
+    <Seccion titulo="Anteproyecto esquemático (planos, 3D y Excel)">
+      <div className="nota">Implanta torres según la norma del municipio, distribuye apartamentos con muros, puertas, ventanas y amoblamiento, dimensiona el punto fijo (NSR-10), arma el primer piso y los sótanos, y entrega planchas DXF y PDF con rótulo, modelo 3D georreferenciado y cuadro de áreas en Excel.</div>
       <div className="campo"><label>Escenario de norma</label>
         <div className="segmento">{[["conservador", "Conservador"], ["base", "Base"], ["maximo", "Máximo"]].map(([k, t]) => <button key={k} className={o.escenario === k ? "on" : ""} onClick={() => setO({ ...o, escenario: k })}>{t}</button>)}</div>
       </div>
-      <div className="fila">{campo("area_unidad_m2", "m² por apartamento")}{campo("pisos_plataforma", "Pisos de plataforma")}</div>
-      <div className="fila">{campo("retiro_frontal_m", "Retiro frontal (m)", 0.5)}{campo("retiro_lateral_m", "Retiros laterales y fondo (m)", 0.5)}</div>
-      <div className="fila">{campo("separacion_torres_m", "Separación entre torres (m)", 0.5)}{campo("profundidad_torre_m", "Profundidad de torre (m)", 0.5)}</div>
-      <button className="btn btn-primario btn-bloque" disabled={cargando} onClick={generar}>{cargando ? "Calculando la cabida…" : m ? "Recalcular cabida" : "Generar cabida arquitectónica"}</button>
+      <div className="campo"><label>Mezcla de apartamentos (%) {sumaMezcla !== 100 && <span className="nota">· suma {sumaMezcla} %, se normaliza</span>}</label>
+        <div className="fila cuatro">{campo("estudio", "Apartaestudio")}{campo("a1", "1 alcoba")}{campo("a2", "2 alcobas")}{campo("a3", "3 alcobas")}</div>
+      </div>
+      <div className="fila">{campo("estrato", "Estrato (parqueaderos)", 1, "automático")}{campo("pisos_plataforma", "Pisos de plataforma")}</div>
+      <details className="avanzado"><summary>Ajustes avanzados (por defecto, la norma del municipio)</summary>
+        <div className="fila">{campo("retiro_frontal_m", "Retiro frontal (m)", 0.5, "norma")}{campo("retiro_lateral_m", "Retiro lateral (m)", 0.5, "norma")}</div>
+        <div className="fila">{campo("separacion_torres_m", "Separación entre torres (m)", 0.5, "norma")}{campo("crujia_m", "Profundidad de apartamento (m)", 0.1)}</div>
+      </details>
+      <button className="btn btn-primario btn-bloque" disabled={cargando} onClick={generar}>{cargando ? "Diseñando el anteproyecto…" : m ? "Recalcular anteproyecto" : "Generar anteproyecto"}</button>
       {m && !m.disponible && <div className="error">{m.mensaje}</div>}
       {r && (
         <>
           <div className="cifras tres">
             <Cifra v={`${r.torres} torres`} k={`${r.pisos_totales} pisos · ${num(r.altura_m, 1)} m`} />
-            <Cifra v={num(r.unidades)} k={`unidades · ${r.aptos_por_piso} por piso de ${num(r.area_apto_promedio_m2)} m²`} />
-            <Cifra v={`${r.aprovechamiento_de_la_norma_pct} %`} k="de lo que permite la norma" />
+            <Cifra v={num(r.unidades)} k={`viviendas · ${r.aptos_por_piso} por piso`} />
+            <Cifra v={`${r.aprovechamiento_pct} %`} k="de lo que permite la norma" />
           </div>
           <div className="cifras tres">
-            <Cifra v={m2(r.area_construida_sobre_rasante_m2)} k={`construidos · IC ${num(r.indice_construccion_resultante, 2)}`} />
-            <Cifra v={`${r.sotanos} sótanos`} k={`${num(r.parqueaderos_dibujados)} parqueaderos (piden ${num(r.parqueaderos_requeridos)})`} />
-            <Cifra v={num(r.indice_ocupacion_resultante, 2)} k="índice de ocupación" />
+            <Cifra v={m2(r.area_vendible_m2)} k={`vendibles · eficiencia ${r.eficiencia_planta_pct} %`} />
+            <Cifra v={`${r.sotanos} sótanos`} k={`${num(r.parqueaderos_dibujados)} parqueaderos (norma ${num(r.parqueaderos_exigidos)})`} />
+            <Cifra v={`${r.punto_fijo.escaleras} esc. · ${r.punto_fijo.ascensores} asc.`} k={r.punto_fijo.a_prueba_de_humo ? "escalera a prueba de humo" : "punto fijo"} />
           </div>
-          <div className="nota">Limitado por: {r.limitado_por}. {m.torres.map((t: any) => `Torre ${t.torre}: ${num(t.largo, 0)} × ${num(t.ancho, 0)} m, ${t.aptos_por_piso} aptos/piso`).join(" · ")}.</div>
+          <div className="nota">{r.por_tipologia.map((x: any) => `${x.tipologia}: ${x.unidades} (${x.pct} %, ${num(x.area_promedio_m2, 1)} m²)`).join(" · ")}</div>
+          <div className="nota">Norma: {m.norma.fuente}. Retiros: frontal {m.norma.frontal} m, lateral {m.norma.lateral} m, fondo {m.norma.fondo} m, entre torres {m.norma.entre_torres} m. Equipamiento {num(r.obligaciones.equipamiento_en_sitio_m2)} m² en sitio · {r.obligaciones.viviendas_adaptables} viviendas adaptables.</div>
           <div className="acciones">
-            <button className="btn btn-primario" onClick={() => setVer(true)}>Ver en 3D</button>
-            <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=dxf`}>Descargar DXF</a>
-            <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=dxf&local=1`} title="Origen en el centro del lote (más cómodo para dibujar)">DXF coordenadas locales</a>
+            <button className="btn btn-primario" onClick={() => setVer("planchas")}>Ver planchas ({m.planchas.length})</button>
+            <button className="btn btn-borde" onClick={() => setVer("3d")}>Ver en 3D</button>
+            <a className="btn btn-primario" href={`/api/cabida?${qs()}&formato=zip`}>Descargar todo (ZIP)</a>
           </div>
-          <div className="nota">{m.marco.nombre}. {m.aviso}</div>
+          <div className="acciones">
+            <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=pdf`}>Planchas PDF</a>
+            <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=dxf`}>Planos DXF</a>
+            <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=dxf3d`}>Modelo 3D DXF</a>
+            <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=xlsx`}>Excel de áreas</a>
+          </div>
+          <div className="nota">{m.aviso} Para DWG: abrir el DXF en AutoCAD o BricsCAD y guardar como DWG.</div>
         </>
       )}
-      {ver && m?.disponible && <Cabida3D modelo={m} onCerrar={() => setVer(false)} />}
+      {ver === "3d" && m?.disponible && <Cabida3D modelo={m.vista3d} onCerrar={() => setVer(null)} />}
+      {ver === "planchas" && m?.disponible && <VisorPlanchas qs={qs()} planchas={m.planchas} onCerrar={() => setVer(null)} />}
     </Seccion>
   );
 }

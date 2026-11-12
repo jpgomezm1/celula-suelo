@@ -440,3 +440,14 @@ textarea.entrada { resize: vertical; font-family: inherit; }
 .capas-cabida { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
 .leyenda-cabida { display: flex; flex-wrap: wrap; gap: 6px 10px; font-size: 11px; color: var(--texto-2); }
 .leyenda-cabida i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+
+/* ===== Anteproyecto ===== */
+.fila.cuatro { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+details.avanzado { font-size: 13px; } details.avanzado summary { cursor: pointer; color: var(--acento-2); margin: 4px 0 8px; }
+.visor-planchas { overflow: auto; background: #e9e7e1; padding: 12px; }
+.visor-planchas img { display: block; margin: 0 auto; background: #fff; box-shadow: 0 4px 18px rgba(0,0,0,.18); }
+.caja-3d:has(.visor-planchas) { grid-template-rows: auto 1fr auto; }
+.miniaturas-planchas { display: flex; gap: 6px; overflow-x: auto; padding: 8px 12px; background: #fff; border-top: 1px solid var(--linea); }
+.miniaturas-planchas button { font: inherit; font-size: 12px; white-space: nowrap; border: 1px solid var(--linea); background: #fff; border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+.miniaturas-planchas button.on { background: var(--cta); color: #fff; border-color: var(--cta); }
+.cabeza-3d button:disabled { opacity: .35; cursor: default; }

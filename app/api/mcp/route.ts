@@ -16,7 +16,7 @@ import { analizarLote, cabida, usosPermitidos, afectaciones } from "@/lib/analis
 import { analizarCartera, analizarZona, cambioPot, compararLotes, novedadesNormativas } from "@/lib/herramientas";
 import { bloque2026Predio } from "@/lib/norma2026";
 import { volumenesLote } from "@/lib/volumen";
-import { cabidaArquitectonica } from "@/lib/cabida_modelo";
+import { anteproyecto } from "@/lib/cabida/proyecto";
 import { topografiaLote } from "@/lib/topografia";
 import { entornoLote, lecturaEntorno } from "@/lib/entorno";
 import { fachadaLote } from "@/lib/fachada";
@@ -55,7 +55,7 @@ const LECTURA = { readOnlyHint: true, openWorldHint: false } as const;
 const ESCRITURA = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 const INSTRUCCIONES = `Inteligencia de suelo para 17 municipios del Valle de Aburrá y el Oriente antioqueño: catastro, norma del POT, mercado (Fynder), proyectos nuevos (Zonario y Galería Inmobiliaria) y señales de venta de los folios.
 Flujos recomendados:
-0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Cómo se ve el lote desde la calle → fachada_street_view. Cabida arquitectónica con torres, apartamentos, sótanos y parqueaderos, en 3D y DXF → cabida_arquitectonica. Cartera que se actualiza sola en Google Earth Pro → analizar_cartera (cartera_viva_google_earth_pro). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
+0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Cómo se ve el lote desde la calle → fachada_street_view. Anteproyecto esquemático con planos (DXF, PDF, 3D y Excel): torres, apartamentos distribuidos, punto fijo, primer piso y sótanos → cabida_arquitectonica. Cartera que se actualiza sola en Google Earth Pro → analizar_cartera (cartera_viva_google_earth_pro). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
 1. "¿Dónde puedo hacer este edificio?" → oportunidades_por_perfil (perfil de producto sobre todo un municipio) → ficha_predio de los mejores → contacto_predio.
 2. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 3. "¿Este lote da?" → ficha_predio → prefactibilidad_lote (con el precio pedido por el lote).
@@ -332,24 +332,29 @@ const mcp = createMcpHandler(
 
     server.registerTool("cabida_arquitectonica", {
       annotations: LECTURA,
-      title: "Cabida arquitectónica esquemática (3D y DXF)",
-      description: "Arma una cabida arquitectónica esquemática de un lote: ubica torres rectangulares dentro del área edificable (lote menos retiros), con núcleo (punto fijo), pasillo y apartamentos por piso, plataforma opcional y sótanos con los parqueaderos dibujados (2,5 × 5 m, calles de 6 m). Calcula pisos, altura, unidades, área construida, índices resultantes, parqueaderos dibujados frente a requeridos y qué la limita (densidad, área construible o altura). Devuelve el enlace a un DXF 3D (AutoCAD, Revit, SketchUp, Rhino) georreferenciado en EPSG 9377 y otro en coordenadas locales. Retiros, separación y profundidad de torre son supuestos editables (por defecto 5 m frontal, 3 m laterales, 12 m entre torres, 18 m de profundidad): dígale al usuario que los verifique con la norma específica. Para verla en 3D: ficha del lote en la plataforma → Cabida arquitectónica → Ver en 3D.",
+      title: "Anteproyecto esquemático (cabida arquitectónica con planos)",
+      description: "Genera un anteproyecto esquemático del lote, listo para que un arquitecto lo revise y desarrolle: implanta torres según la norma volumétrica del municipio (Medellín: Acuerdo 48 de 2014 y Decreto 471 de 2018; Envigado, Sabaneta, Itagüí y Bello digitalizadas), distribuye apartamentos de 1, 2 y 3 alcobas (y apartaestudios) con la mezcla indicada —cada uno con sala-comedor, cocina, alcobas, baños, ropas, puertas, ventanas y amoblamiento—, dimensiona el punto fijo según NSR-10 (escaleras a prueba de humo desde 6 pisos, ascensores por tráfico, shut de basuras), arma el primer piso (lobby y portería, salón social con el equipamiento de 1 m² por vivienda, viviendas adaptables 1 de cada 30) y los sótanos (rampa con pendiente según su largo, parqueaderos según el tope por estrato, visitantes, depósitos y cuartos técnicos). Entrega: resumen y cuadro de áreas, y enlaces a un ZIP con planos DXF (planchas A1 con rótulo: localización, sótanos, primer piso, planta tipo, torre ampliada con cotas, apartamentos tipo, corte y fachada, cuadro de áreas), planchas en PDF, modelo 3D georreferenciado (EPSG 9377) y Excel. Es prefactibilidad: la norma está digitalizada y pendiente de validar; dígale al usuario que el arquitecto debe verificarla. Tarda 3–8 s.",
       inputSchema: z.object({ ...LOTE,
         escenario: z.enum(["conservador", "base", "maximo"]).optional().describe("Norma: POT 2014 base, proyecto POT 2026 (defecto) o comprando derechos"),
-        area_unidad_m2: z.number().min(30).max(250).optional(), pisos_plataforma: z.number().int().min(0).max(3).optional(),
-        retiro_frontal_m: z.number().min(0).max(20).optional(), retiro_lateral_m: z.number().min(0).max(20).optional(),
-        separacion_torres_m: z.number().min(4).max(40).optional(), profundidad_torre_m: z.number().min(9).max(30).optional(),
-        largo_max_torre_m: z.number().min(16).max(80).optional(), max_torres: z.number().int().min(1).max(10).optional() }),
+        mezcla: z.array(z.object({ tipologia: z.enum(["estudio", "1A", "2A", "3A"]), pct: z.number().min(0).max(100) })).optional().describe("Mezcla de tipologías en %; defecto 1A 20 %, 2A 55 %, 3A 25 %"),
+        estrato: z.number().int().min(1).max(6).optional().describe("Estrato para la norma de parqueaderos; si no se da se estima con los inmuebles en venta cercanos"),
+        pisos_plataforma: z.number().int().min(0).max(3).optional().describe("0 (defecto): primer piso con lobby y salón social; 1–3: plataforma"),
+        crujia_m: z.number().min(6).max(10).optional().describe("Profundidad de apartamento (defecto 7,6 m)"),
+        retiro_frontal_m: z.number().min(0).max(20).optional(), retiro_lateral_m: z.number().min(0).max(20).optional(), retiro_fondo_m: z.number().min(0).max(20).optional(),
+        separacion_torres_m: z.number().min(3).max(40).optional(), max_torres: z.number().int().min(1).max(10).optional() }),
     }, seguro(async (a: any) => {
       const { c, p } = await loteDe(a);
       if (!p) return c;
-      const { cbml, id, matricula, direccion, lat, lon, ...op } = a;
-      const m: any = await cabidaArquitectonica(c.predio, op);
+      const { cbml, id, matricula, direccion, lat, lon, mezcla, ...op } = a;
+      const m: any = await anteproyecto(c.predio, { ...op, mezcla });
       if (!m.disponible) return { predio: c.predio, disponible: false, motivo: m.mensaje };
-      const qs = new URLSearchParams({ id: c.predio, ...Object.fromEntries(Object.entries(op).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])) }).toString();
-      return { predio: c.predio, barrio: m.barrio, resumen: m.resumen, torres: m.torres.map(({ huella, ...t }: any) => t), supuestos: m.supuestos,
-        dxf_georreferenciado: `${URL_BASE()}/api/cabida?${qs}&formato=dxf`, dxf_coordenadas_locales: `${URL_BASE()}/api/cabida?${qs}&formato=dxf&local=1`,
-        ver_en_3d: `${URL_BASE()}/mapa (ficha del lote → Cabida arquitectónica → Ver en 3D)`, marco: m.marco.nombre,
+      const qs = new URLSearchParams({ id: c.predio, ...Object.fromEntries(Object.entries(op).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])),
+        ...(mezcla ? { mezcla: mezcla.map((x: any) => `${x.tipologia}:${x.pct}`).join(",") } : {}) }).toString();
+      const u = (f: string) => `${URL_BASE()}/api/cabida?${qs}&formato=${f}`;
+      return { predio: c.predio, barrio: m.barrio, municipio: m.municipio, resumen: m.resumen, norma: { retiros: { frontal: m.norma.frontal, lateral: m.norma.lateral, cabecera: m.norma.cabecera, fondo: m.norma.fondo, entre_torres: m.norma.entre_torres }, fuente: m.norma.fuente, citas: m.norma.citas },
+        torres: m.torres.map((t: any) => ({ id: t.id, largo_m: t.planta.L, ancho_m: t.planta.D, aptos_por_piso: t.planta.aptos.length, tipologias: t.planta.aptos.map((x: any) => x.tipologia).join(",") })),
+        entregables: { paquete_zip: u("zip"), planchas_pdf: u("pdf"), planos_dxf: u("dxf"), modelo_3d_dxf: u("dxf3d"), cuadro_de_areas_xlsx: u("xlsx") },
+        ver_en_la_plataforma: `${URL_BASE()}/mapa (ficha del lote → Anteproyecto → Ver en 3D / Ver planchas)`,
         dwg: "AutoCAD y BricsCAD abren el DXF y lo guardan como DWG (Guardar como → DWG).", aviso: m.aviso };
     }));
 
