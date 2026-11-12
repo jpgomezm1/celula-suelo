@@ -5,27 +5,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Inteligencia de suelo · Cómo funciona</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="icon" href="/marca/irrelevant.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
   :root {
-    --petroleo: #006272; --petroleo-osc: #004b57; --turquesa: #009cb6; --turquesa-2: #02788c; --lima: #84bd00; --lima-osc: #6c9b00;
-    --texto: #3e3e3e; --texto-2: #6f6f6f; --gris: #979797; --linea: #e7e7e7; --fondo: #f6f7f7; --blanco: #fff; --codigo: #0f2a30;
+    --petroleo: #1a1a1f; --petroleo-osc: #08061a; --turquesa: #8b74f0; --turquesa-2: #6c4de7; --lima: #6c4de7; --lima-osc: #5a3fd6;
+    --texto: #1a1a1f; --texto-2: #4d4d57; --gris: #8a8a93; --linea: #e6e3da; --fondo: #fbfaf6; --blanco: #fff; --codigo: #08061a;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
-  body { margin: 0; font-family: "Work Sans", system-ui, sans-serif; color: var(--texto); background: var(--fondo); line-height: 1.6; font-size: 16px; }
+  body { margin: 0; font-family: "Inter", system-ui, sans-serif; color: var(--texto); background: var(--fondo); line-height: 1.6; font-size: 16px; }
   a { color: var(--turquesa-2); }
   code, pre { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 13px; }
-  code { background: #eaf2f3; color: var(--petroleo-osc); padding: 1px 6px; border-radius: 4px; }
-  pre { background: var(--codigo); color: #d8eef1; padding: 16px 18px; border-radius: 10px; overflow-x: auto; line-height: 1.5; margin: 12px 0; }
+  code { background: #efedff; color: var(--petroleo-osc); padding: 1px 6px; border-radius: 4px; }
+  pre { background: var(--codigo); color: #e4defd; padding: 16px 18px; border-radius: 10px; overflow-x: auto; line-height: 1.5; margin: 12px 0; }
   pre code { background: none; color: inherit; padding: 0; }
-  h1, h2, h3 { color: var(--petroleo); line-height: 1.2; margin: 0; }
+  h1, h2, h3 { color: var(--petroleo); line-height: 1.2; margin: 0; font-family: "Poppins", sans-serif; font-weight: 600; letter-spacing: -0.3px; }
   h2 { font-size: 28px; margin-bottom: 8px; }
   h3 { font-size: 18px; margin: 22px 0 6px; }
   p { margin: 8px 0; }
 
-  header.portada { background: var(--petroleo); color: #fff; position: relative; overflow: hidden; }
-  header.portada::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--lima); }
+  header.portada { background: #08061a; color: #fff; position: relative; overflow: hidden; }
+  header.portada::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: linear-gradient(90deg, #6c4de7, #a28df5, #5e55fe); }
   .portada .dentro { max-width: 1100px; margin: 0 auto; padding: 56px 24px 64px; }
   .portada .marca { font-size: 13px; letter-spacing: 1.4px; text-transform: uppercase; opacity: .8; font-weight: 600; }
   .portada h1 { color: #fff; font-size: 44px; margin: 12px 0 14px; max-width: 760px; }
@@ -47,14 +48,14 @@
   .tarjeta { background: #fff; border: 1px solid var(--linea); border-radius: 12px; padding: 20px; }
   .tarjeta h3 { margin-top: 0; }
   .tarjeta .num { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--lima); color: #fff; font-weight: 700; margin-bottom: 10px; }
-  .etq { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: #eaf2f3; color: var(--petroleo); margin: 2px 4px 2px 0; }
-  .etq.lima { background: rgba(132,189,0,.15); color: var(--lima-osc); }
+  .etq { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: #efedff; color: var(--petroleo); margin: 2px 4px 2px 0; }
+  .etq.lima { background: rgba(108,77,231,.15); color: var(--lima-osc); }
   .etq.alerta { background: rgba(242,169,0,.15); color: #8a5f00; }
 
   table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--linea); border-radius: 12px; overflow: hidden; font-size: 14px; margin-top: 14px; }
   th { background: var(--petroleo); color: #fff; text-align: left; font-weight: 600; padding: 10px 12px; font-size: 13px; }
   td { padding: 10px 12px; border-top: 1px solid var(--linea); vertical-align: top; }
-  tr:nth-child(even) td { background: #fafbfb; }
+  tr:nth-child(even) td { background: #f7f6f1; }
   td:first-child { font-weight: 600; color: var(--petroleo); white-space: nowrap; }
   .tabla-scroll { overflow-x: auto; }
 
@@ -79,7 +80,7 @@
 
 <header class="portada">
   <div class="dentro">
-    <div class="marca">Inteligencia de suelo · v0.3 · noviembre de 2026</div>
+    <div class="marca" style="display:flex;align-items:center;gap:12px"><img src="/marca/irrelevant.png" alt="" style="height:30px;border-radius:7px"> irrelevant · Inteligencia de suelo · v0.4 · noviembre de 2026</div>
     <h1>Cómo funciona: del predio al estudio de competencia, en minutos</h1>
     <p>Una base única de suelo, norma, mercado y proyectos para el Valle de Aburrá y el Oriente antioqueño, con tres puertas de entrada: un mapa web, un servidor MCP para conversar con Claude y exportaciones a Excel con el formato de estudio de la constructora.</p>
     <div class="cifras">
@@ -117,30 +118,30 @@
   <div class="diagrama">
     <svg viewBox="0 0 1000 380" role="img" aria-label="Diagrama de arquitectura">
       <defs>
-        <marker id="fl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#979797"/></marker>
+        <marker id="fl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8a8a93"/></marker>
       </defs>
-      <g font-family="Work Sans" font-size="13">
-        <text x="20" y="24" font-weight="700" fill="#006272" font-size="12" letter-spacing="1">FUENTES</text>
-        <g fill="#fff" stroke="#e7e7e7">
+      <g font-family="Inter" font-size="13">
+        <text x="20" y="24" font-weight="700" fill="#1a1a1f" font-size="12" letter-spacing="1">FUENTES</text>
+        <g fill="#fff" stroke="#e6e3da">
           <rect x="20" y="36" width="210" height="40" rx="8"/><rect x="20" y="84" width="210" height="40" rx="8"/><rect x="20" y="132" width="210" height="40" rx="8"/>
           <rect x="20" y="180" width="210" height="40" rx="8"/><rect x="20" y="228" width="210" height="40" rx="8"/><rect x="20" y="276" width="210" height="40" rx="8"/>
           <rect x="20" y="324" width="210" height="40" rx="8"/>
         </g>
-        <g fill="#3e3e3e">
+        <g fill="#1a1a1f">
           <text x="34" y="61">Catastro y POT (GeoMedellín, IDEM…)</text><text x="34" y="109">Fynder: avisos y compradores</text>
           <text x="34" y="157">Zonario: proyectos nuevos</text><text x="34" y="205">Galería Inmobiliaria (Excel)</text>
           <text x="34" y="253">MEData y Croma: folios</text><text x="34" y="301">OpenStreetMap: entorno</text><text x="34" y="349">Normas digitalizadas (CSV)</text>
         </g>
-        <rect x="300" y="110" width="200" height="170" rx="12" fill="#006272"/>
+        <rect x="300" y="110" width="200" height="170" rx="12" fill="#1a1a1f"/>
         <text x="400" y="150" fill="#fff" text-anchor="middle" font-weight="700" font-size="15">PostGIS (Neon)</text>
-        <g fill="#d8eef1" text-anchor="middle" font-size="12"><text x="400" y="176">parcel · parcel_profile</text><text x="400" y="196">zoning_layer · norma</text><text x="400" y="216">listing · demand_request</text><text x="400" y="236">project · galeria_proyecto</text><text x="400" y="256">parcel_senales · osm_poi</text></g>
-        <rect x="570" y="110" width="190" height="170" rx="12" fill="#fff" stroke="#009cb6" stroke-width="2"/>
-        <text x="665" y="150" fill="#006272" text-anchor="middle" font-weight="700" font-size="15">Análisis (lib/)</text>
-        <g fill="#3e3e3e" text-anchor="middle" font-size="12"><text x="665" y="176">estudio de competencia</text><text x="665" y="196">oportunidades por perfil</text><text x="665" y="216">prefactibilidad (Fynder)</text><text x="665" y="236">mercado · contacto</text><text x="665" y="256">exportación a Excel</text></g>
-        <g fill="#84bd00"><rect x="820" y="80" width="160" height="56" rx="10"/><rect x="820" y="166" width="160" height="56" rx="10"/><rect x="820" y="252" width="160" height="56" rx="10"/></g>
+        <g fill="#e4defd" text-anchor="middle" font-size="12"><text x="400" y="176">parcel · parcel_profile</text><text x="400" y="196">zoning_layer · norma</text><text x="400" y="216">listing · demand_request</text><text x="400" y="236">project · galeria_proyecto</text><text x="400" y="256">parcel_senales · osm_poi</text></g>
+        <rect x="570" y="110" width="190" height="170" rx="12" fill="#fff" stroke="#8b74f0" stroke-width="2"/>
+        <text x="665" y="150" fill="#1a1a1f" text-anchor="middle" font-weight="700" font-size="15">Análisis (lib/)</text>
+        <g fill="#1a1a1f" text-anchor="middle" font-size="12"><text x="665" y="176">estudio de competencia</text><text x="665" y="196">oportunidades por perfil</text><text x="665" y="216">prefactibilidad (Fynder)</text><text x="665" y="236">mercado · contacto</text><text x="665" y="256">exportación a Excel</text></g>
+        <g fill="#6c4de7"><rect x="820" y="80" width="160" height="56" rx="10"/><rect x="820" y="166" width="160" height="56" rx="10"/><rect x="820" y="252" width="160" height="56" rx="10"/></g>
         <g fill="#fff" text-anchor="middle" font-weight="600"><text x="900" y="104">Servidor MCP</text><text x="900" y="190">Workspace web</text><text x="900" y="276">Excel del estudio</text></g>
         <g fill="#fff" text-anchor="middle" font-size="11"><text x="900" y="122">/api/mcp → Claude</text><text x="900" y="208">/mapa</text><text x="900" y="294">/api/estudio/{id}/xlsx</text></g>
-        <g stroke="#979797" stroke-width="1.5" fill="none" marker-end="url(#fl)">
+        <g stroke="#8a8a93" stroke-width="1.5" fill="none" marker-end="url(#fl)">
           <path d="M230 56 C 270 56, 270 150, 298 160"/><path d="M230 104 C 265 104, 265 170, 298 175"/><path d="M230 152 L298 190"/>
           <path d="M230 200 L298 205"/><path d="M230 248 L298 222"/><path d="M230 296 C 265 296, 265 245, 298 240"/><path d="M230 344 C 270 344, 270 265, 298 260"/>
           <path d="M500 195 L568 195"/><path d="M760 170 L818 110"/><path d="M760 195 L818 194"/><path d="M760 220 L818 278"/>
@@ -156,6 +157,7 @@
   <div class="tabla-scroll"><table>
     <tr><th>Dato</th><th>Fuente</th><th>Cobertura</th><th>Actualización</th></tr>
     <tr><td>Predios y construcciones</td><td>GeoMedellín, IDEM (Área Metropolitana), GeoAntioquia, Cornare</td><td>17 municipios; construcciones no públicas en Rionegro, El Retiro y Marinilla</td><td>Mensual (<code>refresh:suelo</code>)</td></tr>
+    <tr><td>Aviso de vigencia</td><td>Revisión del POT de Medellín aprobada por el Concejo el 5 de noviembre de 2026</td><td>La norma de Medellín cargada es la del POT de 2014 (Acuerdo 48). Cada ficha, estudio y respuesta del MCP lo advierte hasta cargar la norma nueva.</td><td>Al publicarse la cartografía</td></tr>
     <tr><td>Norma del POT</td><td>Servicios de cada municipio + normas digitalizadas del acuerdo vigente</td><td>Numérica en Medellín, Envigado, Sabaneta, Barbosa y Girardota. Itagüí, La Estrella, Caldas y Copacabana publican un POT derogado. Bello va por franjas. El Oriente no publica tratamientos.</td><td>Mensual</td></tr>
     <tr><td>Amenazas y protección</td><td>Capas municipales y Cornare (WFS)</td><td>17 municipios</td><td>Mensual</td></tr>
     <tr><td>Valor del suelo</td><td>Valores de referencia por zona (Medellín y metropolitano)</td><td>Valle de Aburrá</td><td>Anual</td></tr>
@@ -207,6 +209,8 @@ eficiencia = 0,8 por defecto · si no alcanza con la norma base, se prueba con c
   <p class="bajada">Con el MCP conectado, Claude puede consultar toda la base y armar estudios conversando. Es la pieza más potente: "busca dónde cabe un VIS de 200 unidades en Bello y arma el estudio de competencia del mejor lote".</p>
   <div class="tabla-scroll"><table>
     <tr><th>Herramienta</th><th>Para qué</th></tr>
+    <tr><td>consulta_norma</td><td>¿Qué se puede hacer en este lote? Por CBML, matrícula, dirección o coordenada.</td></tr>
+    <tr><td>consulta_norma_lotes</td><td>Norma de varios lotes desde un KMZ/KML o una lista de puntos y polígonos (englobes).</td></tr>
     <tr><td>cobertura</td><td>Qué datos hay en cada municipio y qué tan completa será una respuesta. Úsala primero.</td></tr>
     <tr><td>oportunidades_por_perfil</td><td>Estudio general: lotes de un municipio donde cabe un perfil de edificio, con ranking, barrios y Excel.</td></tr>
     <tr><td>estudio_competencia</td><td>Estudio de competencia de un lote (pasos 3 a 9) con enlace al Excel.</td></tr>
@@ -246,7 +250,7 @@ eficiencia = 0,8 por defecto · si no alcanza con la norma base, se prueba con c
   <p>El token también se acepta en la URL: <code>https://celula-suelo.vercel.app/api/mcp?token=&lt;MCP_TOKEN&gt;</code>. Úsalo solo en clientes privados: la URL completa equivale a la clave.</p>
   <h3>Probarlo</h3>
   <pre><code>npm run probar -- https://celula-suelo.vercel.app/api/mcp</code></pre>
-  <p>Llama las 15 herramientas en Medellín, Envigado y Rionegro, prueba los errores controlados y confirma que sin token responde 401.</p>
+  <p>Llama las herramientas en Medellín, Envigado y Rionegro, prueba los errores controlados y confirma que sin token responde 401.</p>
 </section>
 
 <section id="web">
@@ -299,6 +303,6 @@ npm run dev                     # http://localhost:3000/mapa</code></pre>
 </section>
 
 </main>
-<footer>Inteligencia de suelo · irrelevant club · Datos © sus fuentes (OpenStreetMap ODbL, Zonario, entidades públicas)</footer>
+<footer>Inteligencia de suelo · una herramienta de <a href="https://stayirrelevant.com">irrelevant</a> · Datos © sus fuentes (OpenStreetMap ODbL, Zonario, entidades públicas)</footer>
 </body>
 </html>

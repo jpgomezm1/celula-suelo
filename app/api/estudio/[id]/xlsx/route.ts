@@ -1,4 +1,4 @@
-// Descarga del estudio en Excel (formato Conaltura). Protegido por el proxy (clave del workspace).
+// Descarga del estudio en Excel (formato de estudio de competencia, Etapa 1). Protegido por el proxy (clave del workspace).
 import { obtenerEstudio } from "@/lib/estudios";
 import { estudioAExcel, perfilAExcel } from "@/lib/estudio_excel";
 

@@ -5,21 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Qué puedo hacer · Inteligencia de suelo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap">
+<link rel="icon" href="/marca/irrelevant.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
   :root {
-    --petroleo: #006272; --petroleo-osc: #004b57; --turquesa: #009cb6; --turquesa-2: #02788c; --lima: #84bd00; --lima-osc: #6c9b00;
-    --texto: #3e3e3e; --texto-2: #6f6f6f; --gris: #979797; --linea: #e7e7e7; --fondo: #f6f7f7; --aviso: #f2a900;
+    --petroleo: #1a1a1f; --petroleo-osc: #08061a; --turquesa: #8b74f0; --turquesa-2: #6c4de7; --lima: #6c4de7; --lima-osc: #5a3fd6;
+    --texto: #1a1a1f; --texto-2: #4d4d57; --gris: #8a8a93; --linea: #e6e3da; --fondo: #fbfaf6; --aviso: #f2a900;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
-  body { margin: 0; font-family: "Work Sans", system-ui, sans-serif; color: var(--texto); background: var(--fondo); line-height: 1.55; font-size: 16px; }
+  body { margin: 0; font-family: "Inter", system-ui, sans-serif; color: var(--texto); background: var(--fondo); line-height: 1.55; font-size: 16px; }
   a { color: var(--turquesa-2); }
-  h1, h2, h3 { color: var(--petroleo); margin: 0; line-height: 1.2; }
-  code { background: #eaf2f3; color: var(--petroleo-osc); padding: 2px 7px; border-radius: 5px; font-size: 14px; }
+  h1, h2, h3 { color: var(--petroleo); margin: 0; line-height: 1.2; font-family: "Poppins", sans-serif; font-weight: 600; letter-spacing: -0.3px; }
+  code { background: #efedff; color: var(--petroleo-osc); padding: 2px 7px; border-radius: 5px; font-size: 14px; }
 
-  header.portada { background: var(--petroleo); color: #fff; position: relative; }
-  header.portada::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--lima); }
+  header.portada { background: #08061a; color: #fff; position: relative; }
+  header.portada::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: linear-gradient(90deg, #6c4de7, #a28df5, #5e55fe); }
   .portada .dentro { max-width: 1080px; margin: 0 auto; padding: 48px 24px 56px; }
   .portada .marca { display: flex; align-items: center; gap: 14px; font-size: 13px; letter-spacing: 1.2px; text-transform: uppercase; font-weight: 600; opacity: .9; }
   .portada .marca img { height: 28px; }
@@ -45,12 +46,12 @@
   .caso { background: #fff; border: 1px solid var(--linea); border-radius: 12px; padding: 18px 18px 14px; display: grid; gap: 10px; align-content: start; }
   .caso h3 { font-size: 16px; }
   .caso p { margin: 0; color: var(--texto-2); font-size: 14px; }
-  .prompt { position: relative; background: #f0f6f7; border-left: 3px solid var(--turquesa); border-radius: 8px; padding: 10px 44px 10px 12px; font-size: 14px; color: var(--petroleo-osc); font-style: italic; }
+  .prompt { position: relative; background: #f4f2ff; border-left: 3px solid var(--turquesa); border-radius: 8px; padding: 10px 44px 10px 12px; font-size: 14px; color: var(--petroleo-osc); font-style: italic; }
   .copiar { position: absolute; top: 6px; right: 6px; border: 0; background: #fff; color: var(--petroleo); border-radius: 6px; width: 30px; height: 30px; cursor: pointer; font-size: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
   .copiar:hover { background: var(--lima); color: #fff; }
   .copiar.ok { background: var(--lima); color: #fff; }
   .etiquetas { display: flex; flex-wrap: wrap; gap: 6px; }
-  .etq { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: #eaf2f3; color: var(--petroleo); }
+  .etq { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: #efedff; color: var(--petroleo); }
 
   .flujo { background: #fff; border: 1px solid var(--linea); border-radius: 12px; padding: 18px; display: grid; gap: 12px; }
   .flujo + .flujo { margin-top: 14px; }
@@ -72,7 +73,7 @@
 
 <header class="portada">
   <div class="dentro">
-    <div class="marca"><img src="/marca/Logo-Menu-Sup.png" alt="Conaltura"> Inteligencia de suelo · MCP</div>
+    <div class="marca"><img src="/marca/irrelevant.png" alt="" style="border-radius:7px"> irrelevant · Inteligencia de suelo · MCP</div>
     <h1>Qué puedes pedirle a Claude con el MCP conectado</h1>
     <p>Estudios de competencia, búsqueda de lotes para un edificio, ficha y prefactibilidad de un predio, mercado y proyectos nuevos en 17 municipios del Valle de Aburrá y el Oriente. Se pide en lenguaje normal; cada ejemplo tiene un botón para copiarlo.</p>
     <div class="conexion">
@@ -83,16 +84,33 @@
 </header>
 
 <nav class="indice"><div class="dentro">
-  <a href="#competencia">Estudio de competencia</a><a href="#perfil">Dónde hacer un edificio</a><a href="#lote">Analizar un lote</a>
+  <a href="#norma">Consulta de norma</a><a href="#competencia">Estudio de competencia</a><a href="#perfil">Dónde hacer un edificio</a><a href="#lote">Analizar un lote</a>
   <a href="#dueno">Llegar al dueño</a><a href="#mercado">Mercado y proyectos</a><a href="#datos">Sobre los datos</a>
   <a href="#flujos">Flujos encadenados</a><a href="#limites">Límites</a>
 </div></nav>
 
 <main>
 
+<section id="norma">
+  <div class="encabezado"><div class="num">0</div><h2>¿Qué se puede hacer en este lote? (consulta de norma)</h2></div>
+  <p class="bajada">La pregunta más frecuente, sin pasar por MapGIS: norma, área construible, viviendas y unidades estimadas, construcción actual y restricciones. También está en la pestaña "Norma" del workspace.</p>
+  <div class="grilla">
+    <div class="caso"><h3>Por CBML o matrícula</h3><p>CBML de Medellín o matrícula inmobiliaria, con o sin oficina de registro.</p>
+      <div class="prompt">¿Qué se puede hacer en el lote con matrícula 001-728976?</div>
+      <div class="etiquetas"><span class="etq">consulta_norma</span></div></div>
+    <div class="caso"><h3>Por dirección o coordenada</h3><p>Dirección de Medellín o la coordenada que copias de Google Maps.</p>
+      <div class="prompt">Consulta la norma del lote en 6.2032, -75.5826 con apartamentos de 60 m².</div></div>
+    <div class="caso"><h3>Varios lotes desde Google Earth (KMZ)</h3><p>Adjunta el KMZ o KML: cada punto es un lote y cada polígono suma los predios que cubre (englobe).</p>
+      <div class="prompt">Te adjunto el KMZ con los lotes que estamos evaluando: dame la norma y las unidades estimadas de cada uno en una tabla.</div>
+      <div class="etiquetas"><span class="etq">consulta_norma_lotes</span></div></div>
+    <div class="caso"><h3>Englobe</h3><p>Cuánto se puede construir si se unen varios predios.</p>
+      <div class="prompt">Si englobo los lotes 05001:15090030007 y 05001:15090030008, ¿cuánta área construible y cuántas viviendas salen?</div></div>
+  </div>
+</section>
+
 <section id="competencia">
   <div class="encabezado"><div class="num">1</div><h2>Estudio de competencia de un lote</h2></div>
-  <p class="bajada">El estudio de la Etapa 1 (pasos 3 a 9) con el formato de Conaltura, alimentado con Galería Inmobiliaria, y su Excel listo para descargar.</p>
+  <p class="bajada">El estudio de la Etapa 1 (pasos 3 a 9) con el formato de estudio de competencia de constructora, alimentado con Galería Inmobiliaria, y su Excel listo para descargar.</p>
   <div class="grilla">
     <div class="caso"><h3>Estudio completo</h3><p>Objetivo, territorio (norma, entorno, restricciones), proyectos de la zona, competencia directa, tabla resumen e insumos para recomendar.</p>
       <div class="prompt">Hazme el estudio de competencia del lote en la Cl. 6 Sur #50C-104, NO VIS, proyectos de más de 100 unidades, radio de 3 km.</div>
@@ -207,10 +225,11 @@
 <section id="limites">
   <div class="encabezado"><div class="num">!</div><h2>Límites a tener presentes</h2></div>
   <div class="limites" style="margin-top:14px">
+    <div class="limite rojo"><b>POT de Medellín en revisión.</b> La norma de Medellín viene del POT de 2014 (Acuerdo 48). El Concejo aprobó su revisión el 5 de noviembre de 2026 (78 % del articulado, ≈ 222.000 viviendas adicionales): índices, densidades y alturas pueden cambiar cuando entre en vigencia. Las respuestas lo advierten.</div>
     <div class="limite"><b>Las unidades son una estimación sobre la norma, no una cabida.</b> Retiros, cesiones y parqueaderos las reducen; estructuración las valida.</div>
     <div class="limite"><b>La norma está completa en Medellín, Envigado, Sabaneta, Barbosa y Girardota.</b> Itagüí, La Estrella, Caldas y Copacabana publican un POT derogado, Bello va por franjas y el Oriente no publica la norma de tratamiento.</div>
-    <div class="limite"><b>Galería solo trae lo que Conaltura exporte.</b> La base actual (octubre de 2026) es NO VIS; para estudios VIS hay que cargar una exportación VIS desde la pestaña Galería del workspace. Algunos proyectos quedan ubicados en el centro de su barrio y el estudio lo marca.</div>
-    <div class="limite rojo"><b>Datos confidenciales.</b> La información de Galería es de uso interno de Conaltura y no se comparte con terceros.</div>
+    <div class="limite"><b>Galería solo trae lo que la empresa exporte.</b> La base actual (octubre de 2026) es NO VIS; para estudios VIS hay que cargar una exportación VIS desde la pestaña Galería del workspace. Algunos proyectos quedan ubicados en el centro de su barrio y el estudio lo marca.</div>
+    <div class="limite rojo"><b>Datos confidenciales.</b> La información de Galería es de uso interno de la empresa que la contrata y no se comparte con terceros.</div>
   </div>
   <h3 style="margin:30px 0 12px">Consejos para pedir mejor</h3>
   <div class="consejos">
@@ -222,7 +241,7 @@
 </section>
 
 </main>
-<footer>Inteligencia de suelo · Guía técnica completa en <a href="/como-funciona.html">cómo funciona</a></footer>
+<footer>Inteligencia de suelo · una herramienta de <a href="https://stayirrelevant.com">irrelevant</a> · Guía técnica completa en <a href="/como-funciona.html">cómo funciona</a></footer>
 
 <script>
   document.querySelectorAll(".prompt").forEach((p) => {

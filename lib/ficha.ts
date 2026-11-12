@@ -1,6 +1,7 @@
 import { procedencias, sql } from "./db";
 import { mercadoZona } from "./mercado";
 import { correr, millones } from "./prefactibilidad";
+import { avisoPOT } from "./norma_aviso";
 
 const INFERENCIA = "Cálculo propio con la norma y el catastro; orientativo. No reemplaza un estudio de cabida ni la consulta a Planeación.";
 
@@ -122,7 +123,7 @@ export async function fichaPredio(f: FichaInput) {
       tratamiento: p.tratamiento, codigo: p.codigo_tratamiento, altura_max_pisos: n(p.altura_max), altura_texto: p.altura_texto,
       indice_construccion_max: n(p.ic_max), indice_construccion_con_derechos: n(p.ic_total),
       densidad_max_viv_ha: n(p.densidad_max), indice_ocupacion_max: n(p.io_max), uso_general: p.uso,
-      fuente_norma: p.norma_fuente, acuerdo_vigente: p.acuerdo_vigente, advertencia: advertenciaNorma,
+      fuente_norma: p.norma_fuente, acuerdo_vigente: p.acuerdo_vigente, advertencia: advertenciaNorma, aviso_pot: avisoPOT(p.municipio_dane),
     },
     restricciones: { amenazas, amenaza_alta: p.amenaza_alta, protecciones },
     valor_suelo: {

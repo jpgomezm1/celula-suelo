@@ -1,4 +1,4 @@
--- Galería Inmobiliaria (licencia de Conaltura): proyectos de vivienda nueva con ventas, ritmo y oferta, por fecha de corte.
+-- Galería Inmobiliaria (licencia del cliente que la contrata): proyectos de vivienda nueva con ventas, ritmo y oferta, por fecha de corte.
 -- Uso interno del cliente que paga la suscripción; no se redistribuye.
 CREATE TABLE IF NOT EXISTS galeria_proyecto (
   codigo                   text NOT NULL,

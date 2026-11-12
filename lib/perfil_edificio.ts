@@ -3,6 +3,7 @@
 // Todo es inferencia para priorizar visitas y estudios; no reemplaza una cabida ni un avalúo.
 import { sql } from "./db";
 import { resolverMunicipio } from "./mercado";
+import { avisoPOT } from "./norma_aviso";
 
 export type PerfilEdificio = {
   municipio?: string;
@@ -190,6 +191,7 @@ export async function oportunidadesPorPerfil(p: PerfilEdificio) {
     oportunidades: top,
     metodo: "Filtro normativo sobre todos los predios urbanos desarrollables del municipio (sin amenaza alta, suelo de protección, espacio público ni uso dotacional): unidades posibles = mín(área construible × eficiencia ÷ área por unidad, densidad máxima). Puntaje 0–100 = encaje normativo (30; 18 si exige comprar derechos) + precio frente a la zona (20) + absorción según Galería (15) + compradores frente a oferta en Fynder (15) + señales de venta del folio (10) + facilidad por poca construcción existente y pocas construcciones, es decir pocos dueños probables (10). El mercado se calcula para los 300 primeros lotes ordenados por encaje y lote más libre.",
     advertencias: [
+      ...(avisoPOT(mun.dane) ? [avisoPOT(mun.dane)!] : []),
       "Las unidades posibles son una inferencia sobre la norma del POT; no son una cabida arquitectónica (retiros, cesiones y parqueaderos pueden reducirlas).",
       "Los lotes catastrales pueden requerir englobe; la ficha de cada predio muestra la construcción existente y el folio.",
       "Los datos de Galería son de uso interno del cliente que los contrata.",

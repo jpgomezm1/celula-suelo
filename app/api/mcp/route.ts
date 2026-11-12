@@ -10,6 +10,7 @@ import { contactoPredio, empresaPropietaria } from "@/lib/contacto";
 import { completarEstudio, crearEstudio, crearEstudioPerfil } from "@/lib/estudios";
 import { origen, verificar } from "@/lib/auth";
 import { CORS, opciones } from "@/lib/oauth";
+import { consultaNorma, consultaNormaLotes } from "@/lib/consulta_norma";
 
 export const maxDuration = 300;
 
@@ -30,10 +31,12 @@ const LECTURA = { readOnlyHint: true, openWorldHint: false } as const;
 const ESCRITURA = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 const INSTRUCCIONES = `Inteligencia de suelo para 17 municipios del Valle de Aburrá y el Oriente antioqueño: catastro, norma del POT, mercado (Fynder), proyectos nuevos (Zonario y Galería Inmobiliaria) y señales de venta de los folios.
 Flujos recomendados:
+0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada); varios lotes o un KMZ → consulta_norma_lotes.
 1. "¿Dónde puedo hacer este edificio?" → oportunidades_por_perfil (perfil de producto sobre todo un municipio) → ficha_predio de los mejores → contacto_predio.
 2. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 3. "¿Este lote da?" → ficha_predio → prefactibilidad_lote (con el precio pedido por el lote).
 4. Mercado de una zona → mercado_zona, buscar_proyectos, ficha_proyecto, constructora.
+Norma de Medellín: viene del POT de 2014 (Acuerdo 48); el Concejo aprobó su revisión el 5 de noviembre de 2026 y los valores pueden cambiar cuando entre en vigencia: menciónalo cuando des índices, densidades o unidades de Medellín.
 Reglas: usa cobertura para saber qué tan completo es un municipio (Itagüí, La Estrella, Caldas y Copacabana tienen norma de un POT derogado; el Oriente no tiene norma de tratamiento). Las unidades y el área construible son inferencias sobre la norma, no cabidas. Expresa el dinero en millones de pesos. Nunca entregues nombres, teléfonos ni correos de personas naturales: para contactar dueños usa solo la ruta legal de contacto_predio. Los datos de Galería Inmobiliaria son confidenciales y de uso interno del cliente.`;
 const MUNICIPIOS = "Medellín, Envigado, Sabaneta, Itagüí, La Estrella, Caldas, Bello, Copacabana, Girardota, Barbosa, Rionegro, El Retiro, La Ceja, Guarne, Marinilla, El Carmen de Viboral, La Unión";
 const predio = {
@@ -149,7 +152,7 @@ const mcp = createMcpHandler(
     server.registerTool("estudio_competencia", {
       annotations: ESCRITURA,
       title: "Estudio de competencia de un lote",
-      description: "Arma el estudio de competencia de un lote con el formato de Conaltura (Etapa 1, pasos 3 a 9): objetivo, territorio (norma POT del predio, restricciones y entorno OpenStreetMap), proyectos a consultar en la zona con ventas, ritmo, oferta actual y futura (Galería Inmobiliaria), competencia directa, tabla resumen, métricas de zona e insumos para recomendaciones. Zona = polígono GeoJSON o radio. Devuelve un id y un enlace al Excel. Después redacta los textos y guárdalos con completar_estudio.",
+      description: "Arma el estudio de competencia de un lote con el formato de estudio de competencia de constructora (Etapa 1, pasos 3 a 9): objetivo, territorio (norma POT del predio, restricciones y entorno OpenStreetMap), proyectos a consultar en la zona con ventas, ritmo, oferta actual y futura (Galería Inmobiliaria), competencia directa, tabla resumen, métricas de zona e insumos para recomendaciones. Zona = polígono GeoJSON o radio. Devuelve un id y un enlace al Excel. Después redacta los textos y guárdalos con completar_estudio.",
       inputSchema: z.object({
         nombre: z.string().optional().describe("Nombre del lote o estudio, p. ej. 'BONEM'"),
         lote: z.object({ id: z.string().optional(), cbml: z.string().optional(), direccion: z.string().optional().describe("Dirección (Medellín), p. ej. 'Cl. 6 Sur #50C-104'"),
@@ -194,6 +197,31 @@ const mcp = createMcpHandler(
         limite: z.number().int().min(1).max(100).optional().describe("Lotes en el ranking (defecto 25)"),
       }),
     }, seguro(async (a: any) => crearEstudioPerfil(a)));
+
+    server.registerTool("consulta_norma", {
+      annotations: LECTURA,
+      title: "Consulta de norma de un lote",
+      description: "Qué se puede hacer en un lote, en una respuesta corta: tratamiento, uso del suelo, altura, índice de construcción (base y con derechos), densidad, área construible, viviendas y unidades estimadas, construcción actual, amenazas y protección, valor del suelo de referencia y las matrículas y direcciones del predio. Se busca por CBML, id de predio, matrícula inmobiliaria (Medellín), dirección de Medellín o coordenada (p. ej. la de Google Maps). Incluye el aviso de vigencia del POT.",
+      inputSchema: z.object({
+        cbml: z.string().optional(), id: z.string().optional(),
+        matricula: z.string().optional().describe("Matrícula inmobiliaria, con o sin oficina (p. ej. '001-728976' o '728976')"),
+        direccion: z.string().optional().describe("Dirección de Medellín, p. ej. 'Cl. 6 Sur #50C-104'"),
+        lat: z.number().optional(), lon: z.number().optional(),
+        area_unidad_m2: z.number().min(20).max(300).optional().describe("Área por unidad para estimar unidades (defecto 65)"),
+      }),
+    }, seguro(async (a: any) => consultaNorma(a)));
+
+    server.registerTool("consulta_norma_lotes", {
+      annotations: LECTURA,
+      title: "Consulta de norma de varios lotes (KMZ / KML)",
+      description: "Norma y aprovechamiento de varios lotes a la vez (hasta 150): pasa el texto de un KML de Google Earth (si el usuario adjunta un KMZ, descomprímelo y pasa doc.kml) o una lista de puntos {nombre, lat, lon} o polígonos {nombre, poligono: [[lon, lat], ...]}. Para cada polígono suma los predios que cubre (útil para englobes): área de lotes, tratamientos, área construible, viviendas y unidades estimadas, construcción actual y restricciones.",
+      inputSchema: z.object({
+        kml: z.string().optional().describe("Contenido de un archivo .kml"),
+        lotes: z.array(z.object({ nombre: z.string().optional(), lat: z.number().optional(), lon: z.number().optional(),
+          poligono: z.array(z.tuple([z.number(), z.number()])).optional().describe("Anillo [[lon, lat], ...]") })).optional(),
+        area_unidad_m2: z.number().min(20).max(300).optional(),
+      }),
+    }, seguro(async (a: any) => consultaNormaLotes(a)));
 
     server.registerTool("fuentes", {
       annotations: LECTURA,

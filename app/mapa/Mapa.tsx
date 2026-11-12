@@ -12,14 +12,14 @@ const MUNICIPIOS: [string, number, number][] = [
   ["La Unión", -75.3610, 5.9734],
 ];
 
-const C = { petroleo: "#006272", turquesa: "#009cb6", lima: "#84bd00", gris: "#979797", ambar: "#f2a900" };
+const C = { petroleo: "#1a1a1f", turquesa: "#a28df5", lima: "#6c4de7", gris: "#8a8a93", ambar: "#f2a900" };
 
 const millones = (v?: number | null) => (v ? `$${(v / 1e6).toLocaleString("es-CO", { maximumFractionDigits: v < 1e8 ? 1 : 0 })} M` : "—");
 const m2 = (v?: number | null) => (v ? `${Math.round(v).toLocaleString("es-CO")} m²` : "—");
 const num = (v?: number | null, d = 0) => (v === null || v === undefined ? "—" : Number(v).toLocaleString("es-CO", { maximumFractionDigits: d }));
 const pct = (v?: number | null) => (v === null || v === undefined ? "—" : `${Math.round(v * 100)}%`);
 
-type Pestana = "estudio" | "detalle" | "oportunidades" | "galeria";
+type Pestana = "norma" | "estudio" | "detalle" | "oportunidades" | "galeria";
 
 function Cifra({ v, k }: { v: React.ReactNode; k: string }) {
   return <div className="cifra"><div className="v">{v}</div><div className="k">{k}</div></div>;
@@ -28,7 +28,7 @@ function Cifra({ v, k }: { v: React.ReactNode; k: string }) {
 export default function Mapa() {
   const contenedor = useRef<HTMLDivElement>(null);
   const mapa = useRef<maplibregl.Map | null>(null);
-  const [pestana, setPestana] = useState<Pestana>("estudio");
+  const [pestana, setPestana] = useState<Pestana>("norma");
   const [detalle, setDetalle] = useState<{ tipo: "predio" | "proyecto"; datos: any } | null>(null);
   const [oportunidades, setOportunidades] = useState<any>(null);
   const [cargando, setCargando] = useState<string | null>(null);
@@ -43,6 +43,60 @@ export default function Mapa() {
   const [galeria, setGaleria] = useState<{ archivo: File | null; corte: string; msg: string; ok?: boolean }>({ archivo: null, corte: "", msg: "" });
   const [sobre, setSobre] = useState(false);
   const [modoOp, setModoOp] = useState<"perfil" | "rapidas">("perfil");
+  const [busqNorma, setBusqNorma] = useState("");
+  const [resNorma, setResNorma] = useState<any>(null);
+  const [resLotes, setResLotes] = useState<any>(null);
+
+  async function consultarNorma() {
+    const q = busqNorma.trim();
+    if (!q) return;
+    const coord = q.match(/^\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*$/);
+    const body: any = coord ? (Math.abs(Number(coord[1])) < 20 ? { lat: Number(coord[1]), lon: Number(coord[2]) } : { lat: Number(coord[2]), lon: Number(coord[1]) })
+      : /^\d{11}$/.test(q) ? { cbml: q } : /^\d{5}:/.test(q) ? { id: q } : /^(\d{3}[a-z]?\s*-\s*)?\d{4,8}$/i.test(q) ? { matricula: q } : { direccion: q };
+    setCargando("Consultando la norma…"); setResNorma(null); setResLotes(null);
+    try {
+      const r = await fetch("/api/norma", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json(); setResNorma(j);
+      if (j.encontrado && j.predio) { setLote({ id: j.predio }); marcarLote(j.predio); }
+      if (j.encontrado && coord) mapa.current?.flyTo({ center: [body.lon, body.lat], zoom: 17 });
+    } finally { setCargando(null); }
+  }
+
+  async function consultarKmz(file: File) {
+    setCargando("Leyendo el archivo y consultando la norma de cada lote…"); setResNorma(null); setResLotes(null);
+    try {
+      let kml: string;
+      if (/\.kmz$/i.test(file.name)) {
+        const { default: JSZip } = await import("jszip");
+        const zip = await JSZip.loadAsync(await file.arrayBuffer());
+        const k = Object.keys(zip.files).find((n) => /\.kml$/i.test(n));
+        if (!k) throw new Error("El KMZ no trae un archivo .kml adentro");
+        kml = await zip.files[k].async("string");
+      } else kml = await file.text();
+      const r = await fetch("/api/norma", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kml }) });
+      const j = await r.json(); setResLotes({ ...j, archivo: file.name });
+      const { leerKml } = await import("@/lib/kml");
+      const lugares = leerKml(kml);
+      const src = mapa.current?.getSource("zona") as maplibregl.GeoJSONSource | undefined;
+      src?.setData({ type: "FeatureCollection", features: lugares.map((l) => l.poligono
+        ? { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [l.poligono] } }
+        : { type: "Feature", properties: { vertice: true }, geometry: { type: "Point", coordinates: l.punto } }) } as any);
+      const pts = lugares.flatMap((l) => l.poligono ?? (l.punto ? [l.punto] : []));
+      if (pts.length && mapa.current) { const b = new maplibregl.LngLatBounds(); pts.forEach((c) => b.extend(c as [number, number])); mapa.current.fitBounds(b, { padding: 80, maxZoom: 16 }); }
+    } catch (e) { setResLotes({ error: (e as Error).message }); } finally { setCargando(null); }
+  }
+
+  function descargarCsvLotes() {
+    if (!resLotes?.resultados) return;
+    const filas = [["Lote", "Tipo", "Predios", "Área lotes m²", "Tratamiento", "Área construible m²", "Viviendas máx. densidad", "Unidades estimadas", "Construcciones actuales", "Amenaza alta"]];
+    for (const r of resLotes.resultados) {
+      const q = r.que_se_puede_hacer ?? {};
+      filas.push([r.nombre, r.tipo, r.predios ?? (r.predio ? 1 : 0), r.area_lotes_m2 ?? r.area_lote_m2 ?? "", (r.tratamientos ?? [r.norma?.tratamiento]).filter(Boolean).join(" / "),
+        q.area_construible_m2 ?? "", q.viviendas_max_por_densidad ?? "", q.unidades_estimadas ?? "", r.construccion_actual?.construcciones ?? "", r.amenaza_alta ? "sí" : "no"]);
+    }
+    const csv = "\ufeff" + filas.map((f) => f.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = `norma - ${resLotes.archivo ?? "lotes"}.csv`; a.click();
+  }
   const [perfil, setPerfil] = useState({ tipo_vivienda: "NO VIS", unidades_min: 150, unidades_max: 300, area_unidad_m2: 65, pisos_min: 12, area_lote_min: "", precio_m2_objetivo: "", barrios: "" });
   const [resPerfil, setResPerfil] = useState<any>(null);
 
@@ -220,9 +274,9 @@ export default function Mapa() {
   return (
     <>
       <header className="barra">
-        <img src="/marca/Logo-Menu-Sup.png" alt="Conaltura" />
+        <a className="logo" href="/mapa"><img src="/marca/irrelevant.png" alt="" />irrelevant</a>
         <div className="sep" />
-        <div className="producto">Inteligencia de suelo<small>Estudios de competencia · Valle de Aburrá</small></div>
+        <div className="producto">Inteligencia de suelo<small>Norma, mercado y competencia · Valle de Aburrá</small></div>
         <div className="derecha"><a href="/como-funciona.html" target="_blank" style={{ color: "#fff" }}>Cómo funciona</a><a href="/api/logout" style={{ color: "#fff", marginLeft: 14 }}>Salir</a></div>
         <div className="franja" />
       </header>
@@ -236,7 +290,7 @@ export default function Mapa() {
               {MUNICIPIOS.map(([n]) => <option key={n}>{n}</option>)}
             </select>
             {!dibujando
-              ? <button className="btn btn-petroleo" onClick={empezarDibujo}>✎ Dibujar zona</button>
+              ? <button className="btn btn-oscuro" onClick={empezarDibujo}>✎ Dibujar zona</button>
               : <button className="btn btn-activo" onClick={terminarDibujo} disabled={vertices.length > 0 && vertices.length < 3}>✓ Terminar zona ({vertices.length})</button>}
             {vertices.length > 0 && !dibujando && <button className="btn btn-borde" onClick={borrarZona}>Borrar zona</button>}
             <button className="btn btn-borde" onClick={() => setPestana("oportunidades")}>★ Oportunidades</button>
@@ -248,7 +302,7 @@ export default function Mapa() {
           <div className="leyenda">
             <b>Convenciones</b>
             <span><i className="cuadro" style={{ background: C.lima, opacity: 0.7 }} /> Lote con potencial</span>
-            <span><i className="cuadro" style={{ border: `1.5px solid ${C.petroleo}`, background: "rgba(0,156,182,.1)" }} /> Predio</span>
+            <span><i className="cuadro" style={{ border: `1.5px solid ${C.petroleo}`, background: "rgba(139,116,240,.1)" }} /> Predio</span>
             <span><i className="punto" style={{ background: C.petroleo, border: "2px solid #fff", boxShadow: "0 0 0 1px #0002" }} /> Proyecto nuevo</span>
             <span><i className="punto" style={{ background: C.ambar, width: 8, height: 8 }} /> Inmueble en venta</span>
             <span><i className="cuadro" style={{ border: `2px dashed ${C.turquesa}` }} /> Zona del estudio</span>
@@ -258,12 +312,64 @@ export default function Mapa() {
 
         <aside className="panel">
           <nav className="pestanas">
-            {([["estudio", "Estudio"], ["detalle", "Lote / proyecto"], ["oportunidades", "Oportunidades"], ["galeria", "Galería"]] as [Pestana, string][]).map(([k, t]) => (
+            {([["norma", "Norma"], ["estudio", "Estudio"], ["detalle", "Lote"], ["oportunidades", "Oportunidades"], ["galeria", "Galería"]] as [Pestana, string][]).map(([k, t]) => (
               <button key={k} className={pestana === k ? "on" : ""} onClick={() => setPestana(k)}>{t}</button>
             ))}
           </nav>
 
           <div className="contenido">
+            {pestana === "norma" && (
+              <>
+                <div className="titulo">
+                  <h2>¿Qué se puede hacer en este lote?</h2>
+                  <div className="sub">Busca por CBML, matrícula, dirección de Medellín o coordenada de Google Maps, o sube un KMZ con varios lotes.</div>
+                </div>
+                <div className="tarjeta">
+                  <div className="campo">
+                    <label>Lote</label>
+                    <input className="entrada" placeholder="15090030008 · 001-728976 · Cl. 6 Sur #50C-104 · 6.2032, -75.5826" value={busqNorma}
+                      onChange={(e) => setBusqNorma(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") consultarNorma(); }} />
+                  </div>
+                  <button className="btn btn-primario btn-bloque" disabled={!busqNorma.trim() || !!cargando} onClick={consultarNorma}>Consultar norma</button>
+                  <label className={`soltar ${sobre ? "sobre" : ""}`}
+                    onDragOver={(e) => { e.preventDefault(); setSobre(true); }} onDragLeave={() => setSobre(false)}
+                    onDrop={(e) => { e.preventDefault(); setSobre(false); const f = e.dataTransfer.files?.[0]; if (f) consultarKmz(f); }}>
+                    <input type="file" accept=".kmz,.kml" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) consultarKmz(f); }} />
+                    <b>…o arrastra un KMZ / KML de Google Earth</b>
+                    <span className="nota">Puntos o polígonos; cada polígono suma los predios que cubre (englobe)</span>
+                  </label>
+                </div>
+                {resNorma && !resNorma.encontrado && <div className="error">{resNorma.mensaje ?? resNorma.error}</div>}
+                {resNorma?.encontrado && <FichaNorma r={resNorma} />}
+                {resLotes?.error && <div className="error">{resLotes.error}</div>}
+                {resLotes?.resultados && (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <b>{resLotes.lotes} lotes · {resLotes.archivo}</b>
+                      <button className="btn btn-borde" onClick={descargarCsvLotes}>⤓ CSV</button>
+                    </div>
+                    {resLotes.resultados.map((r: any, i: number) => (
+                      <div key={i} className="tarjeta">
+                        <h4>{r.nombre}</h4>
+                        {r.encontrado === false ? <div className="sub">{r.mensaje}</div> : (
+                          <>
+                            <div className="sub">{r.tipo === "poligono" ? `${r.predios} predios · ${m2(r.area_lotes_m2)} · ${(r.tratamientos ?? []).join(" / ")}` : `${r.predio} · ${m2(r.area_lote_m2)} · ${r.norma?.tratamiento ?? "sin tratamiento"}`}</div>
+                            <div className="cifras tres">
+                              <Cifra v={m2(r.que_se_puede_hacer?.area_construible_m2)} k="área construible" />
+                              <Cifra v={num(r.que_se_puede_hacer?.viviendas_max_por_densidad)} k="viviendas por densidad" />
+                              <Cifra v={num(r.que_se_puede_hacer?.unidades_estimadas)} k="unidades estimadas" />
+                            </div>
+                            {(r.amenaza_alta || r.restricciones?.amenaza_alta) && <span className="etiqueta riesgo">Amenaza alta</span>}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                    {resLotes.resultados.find((r: any) => r.aviso_pot) && <div className="alerta">{resLotes.resultados.find((r: any) => r.aviso_pot).aviso_pot}</div>}
+                  </>
+                )}
+              </>
+            )}
+
             {pestana === "estudio" && (
               <>
                 <div className="titulo">
@@ -426,7 +532,7 @@ export default function Mapa() {
 
                 {modoOp === "rapidas" && (
                   <>
-                    {!oportunidades && <button className="btn btn-petroleo btn-bloque" onClick={verOportunidades}>Ver ranking general de {municipio}</button>}
+                    {!oportunidades && <button className="btn btn-oscuro btn-bloque" onClick={verOportunidades}>Ver ranking general de {municipio}</button>}
                     {oportunidades?.error && <div className="error">{oportunidades.error}</div>}
                     {oportunidades && !oportunidades.error && (
                       <>
@@ -473,8 +579,8 @@ export default function Mapa() {
                   <input className="entrada" type="date" value={galeria.corte} onChange={(e) => setGaleria((g) => ({ ...g, corte: e.target.value }))} />
                 </div>
                 <button className="btn btn-primario btn-bloque" disabled={!galeria.archivo} onClick={subirGaleria}>Cargar a la plataforma</button>
-                {galeria.msg && <div className={galeria.ok === false ? "error" : "alerta"} style={galeria.ok ? { background: "rgba(132,189,0,.12)", borderLeftColor: C.lima } : {}}>{galeria.msg}</div>}
-                <div className="nota">Los datos de Galería son confidenciales y de uso interno de Conaltura. No se comparten con terceros.</div>
+                {galeria.msg && <div className={galeria.ok === false ? "error" : "alerta"} style={galeria.ok ? { background: "rgba(108,77,231,.12)", borderLeftColor: C.lima } : {}}>{galeria.msg}</div>}
+                <div className="nota">Los datos de Galería son confidenciales y de uso interno de la empresa que los contrata. No se comparten con terceros.</div>
               </>
             )}
           </div>
@@ -568,6 +674,7 @@ function FichaPredio({ d, contacto, pedirContacto, usarEnEstudio }: { d: any; co
       </div>
       <button className="btn btn-primario btn-bloque" onClick={usarEnEstudio}>Usar este lote en un estudio de competencia</button>
       {d.norma.advertencia && <div className="alerta">{d.norma.advertencia}</div>}
+      {d.norma.aviso_pot && <div className="alerta">{d.norma.aviso_pot}</div>}
 
       <div className="tarjeta">
         <h4>Norma y potencial</h4>
@@ -646,6 +753,52 @@ function FichaPredio({ d, contacto, pedirContacto, usarEnEstudio }: { d: any; co
           </>
         )}
       </div>
+    </>
+  );
+}
+
+function FichaNorma({ r }: { r: any }) {
+  const q = r.que_se_puede_hacer ?? {};
+  const nm = r.norma ?? {};
+  return (
+    <>
+      <div className="tarjeta destacada">
+        <div>
+          <h3 style={{ fontSize: 17 }}>{r.barrio ?? r.municipio} · {m2(r.area_lote_m2)}</h3>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>{r.predio}{r.identificacion?.matriculas?.length ? ` · matrícula ${r.identificacion.matriculas.slice(0, 3).join(", ")}` : ""}</div>
+        </div>
+        <div className="cifras">
+          <Cifra v={m2(q.area_construible_m2)} k="área construible (norma base)" />
+          <Cifra v={m2(q.area_construible_con_derechos_m2)} k="con compra de derechos" />
+          <Cifra v={num(q.viviendas_max_por_densidad)} k="viviendas por densidad" />
+          <Cifra v={num(q.unidades_estimadas)} k={`unidades estimadas (${q.supuesto?.split(" ")[0] ?? 65} m²)`} />
+        </div>
+      </div>
+      <div className="tarjeta">
+        <h4>Norma</h4>
+        <div className="etiquetas">
+          {nm.tratamiento && <span className="etiqueta">{nm.tratamiento}{nm.codigo ? ` · ${nm.codigo}` : ""}</span>}
+          {nm.uso_del_suelo && <span className="etiqueta">{nm.uso_del_suelo}</span>}
+          <span className="etiqueta">{r.clase_suelo}</span>
+        </div>
+        <div className="cifras tres">
+          <Cifra v={nm.altura_max_pisos ?? nm.altura_texto ?? "—"} k="altura máx. (pisos)" />
+          <Cifra v={num(nm.indice_construccion_base, 1)} k="IC base" />
+          <Cifra v={num(nm.indice_construccion_con_derechos, 1)} k="IC con derechos" />
+          <Cifra v={num(nm.densidad_max_viv_ha)} k="densidad viv/ha" />
+          <Cifra v={num(nm.indice_ocupacion_max, 2)} k="índice de ocupación" />
+          <Cifra v={millones(r.valor_suelo_referencia_m2)} k="valor suelo $/m²" />
+        </div>
+        <div className="sub">Hoy: {num(r.construccion_actual?.construcciones)} construcciones, {m2(r.construccion_actual?.area_construida_m2)} construidos.</div>
+        {r.identificacion?.direcciones?.length > 0 && <div className="sub">Dirección: {r.identificacion.direcciones.slice(0, 2).join(" · ")}</div>}
+        <div className="etiquetas">
+          {r.restricciones?.amenazas?.length === 0 && <span className="etiqueta lima">Sin amenazas cruzadas</span>}
+          {(r.restricciones?.amenazas ?? []).map((a: string, i: number) => <span key={i} className={`etiqueta ${/alta/i.test(a) ? "riesgo" : "aviso"}`}>{a.replace(/_/g, " ").replace(":", ": ")}</span>)}
+          {(r.restricciones?.proteccion ?? []).map((a: string, i: number) => <span key={`p${i}`} className="etiqueta riesgo">Protección: {a}</span>)}
+        </div>
+      </div>
+      {r.advertencia && <div className="alerta">{r.advertencia}</div>}
+      {r.aviso_pot && <div className="alerta">{r.aviso_pot}</div>}
     </>
   );
 }

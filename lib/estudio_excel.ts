@@ -1,4 +1,4 @@
-// Exporta un estudio de competencia al Excel con las mismas hojas del formato de Conaltura.
+// Exporta un estudio de competencia al Excel con las mismas hojas del formato de estudio de competencia de constructora.
 import ExcelJS from "exceljs";
 
 const f = (d: unknown) => (d ? new Date(d as any).toISOString().slice(0, 10) : "");
@@ -61,6 +61,7 @@ export async function estudioAExcel(e: any, textos: any = {}): Promise<Buffer> {
   const lista = (xs: any[] = []) => xs.map((x) => `${x.nombre} (${x.distancia_m} m)`).join("; ");
   parrafo(p4, "Breve explicación de la zona:", t4.zona ?? (pr ? `Predio ${pr.id}, ${pr.area_lote_m2} m², suelo ${pr.clase_suelo}. Tratamiento POT: ${pr.tratamiento ?? "s/d"}; uso: ${pr.uso ?? "s/d"}.` : null));
   parrafo(p4, "Lugares y referencias cercanas:", t4.referencias ?? `Comercio: ${lista(env.centros_comerciales_y_supermercados?.cercanos)}. Educación: ${lista(env.educacion?.cercanos)}. Salud: ${lista(env.salud?.cercanos)}. Parques: ${lista(env.parques)}.`);
+  if (pr?.aviso_pot) { const r = p4.addRow([`⚠ ${pr.aviso_pot}`]); p4.mergeCells(r.number, 1, r.number, 10); r.getCell(1).alignment = { wrapText: true }; r.font = { italic: true, color: { argb: "FF9A6B00" } }; r.height = 45; p4.addRow([]); }
   parrafo(p4, "Vías y conectividad:", t4.vias ?? null);
   parrafo(p4, "Transporte público:", t4.transporte ?? `Estaciones de transporte masivo a 1,2 km: ${env.transporte_masivo?.cantidad ?? "s/d"} (${lista(env.transporte_masivo?.cercanas)}). Paraderos de bus a 500 m: ${env.paraderos_bus_500m ?? "s/d"}.`);
   parrafo(p4, "Comercio y servicios:", t4.comercio ?? `${env.centros_comerciales_y_supermercados?.cantidad ?? "s/d"} centros comerciales y supermercados, ${env.educacion?.cantidad ?? "s/d"} instituciones educativas y ${env.salud?.cantidad ?? "s/d"} de salud a 1 km.`);

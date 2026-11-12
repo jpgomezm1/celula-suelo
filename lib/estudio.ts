@@ -1,10 +1,11 @@
-// Estudio de competencia de un lote, con el formato de Conaltura (Etapa 1 · pasos 3 a 9).
+// Estudio de competencia de un lote, con el formato de estudio de competencia de constructora (Etapa 1 · pasos 3 a 9).
 // Datos: Galería Inmobiliaria (ventas, ritmo, oferta; licencia del cliente), Zonario (proyectos sin Galería),
 // catastro + POT del predio (célula) y entorno (OpenStreetMap). La narrativa y las recomendaciones finales
 // las redacta Claude a partir de estos hechos; aquí solo hay cálculos trazables.
 
 import { sql } from "./db";
 import { encontrarPredio } from "./ficha";
+import { avisoPOT } from "./norma_aviso";
 
 export type EstudioInput = {
   nombre?: string;
@@ -26,7 +27,7 @@ const med = (xs: number[]) => { const s = xs.filter((x) => Number.isFinite(x)).s
 const pct = (xs: number[], p: number) => { const s = xs.filter((x) => Number.isFinite(x)).sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(p * (s.length - 1)))] : null; };
 
 /** Medellín: dirección → punto, con la nomenclatura oficial. */
-async function geocodificarMedellin(direccion: string) {
+export async function geocodificarMedellin(direccion: string) {
   const m = direccion.toUpperCase().replace(/\./g, "").replace(/N[°º]|NO\b/g, "#")
     .match(/^(CL|CALLE|CR|CRA|KR|CARRERA|AV|TV|DG|CIRC)\w*\s+(\d+\w*(?:\s+SUR)?)\s*#\s*(\d+\w*(?:\s+SUR)?)\s*-\s*(\d+)/);
   if (!m) return null;
@@ -217,7 +218,7 @@ export async function estudioCompetencia(f: EstudioInput) {
   const unidadesPosibles = predio?.area_construible_inferida && metricas.area_promedio_mediana
     ? Math.floor((Number(predio.area_construible_inferida) * 0.8) / Number(metricas.area_promedio_mediana)) : null;
   const tope = predio?.viviendas_max_inferidas ? Number(predio.viviendas_max_inferidas) : null;
-  // Ritmo de referencia: el de la competencia directa (zoom), como lo usa el estudio de Conaltura.
+  // Ritmo de referencia: el de la competencia directa (zoom), como se usa en los estudios de competencia de constructora.
   const ritmosZoom = zoom.map((g: any) => Math.max(Number(g.ventas_prom_semestre_un) || 0, 0));
   const ritmoReferencia = ritmosZoom.length ? Math.round((ritmosZoom.reduce((a, b) => a + b, 0) / ritmosZoom.length) * 10) / 10 : null;
 
@@ -241,7 +242,7 @@ export async function estudioCompetencia(f: EstudioInput) {
         indice_construccion: predio.ic_max === null ? null : Number(predio.ic_max), densidad_max_viv_ha: predio.densidad_max === null ? null : Number(predio.densidad_max),
         uso: predio.uso, area_construible_m2: predio.area_construible_inferida === null ? null : Number(predio.area_construible_inferida),
         viviendas_max_por_densidad: tope, valor_suelo_m2: predio.valor_suelo_m2 === null ? null : Number(predio.valor_suelo_m2),
-        licencias_historicas: predio.licencias, norma_fuente: predio.norma_fuente, advertencia_norma: predio.pot_servicio === "derogado" ? "POT del servicio derogado" : null,
+        licencias_historicas: predio.licencias, norma_fuente: predio.norma_fuente, advertencia_norma: predio.pot_servicio === "derogado" ? "POT del servicio derogado" : null, aviso_pot: avisoPOT(predio.municipio_dane),
       } : null,
       restricciones: { amenazas, protecciones },
       entorno: env,
