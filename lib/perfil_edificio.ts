@@ -20,6 +20,7 @@ export type PerfilEdificio = {
   eficiencia?: number;
   permitir_compra_derechos?: boolean;
   max_construcciones?: number;
+  norma?: "2014" | "2026";
   limite?: number;
 };
 
@@ -42,21 +43,35 @@ export async function oportunidadesPorPerfil(p: PerfilEdificio) {
   const pisos = p.pisos_min ?? null;
   const derechos = p.permitir_compra_derechos ?? true;
   const limite = Math.min(Math.max(p.limite ?? 25, 1), 100);
+  const usa26 = p.norma === "2026" && mun.dane === "05001";
   const barrios = (p.barrios ?? []).map((b) => `%${b.trim()}%`).filter((b) => b.length > 2);
 
   // 1. Lotes que la norma permite para el perfil (todo el municipio, sin mercado).
   const candidatos = await sql`
-    WITH base AS (
-      SELECT id, municipio, barrio_catastral, area_lote, tratamiento, codigo_tratamiento, uso, altura_max, ic_max, ic_total, densidad_max,
-             area_construible_inferida AS construible, viviendas_max_inferidas AS viv_max, area_construida, construcciones, pisos_max,
+    WITH n AS (
+      -- Norma a usar: la del POT 2014 cargada o, si se pide, la del proyecto de revisión 2026 (v3, julio de 2026)
+      SELECT pp.*,
+             CASE WHEN ${usa26} THEN pp.area_lote * n26.ic_residencial ELSE pp.area_construible_inferida END AS c_base,
+             CASE WHEN ${usa26} THEN n26.densidad_viv_ha * pp.area_lote / 10000.0 ELSE pp.viviendas_max_inferidas END AS v_base,
+             CASE WHEN ${usa26} THEN n26.ic_residencial + COALESCE(n26.ic_adicional, 0) ELSE COALESCE(pp.ic_total, pp.ic_max) END AS ic_tope,
+             CASE WHEN ${usa26} THEN (n26.densidad_viv_ha + COALESCE(n26.densidad_adicional_viv_ha, 0)) * pp.area_lote / 10000.0
+                  ELSE pp.densidad_max * pp.area_lote / 10000.0 * CASE WHEN pp.ic_total > pp.ic_max THEN pp.ic_total / NULLIF(pp.ic_max, 0) ELSE 1 END END AS v_tope,
+             CASE WHEN ${usa26} THEN n26.codigo END AS codigo_2026
+      FROM parcel_profile pp
+      LEFT JOIN norma_pot2026_equivalencia e ON ${usa26} AND e.c14 = pp.codigo_tratamiento
+      LEFT JOIN norma_pot2026 n26 ON n26.codigo = e.c26
+      WHERE pp.municipio_dane = ${mun.dane} AND (NOT ${usa26} OR n26.codigo IS NOT NULL)
+    ),
+    base AS (
+      SELECT id, municipio, barrio_catastral, area_lote, tratamiento, codigo_tratamiento, codigo_2026, uso, altura_max, ic_max, ic_total, densidad_max,
+             c_base AS construible, v_base AS viv_max, area_construida, construcciones, pisos_max,
              valor_suelo_m2, nivel_dato, norma_fuente, lat, lon,
-             LEAST(floor(area_construible_inferida * ${ef} / ${au}), COALESCE(viviendas_max_inferidas, 1e9))::int AS u_base,
-             LEAST(floor(area_lote * COALESCE(ic_total, ic_max) * ${ef} / ${au}),
-                   COALESCE(densidad_max * area_lote / 10000.0 * CASE WHEN ic_total > ic_max THEN ic_total / NULLIF(ic_max, 0) ELSE 1 END, 1e9))::int AS u_derechos
-      FROM parcel_profile
-      WHERE municipio_dane = ${mun.dane} AND tipo_desarrollable AND clase = 'U'
+             LEAST(floor(c_base * ${ef} / ${au}), COALESCE(floor(v_base), 1e9))::int AS u_base,
+             LEAST(floor(area_lote * ic_tope * ${ef} / ${au}), COALESCE(floor(v_tope), 1e9))::int AS u_derechos
+      FROM n
+      WHERE tipo_desarrollable AND clase = 'U'
         AND NOT COALESCE(amenaza_alta, false) AND COALESCE(cardinality(protecciones), 0) = 0
-        AND area_construible_inferida > 0
+        AND c_base > 0
         AND COALESCE(uso, '') NOT ILIKE 'Espacio P%' AND COALESCE(uso, '') NOT ILIKE '%Dotacional%'
         AND (${p.max_construcciones ?? null}::int IS NULL OR COALESCE(construcciones, 0) <= ${p.max_construcciones ?? null})
         AND (${p.area_lote_min ?? null}::numeric IS NULL OR area_lote >= ${p.area_lote_min ?? null})
@@ -80,7 +95,7 @@ export async function oportunidadesPorPerfil(p: PerfilEdificio) {
   // 2. Mercado y señales solo para los mejores 300 candidatos (las consultas espaciales son lo costoso).
   const ids = (candidatos as any[]).slice(0, 300).map((c) => c.id);
   const mercado = ids.length ? await sql`
-    WITH c AS (SELECT id, ST_SetSRID(ST_MakePoint(lon, lat), 4326)::geography AS g FROM parcel_profile WHERE id = ANY(${ids}::text[])),
+    WITH c AS (SELECT id, ST_SetSRID(ST_MakePoint(lon, lat), 4326)::geography AS g FROM parcel_profile WHERE id = ANY(${ids}::text[]))
     SELECT c.id, m.inventario, m.precio_m2_usados, d.pedidos, pr.proyectos, pr.precio_m2_proyectos,
            ga.galeria_proyectos, ga.galeria_precio_m2, ga.galeria_ventas_mes, ga.galeria_oferta, ga.galeria_por_lanzar,
            s.registro AS matricula, s.sucesion, s.derechos_de_cuota, s.dacion_en_pago, s.señal_empresa AS senal_empresa,
@@ -149,7 +164,7 @@ export async function oportunidadesPorPerfil(p: PerfilEdificio) {
       m.litigio && "litigio (riesgo)", m.oferta_compra_publica && "oferta de compra pública (riesgo)", reciente && "comprado hace poco"].filter(Boolean);
     return {
       id: c.id, barrio: c.barrio_catastral, municipio: c.municipio, lat: Number(c.lat), lon: Number(c.lon),
-      area_lote_m2: Math.round(Number(c.area_lote)), tratamiento: c.tratamiento, codigo_tratamiento: c.codigo_tratamiento, uso: c.uso,
+      area_lote_m2: Math.round(Number(c.area_lote)), tratamiento: c.tratamiento, codigo_tratamiento: c.codigo_tratamiento, codigo_pot_2026: c.codigo_2026 ?? null, uso: c.uso,
       norma: { altura_max_pisos: c.altura_max, ic_base: c.ic_max, ic_con_derechos: c.ic_total, densidad_viv_ha: c.densidad_max, fuente: c.norma_fuente },
       unidades_posibles: uPosibles, requiere_compra_derechos: conDerechos, pisos_aprox_con_ocupacion_60: pisosNecesarios,
       construccion_actual: { construcciones: Number(c.construcciones ?? 0), area_construida_m2: Math.round(Number(c.area_construida ?? 0)), pisos_max: c.pisos_max },
@@ -179,7 +194,7 @@ export async function oportunidadesPorPerfil(p: PerfilEdificio) {
     fecha: new Date().toISOString().slice(0, 10),
     perfil: { municipio: mun.nombre, barrios: p.barrios ?? null, tipo_vivienda: tipo, unidades_min: umin, unidades_max: umax, area_unidad_m2: au,
       pisos_min: pisos, area_lote_min: p.area_lote_min ?? null, area_lote_max: p.area_lote_max ?? null, precio_m2_objetivo: p.precio_m2_objetivo ?? null,
-      eficiencia: ef, permitir_compra_derechos: derechos },
+      eficiencia: ef, permitir_compra_derechos: derechos, norma: usa26 ? "Proyecto POT 2026 (v3, julio de 2026), preliminar" : "POT vigente cargado (Medellín: 2014)" },
     resumen: {
       lotes_que_cumplen_la_norma: total,
       con_norma_base: (candidatos as any[]).filter((c) => c.u_base >= umin).length,
@@ -191,7 +206,7 @@ export async function oportunidadesPorPerfil(p: PerfilEdificio) {
     oportunidades: top,
     metodo: "Filtro normativo sobre todos los predios urbanos desarrollables del municipio (sin amenaza alta, suelo de protección, espacio público ni uso dotacional): unidades posibles = mín(área construible × eficiencia ÷ área por unidad, densidad máxima). Puntaje 0–100 = encaje normativo (30; 18 si exige comprar derechos) + precio frente a la zona (20) + absorción según Galería (15) + compradores frente a oferta en Fynder (15) + señales de venta del folio (10) + facilidad por poca construcción existente y pocas construcciones, es decir pocos dueños probables (10). El mercado se calcula para los 300 primeros lotes ordenados por encaje y lote más libre.",
     advertencias: [
-      ...(avisoPOT(mun.dane) ? [avisoPOT(mun.dane)!] : []),
+      ...(usa26 ? ["Calculado con la norma del Proyecto de Acuerdo 104 de 2026 (Tomo V v3, julio de 2026): preliminar, puede cambiar con el texto aprobado; la altura máxima y la clase de tratamiento se toman aún del POT 2014. La Zona 1 no está incluida (tabla no legible en el PDF)."] : avisoPOT(mun.dane) ? [avisoPOT(mun.dane)!] : []),
       "Las unidades posibles son una inferencia sobre la norma del POT; no son una cabida arquitectónica (retiros, cesiones y parqueaderos pueden reducirlas).",
       "Los lotes catastrales pueden requerir englobe; la ficha de cada predio muestra la construcción existente y el folio.",
       "Los datos de Galería son de uso interno del cliente que los contrata.",

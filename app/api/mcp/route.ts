@@ -36,7 +36,7 @@ Flujos recomendados:
 2. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 3. "¿Este lote da?" → ficha_predio → prefactibilidad_lote (con el precio pedido por el lote).
 4. Mercado de una zona → mercado_zona, buscar_proyectos, ficha_proyecto, constructora.
-Norma de Medellín: viene del POT de 2014 (Acuerdo 48); el Concejo aprobó su revisión el 5 de noviembre de 2026 y los valores pueden cambiar cuando entre en vigencia: menciónalo cuando des índices, densidades o unidades de Medellín.
+Norma de Medellín: viene del POT de 2014 (Acuerdo 48); el Concejo aprobó su revisión el 5 de noviembre de 2026 y los valores pueden cambiar cuando entre en vigencia: menciónalo cuando des índices, densidades o unidades de Medellín. Las respuestas traen 'pot_2026_preliminar' con la norma del proyecto de acuerdo (v3, julio de 2026): preséntala como preliminar y compárala con la de 2014.
 Reglas: usa cobertura para saber qué tan completo es un municipio (Itagüí, La Estrella, Caldas y Copacabana tienen norma de un POT derogado; el Oriente no tiene norma de tratamiento). Las unidades y el área construible son inferencias sobre la norma, no cabidas. Expresa el dinero en millones de pesos. Nunca entregues nombres, teléfonos ni correos de personas naturales: para contactar dueños usa solo la ruta legal de contacto_predio. Los datos de Galería Inmobiliaria son confidenciales y de uso interno del cliente.`;
 const MUNICIPIOS = "Medellín, Envigado, Sabaneta, Itagüí, La Estrella, Caldas, Bello, Copacabana, Girardota, Barbosa, Rionegro, El Retiro, La Ceja, Guarne, Marinilla, El Carmen de Viboral, La Unión";
 const predio = {
@@ -194,6 +194,7 @@ const mcp = createMcpHandler(
         eficiencia: z.number().min(0.5).max(0.95).optional().describe("Área vendible / área construida (defecto 0,8)"),
         permitir_compra_derechos: z.boolean().optional().describe("Incluir lotes que solo llegan comprando derechos de construcción (defecto sí)"),
         max_construcciones: z.number().int().min(0).optional().describe("Excluir lotes con más construcciones que esto (muchos dueños)"),
+        norma: z.enum(["2014", "2026"]).optional().describe("Medellín: '2026' usa la norma del proyecto de revisión del POT (v3, julio de 2026, preliminar); por defecto la del POT 2014"),
         limite: z.number().int().min(1).max(100).optional().describe("Lotes en el ranking (defecto 25)"),
       }),
     }, seguro(async (a: any) => crearEstudioPerfil(a)));
@@ -201,7 +202,7 @@ const mcp = createMcpHandler(
     server.registerTool("consulta_norma", {
       annotations: LECTURA,
       title: "Consulta de norma de un lote",
-      description: "Qué se puede hacer en un lote, en una respuesta corta: tratamiento, uso del suelo, altura, índice de construcción (base y con derechos), densidad, área construible, viviendas y unidades estimadas, construcción actual, amenazas y protección, valor del suelo de referencia y las matrículas y direcciones del predio. Se busca por CBML, id de predio, matrícula inmobiliaria (Medellín), dirección de Medellín o coordenada (p. ej. la de Google Maps). Incluye el aviso de vigencia del POT.",
+      description: "Qué se puede hacer en un lote, en una respuesta corta: tratamiento, uso del suelo, altura, índice de construcción (base y con derechos), densidad, área construible, viviendas y unidades estimadas, construcción actual, amenazas y protección, valor del suelo de referencia y las matrículas y direcciones del predio. Se busca por CBML, id de predio, matrícula inmobiliaria (Medellín), dirección de Medellín o coordenada (p. ej. la de Google Maps). En Medellín incluye al lado la norma del proyecto de revisión del POT 2026 (v3, julio de 2026) y la comparación con la de 2014 (índice, densidad, área construible y viviendas). Incluye el aviso de vigencia del POT.",
       inputSchema: z.object({
         cbml: z.string().optional(), id: z.string().optional(),
         matricula: z.string().optional().describe("Matrícula inmobiliaria, con o sin oficina (p. ej. '001-728976' o '728976')"),

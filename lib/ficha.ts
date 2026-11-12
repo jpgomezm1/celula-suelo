@@ -2,6 +2,7 @@ import { procedencias, sql } from "./db";
 import { mercadoZona } from "./mercado";
 import { correr, millones } from "./prefactibilidad";
 import { avisoPOT } from "./norma_aviso";
+import { bloque2026Predio } from "./norma2026";
 
 const INFERENCIA = "Cálculo propio con la norma y el catastro; orientativo. No reemplaza un estudio de cabida ni la consulta a Planeación.";
 
@@ -109,8 +110,10 @@ export async function fichaPredio(f: FichaInput) {
     : p.pot_servicio === "por_verificar" ? "Norma tomada del servicio público del municipio; vigencia del POT por verificar."
     : null;
 
+  const pot2026 = await bloque2026Predio(p);
   return {
     encontrado: true,
+    pot_2026_preliminar: pot2026,
     id: p.id,
     ubicacion: { municipio: p.municipio, barrio: p.barrio_catastral, clave_catastral: p.clave_local, clase: p.clase === "U" ? "urbano" : "rural", lat, lon },
     nivel_dato: p.nivel_dato,

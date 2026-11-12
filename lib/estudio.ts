@@ -6,6 +6,7 @@
 import { sql } from "./db";
 import { encontrarPredio } from "./ficha";
 import { avisoPOT } from "./norma_aviso";
+import { bloque2026Predio } from "./norma2026";
 
 export type EstudioInput = {
   nombre?: string;
@@ -218,6 +219,7 @@ export async function estudioCompetencia(f: EstudioInput) {
   const unidadesPosibles = predio?.area_construible_inferida && metricas.area_promedio_mediana
     ? Math.floor((Number(predio.area_construible_inferida) * 0.8) / Number(metricas.area_promedio_mediana)) : null;
   const tope = predio?.viviendas_max_inferidas ? Number(predio.viviendas_max_inferidas) : null;
+  const pot2026: any = predio ? await bloque2026Predio(predio, metricas.area_promedio_mediana ?? 65) : null;
   // Ritmo de referencia: el de la competencia directa (zoom), como se usa en los estudios de competencia de constructora.
   const ritmosZoom = zoom.map((g: any) => Math.max(Number(g.ventas_prom_semestre_un) || 0, 0));
   const ritmoReferencia = ritmosZoom.length ? Math.round((ritmosZoom.reduce((a, b) => a + b, 0) / ritmosZoom.length) * 10) / 10 : null;
@@ -277,6 +279,7 @@ export async function estudioCompetencia(f: EstudioInput) {
       ritmo_ventas_referencia_mes: ritmoReferencia,
       ritmo_ventas_por_competidor: zoom.map((g: any) => ({ proyecto: g.proyecto, ventas_mes_prom_semestre: Number(g.ventas_prom_semestre_un), ventas_ultimo_mes: Number(g.ventas_mes_un) })),
       unidades_posibles_por_norma: unidadesPosibles !== null && tope ? Math.min(unidadesPosibles, tope) : unidadesPosibles,
+      norma_pot_2026_preliminar: pot2026 ? { ...pot2026.que_se_puede_hacer, frente_a_2014: pot2026.frente_a_2014, estado: pot2026.estado } : null,
       meses_para_vender_al_ritmo_referencia: unidadesPosibles && ritmoReferencia && ritmoReferencia > 0
         ? Math.round((Math.min(unidadesPosibles, tope ?? unidadesPosibles) / ritmoReferencia) * 10) / 10 : null,
       nota: "Con estos insumos se redactan las recomendaciones (tipo de producto, área, tipologías, entrega, precio objetivo, zonas comunes, enfoque, público y diferencial) y la conclusión. Etapa 2 (cotizaciones, zonas comunes, hallazgos arquitectónicos) sigue siendo trabajo de campo.",

@@ -97,7 +97,7 @@ export default function Mapa() {
     const csv = "\ufeff" + filas.map((f) => f.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = `norma - ${resLotes.archivo ?? "lotes"}.csv`; a.click();
   }
-  const [perfil, setPerfil] = useState({ tipo_vivienda: "NO VIS", unidades_min: 150, unidades_max: 300, area_unidad_m2: 65, pisos_min: 12, area_lote_min: "", precio_m2_objetivo: "", barrios: "" });
+  const [perfil, setPerfil] = useState({ tipo_vivienda: "NO VIS", unidades_min: 150, unidades_max: 300, area_unidad_m2: 65, pisos_min: 12, area_lote_min: "", precio_m2_objetivo: "", barrios: "", norma: "2014" });
   const [resPerfil, setResPerfil] = useState<any>(null);
 
   const rankingRef = useRef<any[]>([]);
@@ -120,7 +120,7 @@ export default function Mapa() {
     const body = { municipio, tipo_vivienda: perfil.tipo_vivienda, unidades_min: n(perfil.unidades_min), unidades_max: n(perfil.unidades_max),
       area_unidad_m2: n(perfil.area_unidad_m2), pisos_min: n(perfil.pisos_min), area_lote_min: n(perfil.area_lote_min),
       precio_m2_objetivo: perfil.precio_m2_objetivo ? Number(perfil.precio_m2_objetivo) * 1e6 : undefined,
-      barrios: perfil.barrios ? perfil.barrios.split(",").map((x) => x.trim()).filter(Boolean) : undefined, limite: 30 };
+      barrios: perfil.barrios ? perfil.barrios.split(",").map((x) => x.trim()).filter(Boolean) : undefined, limite: 30, norma: perfil.norma };
     try {
       const r = await fetch("/api/perfil", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json();
@@ -359,6 +359,9 @@ export default function Mapa() {
                               <Cifra v={num(r.que_se_puede_hacer?.viviendas_max_por_densidad)} k="viviendas por densidad" />
                               <Cifra v={num(r.que_se_puede_hacer?.unidades_estimadas)} k="unidades estimadas" />
                             </div>
+                            {r.pot_2026_preliminar?.disponible !== false && (r.pot_2026_preliminar?.que_se_puede_hacer || r.pot_2026_preliminar?.area_construible_m2) && (
+                              <div className="sub">POT 2026 (preliminar): {m2(r.pot_2026_preliminar.que_se_puede_hacer?.area_construible_m2 ?? r.pot_2026_preliminar.area_construible_m2)} construibles · {num(r.pot_2026_preliminar.que_se_puede_hacer?.con_derechos?.viviendas_max_por_densidad ?? r.pot_2026_preliminar.con_derechos_viviendas)} viviendas con derechos</div>
+                            )}
                             {(r.amenaza_alta || r.restricciones?.amenaza_alta) && <span className="etiqueta riesgo">Amenaza alta</span>}
                           </>
                         )}
@@ -477,6 +480,12 @@ export default function Mapa() {
                       <div className="fila">
                         <div className="campo"><label>Lote mínimo (m²)</label><input className="entrada" type="number" placeholder="opcional" value={perfil.area_lote_min} onChange={(e) => setPerfil({ ...perfil, area_lote_min: e.target.value })} /></div>
                         <div className="campo"><label>Precio objetivo ($M/m²)</label><input className="entrada" type="number" step="0.1" placeholder="p. ej. 9,5" value={perfil.precio_m2_objetivo} onChange={(e) => setPerfil({ ...perfil, precio_m2_objetivo: e.target.value })} /></div>
+                      </div>
+                      <div className="campo">
+                        <label>Norma (Medellín)</label>
+                        <div className="segmento">
+                          {[["2014", "POT 2014 vigente"], ["2026", "Proyecto POT 2026"]].map(([v, t]) => <button key={v} className={perfil.norma === v ? "on" : ""} onClick={() => setPerfil({ ...perfil, norma: v })}>{t}</button>)}
+                        </div>
                       </div>
                       <div className="campo"><label>Barrios (opcional, separados por coma)</label><input className="entrada" placeholder="p. ej. Guayabal, Belén" value={perfil.barrios} onChange={(e) => setPerfil({ ...perfil, barrios: e.target.value })} /></div>
                     </div>
@@ -675,6 +684,7 @@ function FichaPredio({ d, contacto, pedirContacto, usarEnEstudio }: { d: any; co
       <button className="btn btn-primario btn-bloque" onClick={usarEnEstudio}>Usar este lote en un estudio de competencia</button>
       {d.norma.advertencia && <div className="alerta">{d.norma.advertencia}</div>}
       {d.norma.aviso_pot && <div className="alerta">{d.norma.aviso_pot}</div>}
+      <Comparacion2026 b={d.pot_2026_preliminar} />
 
       <div className="tarjeta">
         <h4>Norma y potencial</h4>
@@ -757,6 +767,33 @@ function FichaPredio({ d, contacto, pedirContacto, usarEnEstudio }: { d: any; co
   );
 }
 
+function Comparacion2026({ b }: { b: any }) {
+  if (!b) return null;
+  if (!b.disponible) return <div className="nota">POT 2026: {b.motivo}</div>;
+  const f = b.frente_a_2014;
+  const fila = (k: string, x: any, fmt: (v: any) => string) => (
+    <tr key={k}><td>{k}</td><td>{fmt(x.pot2014)}</td><td><b>{fmt(x.pot2026)}</b></td><td style={{ color: String(x.cambio ?? "").startsWith("+") && x.cambio !== "+0 %" ? "#3f8f4a" : String(x.cambio ?? "").startsWith("-") ? "#c0392b" : undefined }}>{x.cambio ?? "—"}</td></tr>
+  );
+  const cd = b.que_se_puede_hacer?.con_derechos;
+  return (
+    <div className="tarjeta" style={{ borderColor: "var(--acento)" }}>
+      <h4>Proyecto POT 2026 · {b.codigo_2026}</h4>
+      <table className="tabla">
+        <thead><tr><th></th><th>POT 2014</th><th>POT 2026</th><th>Cambio</th></tr></thead>
+        <tbody>
+          {fila("Índice de construcción", f.indice_construccion, (v) => num(v, 1))}
+          {fila("Densidad viv/ha", f.densidad_viv_ha, (v) => num(v))}
+          {fila("Área construible", f.area_construible_m2, (v) => m2(v))}
+          {fila("Viviendas", f.viviendas, (v) => num(v))}
+        </tbody>
+      </table>
+      {cd && <div className="sub">Con compra de derechos (2026): {m2(cd.area_construible_m2)} construibles y hasta {num(cd.viviendas_max_por_densidad)} viviendas ({num(b.norma?.derechos_adicionales?.densidad_total_viv_ha)} viv/ha, IC {num(b.norma?.derechos_adicionales?.ic_total, 1)}).</div>}
+      {f.lectura && <div className="sub"><b>{f.lectura}</b></div>}
+      <div className="nota">{b.estado}</div>
+    </div>
+  );
+}
+
 function FichaNorma({ r }: { r: any }) {
   const q = r.que_se_puede_hacer ?? {};
   const nm = r.norma ?? {};
@@ -797,6 +834,7 @@ function FichaNorma({ r }: { r: any }) {
           {(r.restricciones?.proteccion ?? []).map((a: string, i: number) => <span key={`p${i}`} className="etiqueta riesgo">Protección: {a}</span>)}
         </div>
       </div>
+      <Comparacion2026 b={r.pot_2026_preliminar} />
       {r.advertencia && <div className="alerta">{r.advertencia}</div>}
       {r.aviso_pot && <div className="alerta">{r.aviso_pot}</div>}
     </>

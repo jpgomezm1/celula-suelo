@@ -5,13 +5,14 @@ import { encontrarPredio } from "./ficha";
 import { geocodificarMedellin } from "./estudio";
 import { avisoPOT } from "./norma_aviso";
 import { leerKml, type LugarKml } from "./kml";
+import { bloque2026, normas2026 } from "./norma2026";
 
 export type ConsultaNormaInput = { id?: string; cbml?: string; matricula?: string; direccion?: string; lat?: number; lon?: number; area_unidad_m2?: number };
 
 const n = (v: unknown) => (v === null || v === undefined || v === "" ? null : Number(v));
 const limpiarMatricula = (m: string) => m.replace(/^\s*\d{3}[a-z]?\s*-\s*/i, "").replace(/\D/g, "");
 
-function resumenNorma(p: any, au = 65) {
+function resumenNorma(p: any, au = 65, n26?: Map<string, any>) {
   const construible = n(p.area_construible_inferida);
   const construibleDerechos = n(p.ic_total) && n(p.area_lote) ? Math.round(n(p.ic_total)! * n(p.area_lote)!) : null;
   const viv = n(p.viviendas_max_inferidas);
@@ -34,6 +35,7 @@ function resumenNorma(p: any, au = 65) {
     restricciones: { amenazas: p.amenazas ?? [], amenaza_alta: !!p.amenaza_alta, proteccion: p.protecciones ?? [] },
     valor_suelo_referencia_m2: n(p.valor_suelo_m2) ? Math.round(n(p.valor_suelo_m2)!) : null,
     potencial_preliminar: !!p.potencial_preliminar,
+    pot_2026_preliminar: n26 ? bloque2026(p, n26.get(p.codigo_tratamiento), au) : null,
     aviso_pot: avisoPOT(p.municipio_dane),
     advertencia: p.pot_servicio === "derogado" ? "La capa pública de este municipio es de un POT derogado: la norma mostrada puede no estar vigente." : null,
   };
@@ -62,7 +64,7 @@ export async function consultaNorma(f: ConsultaNormaInput) {
   return {
     encontrado: true, buscado_por: via,
     identificacion: { predio: p.id, cbml: p.municipio_dane === "05001" ? String(p.id).split(":")[1] : null, matriculas, direcciones: dirs.map((d: any) => d.direccion) },
-    ...resumenNorma(p, f.area_unidad_m2),
+    ...resumenNorma(p, f.area_unidad_m2, await normas2026([p.codigo_tratamiento])),
   };
 }
 
@@ -77,7 +79,7 @@ export async function consultaNormaLotes(entrada: { kml?: string; lotes?: { nomb
   for (const l of lugares) {
     if (l.punto) {
       const p = await encontrarPredio({ lon: l.punto[0], lat: l.punto[1] });
-      resultados.push(p ? { nombre: l.nombre, tipo: "punto", ...resumenNorma(p, au) } : { nombre: l.nombre, tipo: "punto", encontrado: false, mensaje: "El punto no cae sobre un predio cargado." });
+      resultados.push(p ? { nombre: l.nombre, tipo: "punto", ...resumenNorma(p, au, await normas2026([p.codigo_tratamiento])) } : { nombre: l.nombre, tipo: "punto", encontrado: false, mensaje: "El punto no cae sobre un predio cargado." });
       continue;
     }
     const geo = JSON.stringify({ type: "Polygon", coordinates: [l.poligono] });
@@ -90,6 +92,16 @@ export async function consultaNormaLotes(entrada: { kml?: string; lotes?: { nomb
     if (!dentro.length) { resultados.push({ nombre: l.nombre, tipo: "poligono", encontrado: false, mensaje: "El polígono no cubre al menos la mitad de ningún predio cargado." }); continue; }
     const suma = (k: string) => dentro.reduce((a, p) => a + (n(p[k]) ?? 0), 0);
     const tratamientos = [...new Set(dentro.map((p) => p.tratamiento).filter(Boolean))];
+    const n26 = await normas2026(dentro.map((p) => p.codigo_tratamiento));
+    const b26 = dentro.map((p) => bloque2026(p, n26.get(p.codigo_tratamiento), au));
+    const con26 = b26.filter((b: any) => b?.disponible);
+    const pot2026 = dentro[0].municipio_dane === "05001" ? {
+      predios_con_norma_2026: con26.length, de: dentro.length,
+      area_construible_m2: con26.reduce((a: number, b: any) => a + (b.que_se_puede_hacer.area_construible_m2 ?? 0), 0),
+      viviendas_max_por_densidad: con26.reduce((a: number, b: any) => a + (b.que_se_puede_hacer.viviendas_max_por_densidad ?? 0), 0),
+      con_derechos_viviendas: con26.reduce((a: number, b: any) => a + (b.que_se_puede_hacer.con_derechos?.viviendas_max_por_densidad ?? b.que_se_puede_hacer.viviendas_max_por_densidad ?? 0), 0),
+      estado: con26[0]?.estado ?? null,
+    } : null;
     const construible = suma("area_construible_inferida");
     const viv = suma("viviendas_max_inferidas");
     resultados.push({
@@ -98,9 +110,10 @@ export async function consultaNormaLotes(entrada: { kml?: string; lotes?: { nomb
       que_se_puede_hacer: { area_construible_m2: Math.round(construible) || null, viviendas_max_por_densidad: Math.round(viv) || null,
         unidades_estimadas: construible ? Math.min(Math.floor((construible * 0.8) / au), viv || Infinity) : null, supuesto: `${au} m² por unidad, 80 % vendible; suma de predios (englobe)` },
       construccion_actual: { construcciones: suma("construcciones"), area_construida_m2: Math.round(suma("area_construida")) },
+      pot_2026_preliminar: pot2026,
       amenaza_alta: dentro.some((p) => p.amenaza_alta), con_proteccion: dentro.some((p) => (p.protecciones ?? []).length > 0),
       aviso_pot: avisoPOT(dentro[0].municipio_dane),
-      detalle: dentro.slice(0, 30).map((p) => resumenNorma(p, au)),
+      detalle: dentro.slice(0, 30).map((p) => resumenNorma(p, au, n26)),
     });
   }
   return { lotes: resultados.length, resultados };

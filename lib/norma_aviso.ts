@@ -7,7 +7,7 @@ export const POT_MEDELLIN = {
 
 export function avisoPOT(dane: string | null | undefined): string | null {
   if (dane === "05001") {
-    return `Norma tomada del ${POT_MEDELLIN.vigente_en_datos}. ${POT_MEDELLIN.revision} Índices, densidades y alturas de este predio pueden cambiar cuando la revisión entre en vigencia: validar antes de decidir.`;
+    return `Norma tomada del ${POT_MEDELLIN.vigente_en_datos}. ${POT_MEDELLIN.revision} Índices, densidades y alturas de este predio pueden cambiar cuando la revisión entre en vigencia: validar antes de decidir. La consulta muestra al lado la norma del proyecto de acuerdo (v3, julio de 2026) cuando está disponible.`;
   }
   return null;
 }

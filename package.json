@@ -24,6 +24,7 @@
     "medata:predios": "node --env-file=.env.local --import tsx ingest/medata_predios.ts",
     "croma:folios": "node --env-file=.env.local --import tsx sync/croma_folios.ts",
     "direcciones": "node --env-file=.env.local --import tsx ingest/direcciones.ts",
+    "pot2026": "node --env-file=.env.local --import tsx ingest/pot2026.ts",
     "usuarios": "node --env-file=.env.local --import tsx scripts/usuarios.ts",
     "osm:vias": "node --env-file=.env.local --import tsx ingest/osm_vias.ts",
     "osm:poi": "node --env-file=.env.local --import tsx ingest/osm_poi.ts",
