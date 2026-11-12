@@ -1,6 +1,8 @@
 "use client";
 // Paneles del workspace: ficha completa del lote, comparación, cartera, zona, POT 2026 y estudio de competencia.
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+const Cabida3D = dynamic(() => import("./Cabida3D"), { ssr: false });
 import { Cambio, Cifra, Luz, Seccion, Vacio, m2, millones, num, pct } from "./comunes";
 
 /* ───────────── Inicio ───────────── */
@@ -112,6 +114,8 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, goo
 
       <PanelTopografia id={f.predio} />
 
+      <PanelCabida id={f.predio} />
+
       <Seccion titulo="Norma: POT 2014 y proyecto POT 2026">
         <div className="etiquetas">
           {f.norma?.codigo && <span className="etiqueta">{f.norma.codigo}{b26?.codigo_2026 ? ` → ${b26.codigo_2026}` : ""}</span>}
@@ -210,6 +214,58 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, goo
       {f.aviso_pot && <div className="alerta">{f.aviso_pot}</div>}
       <div className="nota legal">{a.aviso_legal}</div>
     </>
+  );
+}
+
+/* ───────────── Cabida arquitectónica (3D + DXF) ───────────── */
+function PanelCabida({ id }: { id: string }) {
+  const [o, setO] = useState<any>({ escenario: "base", area_unidad_m2: 65, retiro_frontal_m: 5, retiro_lateral_m: 3, separacion_torres_m: 12, profundidad_torre_m: 18, pisos_plataforma: 0 });
+  const [m, setM] = useState<any>(null);
+  const [cargando, setCargando] = useState(false);
+  const [ver, setVer] = useState(false);
+  useEffect(() => { setM(null); setVer(false); }, [id]);
+  const qs = () => new URLSearchParams({ id, ...Object.fromEntries(Object.entries(o).map(([k, v]) => [k, String(v)])) }).toString();
+  async function generar() {
+    setCargando(true);
+    try { setM(await (await fetch(`/api/cabida?${qs()}`)).json()); } catch (e) { setM({ disponible: false, mensaje: (e as Error).message }); } finally { setCargando(false); }
+  }
+  const campo = (k: string, t: string, paso = 1) => (
+    <div className="campo"><label>{t}</label><input className="entrada" type="number" step={paso} value={o[k]} onChange={(e) => setO({ ...o, [k]: Number(e.target.value) })} /></div>);
+  const r = m?.resumen;
+  return (
+    <Seccion titulo="Cabida arquitectónica (3D y DXF)">
+      <div className="nota">Ubica torres dentro del lote con retiros, núcleo, pasillos, apartamentos por piso, plataforma y sótanos con parqueaderos. Exporta a DXF (AutoCAD, Revit, SketchUp, Rhino).</div>
+      <div className="campo"><label>Escenario de norma</label>
+        <div className="segmento">{[["conservador", "Conservador"], ["base", "Base"], ["maximo", "Máximo"]].map(([k, t]) => <button key={k} className={o.escenario === k ? "on" : ""} onClick={() => setO({ ...o, escenario: k })}>{t}</button>)}</div>
+      </div>
+      <div className="fila">{campo("area_unidad_m2", "m² por apartamento")}{campo("pisos_plataforma", "Pisos de plataforma")}</div>
+      <div className="fila">{campo("retiro_frontal_m", "Retiro frontal (m)", 0.5)}{campo("retiro_lateral_m", "Retiros laterales y fondo (m)", 0.5)}</div>
+      <div className="fila">{campo("separacion_torres_m", "Separación entre torres (m)", 0.5)}{campo("profundidad_torre_m", "Profundidad de torre (m)", 0.5)}</div>
+      <button className="btn btn-primario btn-bloque" disabled={cargando} onClick={generar}>{cargando ? "Calculando la cabida…" : m ? "Recalcular cabida" : "Generar cabida arquitectónica"}</button>
+      {m && !m.disponible && <div className="error">{m.mensaje}</div>}
+      {r && (
+        <>
+          <div className="cifras tres">
+            <Cifra v={`${r.torres} torres`} k={`${r.pisos_totales} pisos · ${num(r.altura_m, 1)} m`} />
+            <Cifra v={num(r.unidades)} k={`unidades · ${r.aptos_por_piso} por piso de ${num(r.area_apto_promedio_m2)} m²`} />
+            <Cifra v={`${r.aprovechamiento_de_la_norma_pct} %`} k="de lo que permite la norma" />
+          </div>
+          <div className="cifras tres">
+            <Cifra v={m2(r.area_construida_sobre_rasante_m2)} k={`construidos · IC ${num(r.indice_construccion_resultante, 2)}`} />
+            <Cifra v={`${r.sotanos} sótanos`} k={`${num(r.parqueaderos_dibujados)} parqueaderos (piden ${num(r.parqueaderos_requeridos)})`} />
+            <Cifra v={num(r.indice_ocupacion_resultante, 2)} k="índice de ocupación" />
+          </div>
+          <div className="nota">Limitado por: {r.limitado_por}. {m.torres.map((t: any) => `Torre ${t.torre}: ${num(t.largo, 0)} × ${num(t.ancho, 0)} m, ${t.aptos_por_piso} aptos/piso`).join(" · ")}.</div>
+          <div className="acciones">
+            <button className="btn btn-primario" onClick={() => setVer(true)}>Ver en 3D</button>
+            <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=dxf`}>Descargar DXF</a>
+            <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=dxf&local=1`} title="Origen en el centro del lote (más cómodo para dibujar)">DXF coordenadas locales</a>
+          </div>
+          <div className="nota">{m.marco.nombre}. {m.aviso}</div>
+        </>
+      )}
+      {ver && m?.disponible && <Cabida3D modelo={m} onCerrar={() => setVer(false)} />}
+    </Seccion>
   );
 }
 

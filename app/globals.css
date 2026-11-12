@@ -430,3 +430,13 @@ textarea.entrada { resize: vertical; font-family: inherit; }
 .modal-3d.completo { top: 60px; padding: 0; background: transparent; place-items: stretch; }
 .modal-3d.completo .caja-3d { width: 100%; height: 100%; border-radius: 0; box-shadow: none; }
 .modal-3d.completo { overflow: hidden; }
+
+/* ===== Visor de cabida ===== */
+.visor-cabida { position: relative; min-height: 0; }
+.lienzo-cabida { position: absolute; inset: 0; }
+.tip-cabida { position: absolute; background: var(--marca-osc, #08061a); color: #fff; font-size: 12px; padding: 4px 8px; border-radius: 6px; pointer-events: none; white-space: nowrap; }
+.controles-cabida { position: absolute; left: 14px; top: 14px; width: 270px; background: rgba(255,255,255,.94); border: 1px solid var(--linea); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; font-size: 13px; box-shadow: 0 6px 20px rgba(8,6,26,.12); }
+.controles-cabida input[type=range] { width: 100%; }
+.capas-cabida { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
+.leyenda-cabida { display: flex; flex-wrap: wrap; gap: 6px 10px; font-size: 11px; color: var(--texto-2); }
+.leyenda-cabida i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }

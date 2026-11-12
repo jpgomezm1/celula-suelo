@@ -16,6 +16,7 @@ import { analizarLote, cabida, usosPermitidos, afectaciones } from "@/lib/analis
 import { analizarCartera, analizarZona, cambioPot, compararLotes, novedadesNormativas } from "@/lib/herramientas";
 import { bloque2026Predio } from "@/lib/norma2026";
 import { volumenesLote } from "@/lib/volumen";
+import { cabidaArquitectonica } from "@/lib/cabida_modelo";
 import { topografiaLote } from "@/lib/topografia";
 import { entornoLote, lecturaEntorno } from "@/lib/entorno";
 import { fachadaLote } from "@/lib/fachada";
@@ -54,7 +55,7 @@ const LECTURA = { readOnlyHint: true, openWorldHint: false } as const;
 const ESCRITURA = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 const INSTRUCCIONES = `Inteligencia de suelo para 17 municipios del Valle de Aburrá y el Oriente antioqueño: catastro, norma del POT, mercado (Fynder), proyectos nuevos (Zonario y Galería Inmobiliaria) y señales de venta de los folios.
 Flujos recomendados:
-0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Cómo se ve el lote desde la calle → fachada_street_view. Cartera que se actualiza sola en Google Earth Pro → analizar_cartera (cartera_viva_google_earth_pro). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
+0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Cómo se ve el lote desde la calle → fachada_street_view. Cabida arquitectónica con torres, apartamentos, sótanos y parqueaderos, en 3D y DXF → cabida_arquitectonica. Cartera que se actualiza sola en Google Earth Pro → analizar_cartera (cartera_viva_google_earth_pro). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
 1. "¿Dónde puedo hacer este edificio?" → oportunidades_por_perfil (perfil de producto sobre todo un municipio) → ficha_predio de los mejores → contacto_predio.
 2. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 3. "¿Este lote da?" → ficha_predio → prefactibilidad_lote (con el precio pedido por el lote).
@@ -327,6 +328,29 @@ const mcp = createMcpHandler(
       const { geojson, ...ent } = e;
       return { predio: c.predio, barrio: c.barrio, area_lote_m2: c.area_lote_m2, topografia: t, entorno_alturas: ent,
         fachada_street_view: `${URL_BASE()}/mapa`, nota: "Para ver el perfil dibujado y la fachada de Street View, abra la ficha del lote en la plataforma." };
+    }));
+
+    server.registerTool("cabida_arquitectonica", {
+      annotations: LECTURA,
+      title: "Cabida arquitectónica esquemática (3D y DXF)",
+      description: "Arma una cabida arquitectónica esquemática de un lote: ubica torres rectangulares dentro del área edificable (lote menos retiros), con núcleo (punto fijo), pasillo y apartamentos por piso, plataforma opcional y sótanos con los parqueaderos dibujados (2,5 × 5 m, calles de 6 m). Calcula pisos, altura, unidades, área construida, índices resultantes, parqueaderos dibujados frente a requeridos y qué la limita (densidad, área construible o altura). Devuelve el enlace a un DXF 3D (AutoCAD, Revit, SketchUp, Rhino) georreferenciado en EPSG 9377 y otro en coordenadas locales. Retiros, separación y profundidad de torre son supuestos editables (por defecto 5 m frontal, 3 m laterales, 12 m entre torres, 18 m de profundidad): dígale al usuario que los verifique con la norma específica. Para verla en 3D: ficha del lote en la plataforma → Cabida arquitectónica → Ver en 3D.",
+      inputSchema: z.object({ ...LOTE,
+        escenario: z.enum(["conservador", "base", "maximo"]).optional().describe("Norma: POT 2014 base, proyecto POT 2026 (defecto) o comprando derechos"),
+        area_unidad_m2: z.number().min(30).max(250).optional(), pisos_plataforma: z.number().int().min(0).max(3).optional(),
+        retiro_frontal_m: z.number().min(0).max(20).optional(), retiro_lateral_m: z.number().min(0).max(20).optional(),
+        separacion_torres_m: z.number().min(4).max(40).optional(), profundidad_torre_m: z.number().min(9).max(30).optional(),
+        largo_max_torre_m: z.number().min(16).max(80).optional(), max_torres: z.number().int().min(1).max(10).optional() }),
+    }, seguro(async (a: any) => {
+      const { c, p } = await loteDe(a);
+      if (!p) return c;
+      const { cbml, id, matricula, direccion, lat, lon, ...op } = a;
+      const m: any = await cabidaArquitectonica(c.predio, op);
+      if (!m.disponible) return { predio: c.predio, disponible: false, motivo: m.mensaje };
+      const qs = new URLSearchParams({ id: c.predio, ...Object.fromEntries(Object.entries(op).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])) }).toString();
+      return { predio: c.predio, barrio: m.barrio, resumen: m.resumen, torres: m.torres.map(({ huella, ...t }: any) => t), supuestos: m.supuestos,
+        dxf_georreferenciado: `${URL_BASE()}/api/cabida?${qs}&formato=dxf`, dxf_coordenadas_locales: `${URL_BASE()}/api/cabida?${qs}&formato=dxf&local=1`,
+        ver_en_3d: `${URL_BASE()}/mapa (ficha del lote → Cabida arquitectónica → Ver en 3D)`, marco: m.marco.nombre,
+        dwg: "AutoCAD y BricsCAD abren el DXF y lo guardan como DWG (Guardar como → DWG).", aviso: m.aviso };
     }));
 
     server.registerTool("fachada_street_view", {
