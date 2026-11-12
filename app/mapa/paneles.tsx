@@ -168,16 +168,17 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, goo
       </Seccion>
 
       {a.valor_residual && (
-        <Seccion titulo="Valor residual del suelo">
+        <Seccion titulo="Valor residual rápido (indicativo)">
           {a.valor_residual.disponible === false ? <div className="sub">{a.valor_residual.motivo}</div> : (
             <>
               <div className="cifras">
-                <Cifra v={a.valor_residual.valor_residual_legible} k="máximo a pagar por el lote" />
+                <Cifra v={a.valor_residual.valor_residual_legible} k="residual estático (techo teórico)" />
                 <Cifra v={millones(a.valor_residual.valor_residual_m2)} k="por m² de lote" />
                 <Cifra v={millones(a.valor_residual.valor_suelo_referencia_m2)} k="referencia catastral $/m²" />
                 <Cifra v={millones(a.valor_residual.precio_m2_venta_supuesto)} k="precio de venta supuesto $/m²" />
               </div>
               <div className="nota">{a.valor_residual.nota}</div>
+              <div className="nota aviso-datos">Es un cálculo estático: no descuenta el tiempo de ventas, la financiación ni los costos de tu constructora, y suele quedar muy por encima de lo pagable. Para decidir, usa “Números del proyecto” en el anteproyecto (flujo de caja, TIR y valor máximo con la tesis de tu comité).</div>
             </>
           )}
         </Seccion>
@@ -362,6 +363,7 @@ function PanelNumeros({ qs, usarMezcla, inicial, id, onGuardada }: { qs: string;
               <span>{f.veredicto === "VALOR MÁXIMO" ? `${mill(L.valor_maximo)} · ${mill(L.por_m2_lote).replace(" M", " M/m²").replace("$", "$")} de lote` : f.razones.join(" · ")}</span></div>
             {f.veredicto !== "VALOR MÁXIMO" && <div className="vmax">Máximo: <b>{mill(L.valor_maximo)}</b></div>}
           </div>
+          {f.alertas?.length > 0 && <ul className="alertas-num">{f.alertas.map((x: string) => <li key={x}>⚠ {x}</li>)}</ul>}
           <div className="cifras tres">
             <Cifra v={mill(R.ventas)} k="ventas" /><Cifra v={mill(R.utilidad)} k={`utilidad · margen ${num(R.margen_pct, 1)} %`} /><Cifra v={R.tir_ea_pct != null ? `${num(R.tir_ea_pct, 1)} %` : "—"} k="TIR efectiva anual" />
           </div>

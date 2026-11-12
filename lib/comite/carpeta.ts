@@ -96,6 +96,7 @@ export async function carpetaComite(m: any, f: any, perfil: PerfilConstructora) 
   if (peor) lectura.push(`La sensibilidad más crítica es "${peor.escenario}": el margen cae a ${pct(peor.margen_pct)} y el valor máximo del lote a ${mill(peor.valor_maximo_lote)}.`);
   const alertas = an.semaforo.items.filter((i: any) => i.luz === "rojo" || i.luz === "amarillo").map((i: any) => i.categoria);
   if (alertas.length) lectura.push(`Alertas a resolver antes de comprar: ${alertas.join(", ")}.`);
+  for (const al of f.alertas ?? []) lectura.push(`Alerta: ${al}`);
   for (const l of lectura) { parrafo(`• ${l}`, 9.2); y -= 2; }
   titulo("Próximos pasos sugeridos");
   for (const s of ["Estudio de títulos del folio y de los titulares (cadena de tradición, gravámenes, limitaciones).", "Levantamiento topográfico y estudio de suelos preliminar.",

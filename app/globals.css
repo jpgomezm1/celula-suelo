@@ -546,3 +546,5 @@ details.avanzado { font-size: 13px; } details.avanzado summary { cursor: pointer
 .vacio-neg { display: grid; gap: 6px; padding: 16px; border: 1px dashed var(--linea); border-radius: 12px; font-size: 13px; }
 .vacio-neg span { color: var(--gris); }
 .etiqueta.estado-comprado { background: #e8f5ea; color: #22582c; } .etiqueta.estado-descartado { background: #eee; color: #777; }
+
+.alertas-num { list-style: none; margin: 0; padding: 10px 12px; background: #fff6dd; border: 1px solid #f0d98b; border-radius: 10px; color: #6b4e00; font-size: 12.5px; display: grid; gap: 4px; }

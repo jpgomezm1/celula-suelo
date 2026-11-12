@@ -203,8 +203,8 @@ export default function Mapa() {
       if (rankingRef.current.length) setTimeout(() => pintarRanking(rankingRef.current), 0);
       // Enlace directo a un lote: /mapa?lote=<id> (desde el MCP, la carpeta de comité o un correo del equipo)
       const loteUrl = new URLSearchParams(window.location.search).get("lote");
-      if (loteUrl) fetch(`/api/ficha?formato=json&id=${encodeURIComponent(loteUrl)}`).then((r) => r.json())
-        .then((j) => abrirLote(j.predio ?? loteUrl, j.ubicacion?.lon, j.ubicacion?.lat)).catch(() => abrirLote(loteUrl));
+      if (loteUrl) fetch(`/api/datos?tipo=predio&id=${encodeURIComponent(loteUrl)}`).then((r) => r.json())
+        .then((j) => abrirLote(j.id ?? loteUrl, j.ubicacion?.lon, j.ubicacion?.lat)).catch(() => abrirLote(loteUrl));
 
       m.on("click", (e) => {
         if (!dibujandoRef.current) return;

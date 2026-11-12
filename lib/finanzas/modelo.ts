@@ -84,8 +84,13 @@ export async function modeloFinanciero(m: Proyecto, perfil: PerfilConstructora, 
   const curva = curvaPrecio(merc.comparables);
   const absorcionMercado = mediana(merc.comparables.filter((c) => c.v > 0).map((c) => c.v)) ?? 3;
   const aj = o.ajustes ?? {};
-  const absorcion = Math.max(0.5, (o.absorcion_mes ?? absorcionMercado) * (1 + (aj.absorcion_pct ?? 0) / 100));
   const etapas = etapasDe(m);
+  // Un proyecto grande vende más rápido que uno mediano (más frentes y más inventario), pero menos que en proporción:
+  // la velocidad se escala con la raíz del tamaño frente al proyecto mediano de la zona, entre 1 y 3 veces.
+  const unidadesTot = etapas.reduce((s: number, e: any) => s + e.unidades, 0);
+  const tamanoMercado = mediana(merc.comparables.filter((c) => c.u > 0).map((c) => c.u)) ?? 150;
+  const factorTamano = Math.max(1, Math.min(3, Math.sqrt(unidadesTot / Math.max(1, tamanoMercado))));
+  const absorcion = Math.max(0.5, (o.absorcion_mes ?? absorcionMercado * factorTamano) * (1 + (aj.absorcion_pct ?? 0) / 100));
   const P = perfil, C = P.costos;
   const factorPrecio = (1 + (aj.precio_pct ?? 0) / 100), factorCosto = 1 + (aj.costo_pct ?? 0) / 100;
   const precioM2 = (area: number) => (o.precio_m2 ?? curva.precio(area)) * factorPrecio;
@@ -110,7 +115,8 @@ export async function modeloFinanciero(m: Proyecto, perfil: PerfilConstructora, 
   const lanzamiento = etapas.map((_: any, i: number) => 2 + i * P.obra.meses_entre_etapas);
 
   const calcular = (costoLote: number) => {
-    const H = 120;
+    // Horizonte: lo que tarde en venderse todo, más obra y escrituración (máximo 25 años)
+    const H = Math.min(300, Math.max(120, Math.ceil(unidadesTot / absorcion) + etapas.length * P.obra.meses_entre_etapas + 60));
     const z = () => new Array(H).fill(0);
     const ing = { cuota: z(), saldo: z() }, egr = { lote: z(), directo: z(), indirecto: z(), licencias: z(), ventas: z(), fiducia: z(), sala: z(), compensacion: z(), intereses: z() };
     const credito = { desembolso: z(), pago: z() };
@@ -206,13 +212,19 @@ export async function modeloFinanciero(m: Proyecto, perfil: PerfilConstructora, 
   const loteSobreVentas = base.ventas ? costoLote / base.ventas : 0;
   const cumpleM = base.margen >= P.comite.margen_minimo_pct / 100, cumpleT = (base.tir_ea ?? -1) >= P.comite.tir_minima_ea / 100, cumpleL = loteSobreVentas <= P.comite.lote_max_sobre_ventas_pct / 100;
   const cerca = base.margen >= P.comite.margen_minimo_pct / 100 - 0.03 && (base.tir_ea ?? -1) >= P.comite.tir_minima_ea / 100 - 0.04;
-  const veredicto = o.costo_lote == null ? "VALOR MÁXIMO" : cumpleM && cumpleT && cumpleL ? "VA" : cerca ? "VA CON AJUSTES" : "NO VA";
+  const ventasLargas = base.meses_ventas > 60;
+  const veredicto = o.costo_lote == null ? "VALOR MÁXIMO" : cumpleM && cumpleT && cumpleL && !ventasLargas ? "VA" : cerca ? "VA CON AJUSTES" : "NO VA";
   const razones = [
     `Margen ${(base.margen * 100).toFixed(1)} % (mínimo ${P.comite.margen_minimo_pct} %) ${cumpleM ? "✓" : "✗"}`,
     `TIR ${base.tir_ea != null ? (base.tir_ea * 100).toFixed(1) + " % E.A." : "—"} (mínima ${P.comite.tir_minima_ea} %) ${cumpleT ? "✓" : "✗"}`,
     `Lote / ventas ${(loteSobreVentas * 100).toFixed(1)} % (máximo ${P.comite.lote_max_sobre_ventas_pct} %) ${cumpleL ? "✓" : "✗"}`,
+    `Ventas en ${base.meses_ventas} meses (máximo 60) ${ventasLargas ? "✗" : "✓"}`,
   ];
 
+  const alertas: string[] = [];
+  if (base.meses_ventas > 48) alertas.push(`Vender las ${unidadesTot} viviendas tomaría unos ${base.meses_ventas} meses al ritmo de la zona: el proyecto es grande para este mercado. Considerar menos unidades, otra mezcla o más frentes de venta.`);
+  if (merc.comparables.length < 8) alertas.push(`Solo ${merc.comparables.length} proyectos comparables en Galería: los precios y la velocidad de ventas son poco confiables; validarlos con el área comercial.`);
+  if (base.cronograma.some((c: any) => c.inicio_obra >= c.entrega)) alertas.push("Alguna etapa no alcanza a construirse dentro del horizonte del modelo: el resultado no es confiable.");
   // ---------- Sensibilidades (sobre el mismo costo de lote) ----------
   const sens: any[] = [];
   if (!o.ajustes && !o.sin_sensibilidades) {
@@ -226,7 +238,7 @@ export async function modeloFinanciero(m: Proyecto, perfil: PerfilConstructora, 
   return {
     perfil: { id: P.id, nombre: P.nombre, sistema: P.sistema },
     mercado: { radio_m: merc.radio, comparables: merc.comparables.length, estrato_usado: estrato, precio_m2_mediano: r0(curva.precio_mediano), area_mediana_m2: Math.round(curva.area_mediana),
-      elasticidad_precio_area: curva.elasticidad, absorcion_mercado_mes: Math.round(absorcionMercado * 10) / 10, absorcion_usada_mes: Math.round(absorcion * 10) / 10,
+      elasticidad_precio_area: curva.elasticidad, absorcion_mercado_mes: Math.round(absorcionMercado * 10) / 10, absorcion_usada_mes: Math.round(absorcion * 10) / 10, factor_tamano: Math.round(factorTamano * 100) / 100, unidades_proyecto_mediano: Math.round(tamanoMercado),
       lista: merc.comparables.slice(0, 12).map((c) => ({ proyecto: c.proyecto, constructora: c.construye, estrato: c.estrato, precio_m2: r0(c.p), area_m2: Math.round(c.a), ventas_mes: c.v, unidades: c.u, disponibles: c.disp, distancia_m: c.d, estado: c.estado_obra })) },
     producto: { etapas: etapas.map((e: any, i: number) => ({ ...e, area_vendible_m2: r0(e.area_vendible_m2), area_construida_m2: r0(e.area_construida_m2), ventas_hoy: r0(ventasEtapa[i]),
       tipologias: e.tipologias.map((x: any) => ({ ...x, area_promedio_m2: Math.round(x.area_promedio_m2 * 10) / 10, precio_m2: r0(precioM2(x.area_promedio_m2)), precio_unidad: r0(precioM2(x.area_promedio_m2) * x.area_promedio_m2) })) })) },
@@ -236,13 +248,13 @@ export async function modeloFinanciero(m: Proyecto, perfil: PerfilConstructora, 
       tir_ea_pct: base.tir_ea != null ? Math.round(base.tir_ea * 1000) / 10 : null, vpn: r0(base.vpn), exposicion_maxima: r0(base.exposicion_maxima), duracion_meses: base.meses, meses_de_ventas: base.meses_ventas },
     lote: { costo_evaluado: r0(costoLote), valor_maximo: r0(valorMaximo), por_margen: r0(porMargen), por_tir: r0(porTir), por_lote_sobre_ventas: r0(porLote),
       por_m2_lote: r0(valorMaximo / Math.max(1, Number(m.resumen.area_lote_m2))), lote_sobre_ventas_pct: Math.round(loteSobreVentas * 1000) / 10 },
-    veredicto, razones, cronograma: base.cronograma,
+    veredicto, razones, alertas, cronograma: base.cronograma,
     flujo: base.neto.map((n, t) => ({ mes: t, ingresos: r0(base.ingresos.cuota[t] + base.ingresos.saldo[t]), egresos: r0(Object.values(base.egresos).reduce((s, v) => s + v[t], 0)),
       credito_neto: r0(base.credito.desembolso[t] - base.credito.pago[t]), neto: r0(n), acumulado: r0(base.acumulado[t]) })),
     sensibilidades: sens,
     supuestos: [
       `Precio por m² desde ${merc.comparables.length} proyectos de Galería a ${merc.radio / 1000} km (mismo tipo, estrato ${estrato ?? "s/d"} ±1, sin vivienda turística ni desistidos); los apartamentos más pequeños se venden más caros por m² (elasticidad ${curva.elasticidad}).`,
-      `Velocidad de ventas ${Math.round(absorcion * 10) / 10} unidades/mes (mediana de los comparables).`,
+      `Velocidad de ventas ${Math.round(absorcion * 10) / 10} unidades/mes: la mediana de los comparables (${Math.round(absorcionMercado * 10) / 10}) ajustada por tamaño (${unidadesTot} viviendas frente a ${Math.round(tamanoMercado)} del proyecto mediano, ×${Math.round(factorTamano * 100) / 100}).`,
       `Costo directo ${Math.round(cdM2 / 1e5) / 10} M/m² construido para ${pisos} pisos; sótanos ${Math.round(C.directo_m2_sotano / 1e5) / 10} M/m²; indirectos ${Math.round(pctIndirectos * 1000) / 10} % del directo (perfil: ${P.nombre}).`,
       `Costos de construcción indexados al ${C.incremento_costo_anual_pct} % anual.`,
       `Una etapa por torre, lanzadas cada ${P.obra.meses_entre_etapas} meses; la obra arranca al ${P.ventas.preventa_equilibrio_pct} % de preventa y ${P.ventas.meses_preventa_antes_obra} meses después del lanzamiento como mínimo.`,

@@ -128,9 +128,14 @@ export async function anteproyecto(id: string, o: OpcionesProyecto = {}) {
   const unidades = aptosPorPiso * (pisosTorre - nPrimero) + (nPrimero ? aptosPorPiso - convertidos.size : 0);
 
   // Sótanos
-  // Estrato estimado: mediana de los inmuebles en venta (Fynder) a 500 m.
-  const [est] = await memo(`estrato:${id}`, () => sql`SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY l.estrato) AS e FROM listing l, parcel q
-    WHERE q.id = ${id} AND l.estrato BETWEEN 1 AND 6 AND l.geom && ST_Expand(q.geom, 0.005) AND ST_DWithin(l.geom::geography, q.geom::geography, 500)`);
+  // Estrato estimado: el más frecuente entre los predios residenciales vecinos (folio, 300 m); si no hay, la mediana de los inmuebles en venta a 500 m.
+  const [est] = await memo(`estrato:${id}`, async () => {
+    const r = await sql`SELECT mode() WITHIN GROUP (ORDER BY f.estrato) AS e FROM parcel_folio f JOIN parcel p ON p.id = f.parcel_id, parcel q
+      WHERE q.id = ${id} AND f.estrato BETWEEN 1 AND 6 AND p.geom && ST_Expand(q.geom, 0.004) AND ST_DWithin(p.geom::geography, q.geom::geography, 300)`;
+    if (r[0]?.e != null) return r;
+    return sql`SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY l.estrato) AS e FROM listing l, parcel q
+      WHERE q.id = ${id} AND l.estrato BETWEEN 1 AND 6 AND l.geom && ST_Expand(q.geom, 0.005) AND ST_DWithin(l.geom::geography, q.geom::geography, 500)`;
+  });
   const estrato = o.estrato ?? (est?.e != null ? Number(est.e) : null);
   const parq = parqueaderos(p.municipio_dane ?? "05001", unidades, estrato);
   const nucleosLote = torres.map((t) => { const T = aLote(t); const c = caja(t.planta.nucleo.poly); return [T([c.x0, c.y0]), T([c.x1, c.y0]), T([c.x1, c.y1]), T([c.x0, c.y1])].map((q) => q) as Pt[]; })
