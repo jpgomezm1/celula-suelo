@@ -461,3 +461,10 @@ details.avanzado { font-size: 13px; } details.avanzado summary { cursor: pointer
 .lienzo-planos .hoja svg { width: 100%; height: auto; display: block; background: #fff; box-shadow: 0 4px 18px rgba(0,0,0,.18); }
 .capas-planos { border-left: 1px solid var(--linea); background: #fff; padding: 12px; overflow-y: auto; display: grid; align-content: start; gap: 5px; font-size: 12.5px; }
 .capas-planos label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+
+/* ===== Visor 3D arquitectónico ===== */
+.rotulo-torre { background: rgba(8,6,26,.82); color: #fff; font: 600 12px Inter, sans-serif; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.brujula { position: absolute; right: 18px; top: 18px; width: 54px; height: 54px; border-radius: 50%; background: rgba(255,255,255,.92); border: 1px solid var(--linea); display: grid; place-items: center; box-shadow: 0 4px 14px rgba(8,6,26,.12); }
+.brujula .aguja { color: #c0392b; font-size: 18px; line-height: 1; display: grid; place-items: center; transition: transform .05s linear; }
+.brujula .aguja span { font: 700 10px Inter, sans-serif; color: #222; }
+.controles-cabida .segmento button { flex: 1; }

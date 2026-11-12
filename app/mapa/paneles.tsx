@@ -2,7 +2,7 @@
 // Paneles del workspace: ficha completa del lote, comparación, cartera, zona, POT 2026 y estudio de competencia.
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-const Cabida3D = dynamic(() => import("./Cabida3D"), { ssr: false });
+const Anteproyecto3D = dynamic(() => import("./Anteproyecto3D"), { ssr: false });
 import { Cambio, Cifra, Luz, Seccion, Vacio, m2, millones, num, pct } from "./comunes";
 
 /* ───────────── Inicio ───────────── */
@@ -323,7 +323,7 @@ function PanelCabida({ id, anteMapa }: { id: string; anteMapa?: (fc: any | null)
           <div className="nota">Norma: {m.norma.fuente}. Retiros: frontal {m.norma.frontal} m, lateral {m.norma.lateral} m, fondo {m.norma.fondo} m, entre torres {m.norma.entre_torres} m. Equipamiento {num(r.obligaciones.equipamiento_en_sitio_m2)} m² en sitio · {r.obligaciones.viviendas_adaptables} viviendas adaptables.</div>
           <div className="acciones">
             <button className="btn btn-primario" onClick={() => setVer("planchas")}>Ver planos ({m.planchas.length} planchas)</button>
-            <button className="btn btn-primario" onClick={() => setVer("3d")}>Ver en 3D por pisos</button>
+            <button className="btn btn-primario" onClick={() => setVer("3d")}>Ver en 3D</button>
             <button className="btn btn-borde" onClick={() => anteMapa?.(m.mapa)}>Ver en el mapa</button>
           </div>
           <div className="nota">En el mapa: torres en 3D y la planta tipo por tipología (<span style={{ color: "#f2c94c" }}>■</span> estudio <span style={{ color: "#56ccf2" }}>■</span> 1 alc. <span style={{ color: "#6fcf97" }}>■</span> 2 alc. <span style={{ color: "#f2994a" }}>■</span> 3 alc.); clic en un apartamento para ver su área.</div>
@@ -354,7 +354,7 @@ function PanelCabida({ id, anteMapa }: { id: string; anteMapa?: (fc: any | null)
           <div className="nota">{m.aviso} Para DWG: abrir el DXF en AutoCAD o BricsCAD y guardar como DWG.</div>
         </>
       )}
-      {ver === "3d" && m?.disponible && <Cabida3D modelo={m.vista3d} onCerrar={() => setVer(null)} />}
+      {ver === "3d" && m?.disponible && <Anteproyecto3D escena={m.escena} onCerrar={() => setVer(null)} />}
       {ver === "planchas" && m?.disponible && <VisorPlanchas qs={qs()} planchas={m.planchas} onCerrar={() => setVer(null)} />}
     </Seccion>
   );

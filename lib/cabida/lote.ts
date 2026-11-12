@@ -79,3 +79,9 @@ export async function edificable(lote: Pt[], lateral: number, frontal: number, f
   };
   return { edificable: mayor(r.e), sotano: mayor(r.s) };
 }
+
+/** De EPSG 9377 al marco local del lote (inversa de aGlobal). */
+export function aLocal(m: { cx: number; cy: number; rot: number; reflejado: boolean }) {
+  const a = (m.rot * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+  return ([x, y]: Pt): Pt => { const dx = x - m.cx, dy = y - m.cy; const lx = dx * c + dy * s, ly = -dx * s + dy * c; return [r2(lx), r2(m.reflejado ? -ly : ly)]; };
+}

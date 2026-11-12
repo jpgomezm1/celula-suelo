@@ -198,3 +198,39 @@ export async function geojsonMapa(m: Proyecto) {
   (r.gs as any[]).forEach((geom, i) => (feats[i].geometry = geom));
   return { type: "FeatureCollection", features: feats };
 }
+
+/** Datos completos para el visor 3D arquitectónico: plantas de cada torre (en su marco), niveles, sótanos, vecinos y norte. */
+export async function escena3d(m: Proyecto) {
+  const { sql } = await import("../db");
+  const { aLocal } = await import("./lote");
+  const { entornoLote } = await import("../entorno");
+  const conv: Record<string, string> = {};
+  for (const x of m.primer_piso) { if (x.lobby) conv[x.lobby] = "Lobby y portería"; for (const e of x.equipamiento) conv[e.id] = "Salón social"; }
+  // Vecinos (catastro) llevados al marco local del lote
+  let vecinos: { poly: Pt[]; altura: number; pisos: number }[] = [];
+  try {
+    const ent: any = await entornoLote(m.predio, 160);
+    const feats = ent.geojson.features.filter((f: any) => f.geometry?.type === "Polygon" || f.geometry?.type === "MultiPolygon");
+    if (feats.length) {
+      const [r] = await sql`SELECT json_agg(ST_AsGeoJSON(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(f->>'geometry'), 4326), 9377), 2)::json ORDER BY i) AS gs
+        FROM json_array_elements(${JSON.stringify(feats)}::json) WITH ORDINALITY AS x(f, i)`;
+      const L = aLocal(m.marco);
+      vecinos = (r.gs as any[]).map((g, i) => {
+        const ring = (g.type === "MultiPolygon" ? g.coordinates[0][0] : g.coordinates[0]).slice(0, -1).map((p: Pt) => L(p));
+        return { poly: ring, altura: feats[i].properties.altura, pisos: feats[i].properties.pisos };
+      }).filter((v) => v.poly.length >= 3);
+    }
+  } catch { /* el contexto es opcional */ }
+  const a = (m.marco.rot * Math.PI) / 180;
+  const norte = m.marco.reflejado ? [Math.sin(a), -Math.cos(a)] : [Math.sin(a), Math.cos(a)];
+  return {
+    predio: m.predio, barrio: m.barrio, lote: m.marco.lote, edificable: m.edificable, norte, latitud: 6.2,
+    niveles: m.niveles, resumen: { torres: m.resumen.torres, pisos_totales: m.resumen.pisos_totales, unidades: m.resumen.unidades, sotanos: m.resumen.sotanos, altura_m: m.resumen.altura_m },
+    torres: m.torres.map((t: any) => ({ id: t.id, origen: t.origen, rotada: t.rotada, L: t.planta.L, D: t.planta.D, F: t.planta.F, pasillo: t.planta.pasillo,
+      ventanas: t.planta.ventanas, aptos: t.planta.aptos.map((x: any) => ({ id: x.id, nombre: x.nombre, tipologia: x.tipologia, area: x.area_privada, lado: x.lado, poly: x.poly, convertido: conv[x.id] ?? null })),
+      espacios: t.planta.espacios.map((e: any) => ({ apto: e.apto, nombre: e.nombre, tipo: e.tipo, area: e.area, poly: e.poly })), muros: t.planta.muros.map((mu: any) => ({ tipo: mu.tipo, poly: mu.poly })),
+      nucleo: { escaleras: t.planta.nucleo.escaleras, ascensores: t.planta.nucleo.ascensores, shut: t.planta.nucleo.shut, hall: t.planta.nucleo.hall }, circulacion: t.planta.circulacion })),
+    sotanos: m.sotanos.map((s: any) => ({ nivel: s.nivel, poligono: s.poligono, rampa: s.rampa, calles: s.calles, espina: s.espina, puestos: s.puestos.map((p: any) => ({ poly: p.poly, v: p.visitante })), depositos: s.depositos, nucleos: s.nucleos })),
+    vecinos,
+  };
+}

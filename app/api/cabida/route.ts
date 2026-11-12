@@ -4,7 +4,7 @@
 import { anteproyecto, type OpcionesProyecto } from "@/lib/cabida/proyecto";
 import { planchas } from "@/lib/cabida/planos";
 import { aDxf, aPdf, aSvg } from "@/lib/cabida/lienzo";
-import { excelAreas, geojsonMapa, modelo3dDxf, paquete, vista3d } from "@/lib/cabida/entregables";
+import { escena3d, excelAreas, geojsonMapa, modelo3dDxf, paquete } from "@/lib/cabida/entregables";
 
 export const maxDuration = 120;
 
@@ -31,7 +31,7 @@ export async function GET(req: Request) {
     return Response.json({ encontrado: true, disponible: true, predio: m.predio, barrio: m.barrio, municipio: m.municipio, resumen: m.resumen, norma: m.norma,
       torres: m.torres.map((t: any) => ({ id: t.id, largo: t.planta.L, ancho: t.planta.D, aptos_por_piso: t.planta.aptos.length, rotada: t.rotada })),
       primer_piso: m.primer_piso.map((x: any) => ({ torre: x.torre, lobby: x.lobby, equipamiento: x.equipamiento.map((e: any) => e.id), adaptables: x.adaptables })),
-      planchas: pl.map((p) => ({ numero: p.numero, titulo: p.titulo, escala: p.escala })), vista3d: vista3d(m), mapa: await geojsonMapa(m), opciones: m.opciones, aviso: m.aviso });
+      planchas: pl.map((p) => ({ numero: p.numero, titulo: p.titulo, escala: p.escala })), escena: await escena3d(m), mapa: await geojsonMapa(m), opciones: m.opciones, aviso: m.aviso });
   }
   if (formato === "svg") {
     const pl = planchas(m); const n = Math.min(pl.length, Math.max(1, Number(q.get("plancha") ?? 1)));
