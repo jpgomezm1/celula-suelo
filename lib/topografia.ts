@@ -49,7 +49,7 @@ async function muestrear(f: Fuente, pts: [number, number][]): Promise<(number | 
         const loc = lote.map(([lng, lat]) => `${lat.toFixed(6)},${lng.toFixed(6)}`).join("|");
         j = await (await fetch(`https://maps.googleapis.com/maps/api/elevation/json?locations=${encodeURIComponent(loc)}&key=${process.env.GOOGLE_MAPS_SERVER_KEY}`)).json();
       }
-      if (j.status !== "OK") throw new Error(`Google Elevation: ${j.status}`);
+      if (j.status !== "OK") throw new Error(`Google Elevation: ${j.status}${j.error_message ? ` (${j.error_message})` : ""}`);
       out.push(...j.results.map((x: any) => Number(x.elevation)));
     }
     return out;

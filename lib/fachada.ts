@@ -17,7 +17,7 @@ export async function fachadaLote(id: string) {
   if (!l) return { disponible: false, motivo: "Predio no encontrado" };
   const lat = Number(l.lat), lon = Number(l.lon);
   const m: any = await (await fetch(`https://maps.googleapis.com/maps/api/streetview/metadata?location=${lat},${lon}&radius=80&source=outdoor&key=${LLAVE()}`)).json();
-  if (m.status !== "OK") return { disponible: false, motivo: m.status === "ZERO_RESULTS" ? "Google no tiene Street View a menos de 80 m del lote." : `Street View: ${m.status}` };
+  if (m.status !== "OK") return { disponible: false, motivo: m.status === "ZERO_RESULTS" ? "Google no tiene Street View a menos de 80 m del lote." : `Street View: ${m.status}${m.error_message ? ` (${m.error_message})` : ""}` };
   const heading = Math.round(rumbo(m.location.lat, m.location.lng, lat, lon));
   return { disponible: true, pano: m.pano_id as string, fecha: m.date as string | undefined, heading, lat: m.location.lat, lon: m.location.lng,
     abrir: `https://www.google.com/maps/@?api=1&map_action=pano&pano=${m.pano_id}&heading=${heading}&pitch=5`,

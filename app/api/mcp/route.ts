@@ -17,7 +17,9 @@ import { analizarCartera, analizarZona, cambioPot, compararLotes, novedadesNorma
 import { bloque2026Predio } from "@/lib/norma2026";
 import { volumenesLote } from "@/lib/volumen";
 import { topografiaLote } from "@/lib/topografia";
-import { entornoLote } from "@/lib/entorno";
+import { entornoLote, lecturaEntorno } from "@/lib/entorno";
+import { fachadaLote } from "@/lib/fachada";
+import { firmar } from "@/lib/auth";
 
 const URL_BASE = () => process.env.PUBLIC_URL ?? "https://celula-suelo.vercel.app";
 const urlFicha = (c: any) => `${URL_BASE()}/api/ficha?id=${encodeURIComponent(c.predio)}`;
@@ -52,7 +54,7 @@ const LECTURA = { readOnlyHint: true, openWorldHint: false } as const;
 const ESCRITURA = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 const INSTRUCCIONES = `Inteligencia de suelo para 17 municipios del Valle de Aburrá y el Oriente antioqueño: catastro, norma del POT, mercado (Fynder), proyectos nuevos (Zonario y Galería Inmobiliaria) y señales de venta de los folios.
 Flujos recomendados:
-0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
+0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Cómo se ve el lote desde la calle → fachada_street_view. Cartera que se actualiza sola en Google Earth Pro → analizar_cartera (cartera_viva_google_earth_pro). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
 1. "¿Dónde puedo hacer este edificio?" → oportunidades_por_perfil (perfil de producto sobre todo un municipio) → ficha_predio de los mejores → contacto_predio.
 2. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 3. "¿Este lote da?" → ficha_predio → prefactibilidad_lote (con el precio pedido por el lote).
@@ -239,8 +241,15 @@ const mcp = createMcpHandler(
     }, seguro(async (a: any) => {
       const { c, p } = await loteDe(a);
       if (!p) return c;
-      const an = await analizarLote(p, { area_unidad_m2: a.area_unidad_m2, tipo_vivienda: a.tipo_vivienda, actividad: a.actividad, costo_lote: a.costo_lote });
+      const conTope = <T,>(pr: Promise<T>, ms: number) => Promise.race([pr, new Promise<null>((r) => setTimeout(() => r(null), ms))]).catch(() => null);
+      const [an, topo, ent]: any = await Promise.all([
+        analizarLote(p, { area_unidad_m2: a.area_unidad_m2, tipo_vivienda: a.tipo_vivienda, actividad: a.actividad, costo_lote: a.costo_lote }),
+        conTope(topografiaLote(c.predio), 12000), conTope(entornoLote(c.predio), 8000)]);
+      const topografia = topo?.disponible ? { clase: topo.clase, pendiente_pct: topo.pendiente_pct, desnivel_m: topo.desnivel_m, cae_hacia: topo.cae_hacia, via: topo.via?.lectura ?? null,
+        sotanos: topo.sotanos, fuente: topo.fuente.nombre, detalle: "topografia_lote" } : topo ? { disponible: false, motivo: topo.motivo } : null;
+      const entorno = ent ? { pisos_mediana_150m: ent.pisos_mediana, pisos_max_150m: ent.pisos_max, fuente: "catastro" } : null;
       return { ...c, semaforo: an.semaforo, area_util: an.area_util, cabida: an.cabida, cesiones: an.cesiones, usos: an.usos, valor_residual: an.valor_residual,
+        topografia, entorno_alturas: entorno,
         ficha_pdf: urlFicha(c), kmz_google_earth: `${URL_BASE()}/api/kmz?id=${encodeURIComponent(c.predio)}`, aviso_legal: an.aviso_legal };
     }));
 
@@ -320,6 +329,20 @@ const mcp = createMcpHandler(
         fachada_street_view: `${URL_BASE()}/mapa`, nota: "Para ver el perfil dibujado y la fachada de Street View, abra la ficha del lote en la plataforma." };
     }));
 
+    server.registerTool("fachada_street_view", {
+      annotations: LECTURA,
+      title: "Fachada del lote (Google Street View)",
+      description: "Busca la vista de calle de Google Street View más cercana al lote (a menos de 80 m) y la orienta hacia él: devuelve la fecha de la imagen y un enlace para abrirla en Google Maps. Sirve para ver si el lote es una casa, una bodega, un parqueadero o un lote vacío sin ir al sitio. Las imágenes pueden tener años: confírmelo en visita.",
+      inputSchema: z.object({ ...LOTE }),
+    }, seguro(async (a: any) => {
+      const { c, p } = await loteDe(a);
+      if (!p) return c;
+      const f: any = await fachadaLote(c.predio);
+      if (!f.disponible) return { predio: c.predio, disponible: false, motivo: f.motivo };
+      return { predio: c.predio, barrio: c.barrio, disponible: true, fecha_imagen: f.fecha ?? null, abrir_en_google_maps: f.abrir, orientacion_grados: f.heading,
+        en_la_plataforma: `${URL_BASE()}/mapa (ficha del lote → Fachada)`, atribucion: f.atribucion };
+    }));
+
     server.registerTool("volumen_3d", {
       annotations: LECTURA,
       title: "Edificio posible en 3D (Google Earth)",
@@ -330,10 +353,13 @@ const mcp = createMcpHandler(
       const { c, p } = await loteDe(a);
       if (!p) return c;
       const ocup = a.tipologia === "torres" || a.ocupacion ? (a.ocupacion ?? 0.3) : undefined;
-      const v: any = await volumenesLote(c.predio, { ocupacion: ocup });
+      const [v, ent]: any = await Promise.all([volumenesLote(c.predio, { ocupacion: ocup }), entornoLote(c.predio).catch(() => null)]);
       return { predio: c.predio, barrio: c.barrio, area_lote_m2: c.area_lote_m2, tipologia: v.tipologia,
         escenarios: v.volumenes.map((x: any) => ({ escenario: x.escenario, pisos: x.pisos, altura_m: x.altura_m, huella_m2: x.huella_m2, unidades: x.unidades, area_construible_m2: x.area_construible_m2 })),
         kmz_google_earth: `${URL_BASE()}/api/kmz?id=${encodeURIComponent(c.predio)}${ocup ? `&ocupacion=${ocup}` : ""}`,
+        entorno_alturas: ent ? { pisos_mediana_150m: ent.pisos_mediana, pisos_p90_150m: ent.pisos_p90, pisos_max_150m: ent.pisos_max,
+          lectura: lecturaEntorno(v.volumenes.find((x: any) => x.clave === "base")?.pisos, ent), fuente: ent.fuente } : null,
+        vista_fotorrealista: `${URL_BASE()}/mapa (ficha del lote → Edificio posible en 3D → Vista fotorrealista)`,
         mapa_3d: `${URL_BASE()}/mapa`, nota: v.nota + " Abre el KMZ en Google Earth (web o Pro): activa en la carpeta “Volumen posible (3D)” el escenario que quieras ver." };
     }));
 
@@ -347,10 +373,15 @@ const mcp = createMcpHandler(
     server.registerTool("analizar_cartera", {
       annotations: ESCRITURA,
       title: "Analizar cartera de lotes (hasta 250)",
-      description: "Analiza una cartera de lotes de una vez: pasa el texto de un KML (si el usuario adjunta un KMZ, descomprímelo y pasa doc.kml) o una lista de lotes por CBML, matrícula, dirección o coordenada. Para cada uno: semáforo, área útil, unidades en tres escenarios, cambio POT 2026, cesiones y (hasta 40 lotes) valor residual; los ordena con un puntaje, resume verdes/amarillos/rojos y entrega un Excel.",
+      description: "Analiza una cartera de lotes de una vez: pasa el texto de un KML (si el usuario adjunta un KMZ, descomprímelo y pasa doc.kml) o una lista de lotes por CBML, matrícula, dirección o coordenada. Para cada uno: semáforo, área útil, unidades en tres escenarios, cambio POT 2026, cesiones y (hasta 40 lotes) valor residual; los ordena con un puntaje, resume verdes/amarillos/rojos y entrega un Excel, un KMZ para Google Earth (conserva carpetas y notas, volúmenes 3D, recorrido para comité) y un vínculo de red de 'cartera viva' para Google Earth Pro que se actualiza solo cada 24 h.",
       inputSchema: z.object({ nombre: z.string().optional(), kml: z.string().optional(), lotes: z.array(z.object({ nombre: z.string().optional(), ...LOTE })).optional(),
         area_unidad_m2: z.number().optional(), tipo_vivienda: z.enum(["VIS", "NO VIS"]).optional(), con_valor_residual: z.boolean().optional() }),
-    }, seguro(async (a: any) => analizarCartera(a)));
+    }, seguro(async (a: any) => {
+      const r: any = await analizarCartera(a);
+      const t = await firmar({ typ: "earth", est: r.id }, 365 * 24 * 3600);
+      return { ...r, cartera_viva_google_earth_pro: { url_vinculo_de_red: `${URL_BASE()}/api/estudio/${r.id}/kmz?t=${encodeURIComponent(t)}`,
+        como_usarlo: "En Google Earth Pro: Agregar → Vínculo de red → pegar la URL → en Actualizar, cada 24 horas. La cartera se vuelve a analizar sola una vez al día (norma, POT 2026, semáforo). El KMZ trae carpetas, volúmenes 3D y un recorrido para comité. El enlace es de solo lectura y vence en un año; no lo publique." } };
+    }));
 
     server.registerTool("analizar_zona", {
       annotations: LECTURA,
