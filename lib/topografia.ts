@@ -12,7 +12,7 @@ export type Fuente = { clave: string; nombre: string; tipo: "MDT" | "MDS" | "mix
 const F = {
   med2024: { clave: "med2024", nombre: "Modelo digital del terreno de Medellín 2024 (Alcaldía de Medellín)", tipo: "MDT", resolucion_m: 1, url: `${MED}/Modelo_digital_de_elevacion_medellin_2024/ImageServer`, atribucion: "Alcaldía de Medellín · GeoMedellín" },
   amva: { clave: "amva", nombre: "Modelo digital de elevación del Valle de Aburrá (AMVA)", tipo: "MDT", resolucion_m: 10, url: `${MED}/Modelo_digital_de_elevacion_AMVA/ImageServer`, atribucion: "Área Metropolitana del Valle de Aburrá vía GeoMedellín" },
-  google: { clave: "google", nombre: "Google Elevation API", tipo: "mixto", resolucion_m: 30, google: true, atribucion: "Google" },
+  google: { clave: "google", nombre: "Google Elevation API", tipo: "mixto", resolucion_m: 8, google: true, atribucion: "Google" },
 } satisfies Record<string, Fuente>;
 
 const igac = (slug: string, res: number, nombre: string): Fuente => ({ clave: `igac_${slug}`, nombre: `MDT ${nombre} (IGAC / Gobernación de Antioquia)`, tipo: "MDT", resolucion_m: res, url: `${IGAC}/mdt${slug}/ImageServer`, atribucion: "IGAC · Gobernación de Antioquia (CC BY)" });
