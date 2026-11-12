@@ -10,8 +10,8 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { CSS2DRenderer, CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
 
 type P = [number, number];
-const COL_ESP: Record<string, number> = { alcoba: 0xe7defa, alcoba_principal: 0xddd1f7, sala: 0xfbe6c8, estancia: 0xfbe6c8, cocina: 0xd9efdf, bano: 0xd2e7f5, ropas: 0xe3eed0,
-  hall: 0xf1eee8, vestier: 0xebe2f6, estudio: 0xf7e4d4, deposito: 0xe2e2e2 };
+const COL_ESP: Record<string, number> = { alcoba: 0xc9b8f4, alcoba_principal: 0xb7a2ef, sala: 0xf5cc8f, estancia: 0xf5cc8f, cocina: 0xa9dcb6, bano: 0xa4cfee, ropas: 0xcce3a6,
+  hall: 0xe3ddd1, vestier: 0xd6c6f1, estudio: 0xf0c8a2, deposito: 0xcfcfcf };
 const NOMBRE_TIPO: Record<string, string> = { alcoba: "Alcoba", alcoba_principal: "Alcoba principal", sala: "Sala-comedor", estancia: "Estancia", cocina: "Cocina", bano: "Baño", ropas: "Ropas", hall: "Hall", vestier: "Vestier", estudio: "Estudio", deposito: "Depósito" };
 
 // ---------- geometría ----------
@@ -67,14 +67,14 @@ export default function Anteproyecto3D({ escena, onCerrar }: { escena: any; onCe
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(el.clientWidth, el.clientHeight);
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.92;
     el.appendChild(renderer.domElement);
     const etiquetas = new CSS2DRenderer(); etiquetas.setSize(el.clientWidth, el.clientHeight);
     etiquetas.domElement.style.position = "absolute"; etiquetas.domElement.style.inset = "0"; etiquetas.domElement.style.pointerEvents = "none";
     el.appendChild(etiquetas.domElement);
 
     const scene = new THREE.Scene();
-    const cielo = new THREE.Color(0xdde6ee);
+    const cielo = new THREE.Color(0xcfdceb);
     scene.background = cielo; scene.fog = new THREE.Fog(cielo, 260, 900);
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -85,28 +85,28 @@ export default function Anteproyecto3D({ escena, onCerrar }: { escena: any; onCe
     const ext = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
     const zTop = Math.max(...escena.niveles.map((n: any) => n.z + n.altura));
     const camera = new THREE.PerspectiveCamera(38, el.clientWidth / el.clientHeight, 0.5, 3000);
-    camera.position.set(cx + ext * 0.9, Math.max(zTop * 1.6, ext * 0.75), -cy + ext * 1.05);
+    camera.position.set(cx + ext * 0.55, Math.max(zTop * 1.5, ext * 0.5), -cy + ext * 0.68);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(cx, zTop * 0.35, -cy); controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.495; controls.minDistance = 8; controls.maxDistance = 900;
 
     // Luz: cielo + sol con sombras
-    scene.add(new THREE.HemisphereLight(0xeaf2ff, 0xb9ad94, 0.75));
-    const sol = new THREE.DirectionalLight(0xfff4e2, 2.6);
+    scene.add(new THREE.HemisphereLight(0xe3eeff, 0xa89a80, 0.5));
+    const sol = new THREE.DirectionalLight(0xfff1dc, 3.2);
     sol.castShadow = true; sol.shadow.mapSize.set(2048, 2048); sol.shadow.bias = -0.0004; sol.shadow.normalBias = 0.03;
     const sc = sol.shadow.camera as THREE.OrthographicCamera; const B = ext * 0.95 + 40; sc.left = -B; sc.right = B; sc.top = B; sc.bottom = -B; sc.near = 1; sc.far = 1200;
     sol.target.position.set(cx, 0, -cy); scene.add(sol, sol.target);
 
     // Materiales
     const M = {
-      suelo: new THREE.MeshStandardMaterial({ color: 0xe4dfd2, roughness: 1 }),
-      pasto: new THREE.MeshStandardMaterial({ color: 0xa5c182, roughness: 1 }),
+      suelo: new THREE.MeshStandardMaterial({ color: 0xd3cdbf, roughness: 1 }),
+      pasto: new THREE.MeshStandardMaterial({ color: 0x9cbb76, roughness: 1 }),
       muro: new THREE.MeshStandardMaterial({ color: 0xf3efe7, roughness: 0.82 }),
       losa: new THREE.MeshStandardMaterial({ color: 0xb6b0a4, roughness: 0.7 }),
       vidrio: new THREE.MeshStandardMaterial({ color: 0x6f92ab, roughness: 0.08, metalness: 0.65, envMapIntensity: 1.3 }),
       marco: new THREE.MeshStandardMaterial({ color: 0x33373d, roughness: 0.5, metalness: 0.4 }),
       cubierta: new THREE.MeshStandardMaterial({ color: 0xd9d3c7, roughness: 0.9 }),
       nucleo: new THREE.MeshStandardMaterial({ color: 0xcfc7ba, roughness: 0.85 }),
-      vecino: new THREE.MeshStandardMaterial({ color: 0xece8e0, roughness: 0.95 }),
+      vecino: new THREE.MeshStandardMaterial({ color: 0xdedad1, roughness: 0.95 }),
       poche: new THREE.MeshStandardMaterial({ color: 0x2f2f33, roughness: 0.9 }),
       blanco: new THREE.MeshStandardMaterial({ color: 0xfaf8f4, roughness: 0.85 }),
       tronco: new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 1 }),
@@ -254,7 +254,7 @@ export default function Anteproyecto3D({ escena, onCerrar }: { escena: any; onCe
         const conv = new Set((t.aptos as any[]).filter((a) => n.tipo === "primero" && a.convertido).map((a) => a.id));
         for (const e of t.espacios) {
           if (conv.has(e.apto)) continue;
-          const mesh = new THREE.Mesh(prismaGeo((e.poly as P[]).map(f), n.z + 0.24, 0.03), new THREE.MeshStandardMaterial({ color: COL_ESP[e.tipo] ?? 0xeeeeee, roughness: 0.9 }));
+          const mesh = new THREE.Mesh(prismaGeo((e.poly as P[]).map(f), n.z + 0.24, 0.03), new THREE.MeshStandardMaterial({ color: COL_ESP[e.tipo] ?? 0xeeeeee, roughness: 0.75 }));
           mesh.receiveShadow = true;
           const ap = t.aptos.find((a: any) => a.id === e.apto);
           mesh.userData.etiqueta = `${e.nombre} · ${e.area.toFixed(1)} m²  —  Apto ${t.id}-${String(n.nombre).replace(/\D/g, "")}${String(e.apto).replace(/\D/g, "").padStart(2, "0")} · ${ap?.nombre ?? ""} ${ap ? ap.area.toFixed(1) + " m²" : ""}`;
@@ -289,7 +289,7 @@ export default function Anteproyecto3D({ escena, onCerrar }: { escena: any; onCe
       const hx = N[0] * Math.cos(az) + E[0] * Math.sin(az), hy = N[1] * Math.cos(az) + E[1] * Math.sin(az);
       const R = 400;
       sol.position.set(cx + hx * R * Math.cos(el), R * Math.sin(el), -(cy + hy * R * Math.cos(el)));
-      sol.intensity = 0.8 + 2.2 * Math.sin(Math.PI * t);
+      sol.intensity = 1.0 + 2.6 * Math.sin(Math.PI * t);
     };
 
     let raf = 0;
@@ -356,7 +356,7 @@ export default function Anteproyecto3D({ escena, onCerrar }: { escena: any; onCe
             {modo === "corte" && (
               <div className="campo"><label>Piso: {nivelesSobre[piso]?.nombre}</label>
                 <input type="range" min={0} max={nivelesSobre.length - 1} value={piso} onChange={(e) => setPiso(Number(e.target.value))} />
-                <div className="leyenda-cabida">{[["Alcobas", 0xe7defa], ["Sala", 0xfbe6c8], ["Cocina", 0xd9efdf], ["Baños", 0xd2e7f5], ["Ropas", 0xe3eed0], ["Estudio", 0xf7e4d4], ["Circulación", 0xd9d4ca], ["Escalera", 0xe0b1aa]].map(([t, c]) =>
+                <div className="leyenda-cabida">{[["Alcobas", 0xc9b8f4], ["Sala", 0xf5cc8f], ["Cocina", 0xa9dcb6], ["Baños", 0xa4cfee], ["Ropas", 0xcce3a6], ["Estudio", 0xf0c8a2], ["Circulación", 0xd9d4ca], ["Escalera", 0xe0b1aa]].map(([t, c]) =>
                   <span key={t as string}><i style={{ background: `#${(c as number).toString(16).padStart(6, "0")}` }} />{t}</span>)}</div>
                 <div className="nota">Pasa el cursor por un espacio para ver su nombre y área.</div>
               </div>
