@@ -512,3 +512,13 @@ details.avanzado { font-size: 13px; } details.avanzado summary { cursor: pointer
 .tabla tr.fila-actual td { background: var(--lila); font-weight: 600; }
 .btn-mini { border: 1px solid var(--cta); color: var(--cta); background: #fff; border-radius: 8px; padding: 2px 8px; font-size: 12px; cursor: pointer; }
 .btn-mini:hover { background: var(--cta); color: #fff; }
+
+/* ===== Versiones ===== */
+.tabla-scroll { overflow-x: auto; }
+.tabla-versiones th, .tabla-versiones td { white-space: nowrap; }
+.tabla-versiones td:first-child { color: var(--gris); font-weight: 600; }
+.tabla-versiones th.mejor { background: var(--cta); color: #fff; }
+.guardar-version { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.guardar-version .entrada { flex: 1; min-width: 200px; }
+.btn-mini.gris { border-color: #bbb; color: #777; }
+.btn-mini.gris:hover { background: #999; color: #fff; }

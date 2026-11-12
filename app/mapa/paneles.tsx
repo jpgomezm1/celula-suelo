@@ -319,8 +319,16 @@ function MezclaOptima({ qs, usar }: { qs: string; usar?: (m: any) => void }) {
   );
 }
 
-function PanelNumeros({ qs, usarMezcla }: { qs: string; usarMezcla?: (m: any) => void }) {
-  const [o, setO] = useState<any>({ costo_lote: "", precio_m2: "", absorcion_mes: "" });
+function PanelNumeros({ qs, usarMezcla, inicial, id, onGuardada }: { qs: string; usarMezcla?: (m: any) => void; inicial?: any; id?: string; onGuardada?: () => void }) {
+  const [o, setO] = useState<any>(inicial ?? { costo_lote: "", precio_m2: "", absorcion_mes: "" });
+  const [nombreV, setNombreV] = useState("");
+  const [guardando, setGuardando] = useState<string | null>(null);
+  async function guardarVersion() {
+    setGuardando("Guardando…");
+    const params = new URLSearchParams(q()); params.delete("id");
+    const r = await (await fetch("/api/escenarios", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, nombre: nombreV || `Versión ${new Date().toLocaleDateString("es-CO")}`, parametros: params.toString() }) })).json();
+    setGuardando(r.version ? `Guardada: ${r.version.nombre}` : r.error ?? "No se pudo guardar"); if (r.version) { setNombreV(""); onGuardada?.(); }
+  }
   const [f, setF] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
   useEffect(() => { setF(null); }, [qs]);
@@ -375,9 +383,37 @@ function PanelNumeros({ qs, usarMezcla }: { qs: string; usarMezcla?: (m: any) =>
             <ul className="lista-simple">{f.supuestos.map((x: string) => <li key={x}>{x}</li>)}</ul>
           </details>
           <MezclaOptima qs={q()} usar={usarMezcla} />
+          {id && <div className="guardar-version"><input className="entrada" placeholder="Nombre de la versión (p. ej. 'Mezcla 1A, lote a 8.000')" value={nombreV} onChange={(e) => setNombreV(e.target.value)} />
+            <button className="btn btn-borde" onClick={guardarVersion}>Guardar versión</button>{guardando && <span className="nota">{guardando}</span>}</div>}
           <div className="acciones"><a className="btn btn-primario" href={`/api/comite?${q()}`} target="_blank" rel="noreferrer">Carpeta para comité (PDF)</a><a className="btn btn-borde" href={`/api/finanzas?${q()}&formato=xlsx`}>Excel de prefactibilidad</a></div>
         </>
       )}
+    </Seccion>
+  );
+}
+
+function Versiones({ id, refresco, abrir }: { id: string; refresco: number; abrir: (parametros: string) => void }) {
+  const [vs, setVs] = useState<any[]>([]);
+  const cargar = () => fetch(`/api/escenarios?id=${encodeURIComponent(id)}`).then((r) => r.json()).then((j) => setVs(j.versiones ?? [])).catch(() => {});
+  useEffect(() => { cargar(); }, [id, refresco]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!vs.length) return null;
+  const borrar = async (vid: number) => { await fetch(`/api/escenarios?vid=${vid}`, { method: "DELETE" }); cargar(); };
+  const filas: [string, (r: any) => string][] = [
+    ["Fecha", (v) => new Date(v.creado_en).toLocaleDateString("es-CO", { day: "numeric", month: "short" })], ["Mezcla", (v) => v.resultado.mezcla], ["Norma", (v) => v.resultado.escenario_norma],
+    ["Torres · pisos", (v) => `${v.resultado.torres} · ${v.resultado.pisos}`], ["Viviendas", (v) => String(v.resultado.unidades)], ["Ventas", (v) => mill(v.resultado.ventas)],
+    ["Costo del lote", (v) => (v.resultado.costo_lote != null ? mill(v.resultado.costo_lote) : "—")], ["Utilidad", (v) => mill(v.resultado.utilidad)],
+    ["Margen", (v) => `${num(v.resultado.margen_pct, 1)} %`], ["TIR", (v) => (v.resultado.tir_ea_pct != null ? `${num(v.resultado.tir_ea_pct, 1)} %` : "—")],
+    ["Máx. por el lote", (v) => mill(v.resultado.valor_maximo_lote)], ["Veredicto", (v) => v.resultado.veredicto], ["Perfil", (v) => v.resultado.perfil],
+  ];
+  const mejor = Math.max(...vs.map((v) => v.resultado.valor_maximo_lote ?? 0));
+  return (
+    <Seccion titulo={`Versiones guardadas (${vs.length})`} abierta>
+      <div className="tabla-scroll"><table className="tabla tabla-versiones">
+        <thead><tr><th></th>{vs.map((v) => <th key={v.id} className={v.resultado.valor_maximo_lote === mejor ? "mejor" : ""}>{v.nombre}</th>)}</tr></thead>
+        <tbody>{filas.map(([t, f]) => <tr key={t}><td>{t}</td>{vs.map((v) => <td key={v.id}>{f(v)}</td>)}</tr>)}
+          <tr><td></td>{vs.map((v) => <td key={v.id}><button className="btn-mini" onClick={() => abrir(v.parametros)}>Abrir</button> <button className="btn-mini gris" onClick={() => borrar(v.id)}>Borrar</button></td>)}</tr></tbody>
+      </table></div>
+      <div className="nota">Cada versión guarda los parámetros y una foto de los resultados con el perfil de ese momento. Al abrirla se recalcula con los datos de hoy.</div>
     </Seccion>
   );
 }
@@ -387,16 +423,27 @@ function PanelCabida({ id, anteMapa }: { id: string; anteMapa?: (fc: any | null)
   const [m, setM] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
   const [ver, setVer] = useState<"3d" | "planchas" | null>(null);
-  useEffect(() => { setM(null); setVer(null); anteMapa?.(null); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [refresco, setRefresco] = useState(0);
+  const [numIni, setNumIni] = useState<any>(null);
+  useEffect(() => { setM(null); setVer(null); setNumIni(null); anteMapa?.(null); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
   const qs = () => {
     const mezcla = [["estudio", o.estudio], ["1A", o.a1], ["2A", o.a2], ["3A", o.a3]].filter(([, v]) => Number(v) > 0).map(([k, v]) => `${k}:${v}`).join(",");
     const q: Record<string, string> = { id, escenario: o.escenario, pisos_plataforma: String(o.pisos_plataforma), crujia_m: String(o.crujia_m), mezcla };
     for (const k of ["estrato", "retiro_frontal_m", "retiro_lateral_m", "separacion_torres_m"]) if (o[k] !== "" && o[k] != null) q[k] = String(o[k]);
     return new URLSearchParams(q).toString();
   };
-  async function generar() {
+  function abrirVersion(parametros: string) {
+    const q = new URLSearchParams(parametros), g = (k: string, d: any = "") => (q.get(k) !== null && q.get(k) !== "" ? Number(q.get(k)) : d);
+    const mz: Record<string, number> = {}; for (const x of (q.get("mezcla") ?? "").split(",").filter(Boolean)) { const [t, v] = x.split(":"); mz[t] = Number(v); }
+    const nuevo = { ...o, escenario: q.get("escenario") ?? "base", estrato: g("estrato"), pisos_plataforma: g("pisos_plataforma", 0), crujia_m: g("crujia_m", 7.6),
+      estudio: mz.estudio ?? 0, a1: mz["1A"] ?? 0, a2: mz["2A"] ?? 0, a3: mz["3A"] ?? 0, retiro_frontal_m: g("retiro_frontal_m"), retiro_lateral_m: g("retiro_lateral_m"), separacion_torres_m: g("separacion_torres_m") };
+    setO(nuevo);
+    setNumIni({ costo_lote: q.get("costo_lote") ? Number(q.get("costo_lote")) / 1e6 : "", precio_m2: q.get("precio_m2") ? Number(q.get("precio_m2")) / 1e6 : "", absorcion_mes: q.get("absorcion_mes") ?? "" });
+    generar(new URLSearchParams({ ...Object.fromEntries(q.entries()), id }).toString());
+  }
+  async function generar(consulta?: string) {
     setCargando(true);
-    try { const j = await (await fetch(`/api/cabida?${qs()}`)).json(); setM(j); if (j.disponible && j.mapa) anteMapa?.(j.mapa); }
+    try { const j = await (await fetch(`/api/cabida?${consulta ?? qs()}`)).json(); setM(j); if (j.disponible && j.mapa) anteMapa?.(j.mapa); }
     catch (e) { setM({ disponible: false, mensaje: (e as Error).message }); } finally { setCargando(false); }
   }
   const campo = (k: string, t: string, paso = 1, ph = "") => (
@@ -417,7 +464,8 @@ function PanelCabida({ id, anteMapa }: { id: string; anteMapa?: (fc: any | null)
         <div className="fila">{campo("retiro_frontal_m", "Retiro frontal (m)", 0.5, "norma")}{campo("retiro_lateral_m", "Retiro lateral (m)", 0.5, "norma")}</div>
         <div className="fila">{campo("separacion_torres_m", "Separación entre torres (m)", 0.5, "norma")}{campo("crujia_m", "Profundidad de apartamento (m)", 0.1)}</div>
       </details>
-      <button className="btn btn-primario btn-bloque" disabled={cargando} onClick={generar}>{cargando ? "Diseñando el anteproyecto…" : m ? "Recalcular anteproyecto" : "Generar anteproyecto"}</button>
+      <Versiones id={id} refresco={refresco} abrir={abrirVersion} />
+      <button className="btn btn-primario btn-bloque" disabled={cargando} onClick={() => generar()}>{cargando ? "Diseñando el anteproyecto…" : m ? "Recalcular anteproyecto" : "Generar anteproyecto"}</button>
       {m && !m.disponible && <div className="error">{m.mensaje}</div>}
       {r && (
         <>
@@ -457,7 +505,7 @@ function PanelCabida({ id, anteMapa }: { id: string; anteMapa?: (fc: any | null)
           <div className="acciones">
             <a className="btn btn-primario" href={`/api/cabida?${qs()}&formato=zip`}>Descargar todo (ZIP)</a>
           </div>
-          <PanelNumeros qs={qs()} usarMezcla={(x) => { setO({ ...o, estudio: x.estudio, a1: x["1A"], a2: x["2A"], a3: x["3A"] }); setM(null); anteMapa?.(null); }} />
+          <PanelNumeros key={JSON.stringify(numIni)} inicial={numIni ?? undefined} id={id} onGuardada={() => setRefresco((x) => x + 1)} qs={qs()} usarMezcla={(x) => { setO({ ...o, estudio: x.estudio, a1: x["1A"], a2: x["2A"], a3: x["3A"] }); setM(null); anteMapa?.(null); }} />
           <div className="acciones">
             <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=pdf`}>Planchas PDF</a>
             <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=dxf`}>Planos DXF</a>
