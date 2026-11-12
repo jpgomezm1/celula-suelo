@@ -198,3 +198,34 @@ export async function perfilAExcel(e: any): Promise<Buffer> {
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
+
+// Cartera de lotes: resumen y ranking.
+export async function carteraAExcel(e: any): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "irrelevant · Inteligencia de suelo";
+  const r = wb.addWorksheet("Resumen");
+  r.columns = [{ width: 40 }, { width: 70 }];
+  r.addRow(["ANÁLISIS DE CARTERA DE LOTES"]).font = { bold: true, size: 14, color: { argb: AZUL } };
+  r.addRow([e.estudio]).font = { bold: true, size: 12 };
+  r.addRow(["Fecha", e.fecha]);
+  for (const [k, v] of Object.entries(e.resumen ?? {})) r.addRow([k.replace(/_/g, " "), v]);
+  r.addRow([]);
+  const m = r.addRow([e.metodo]); r.mergeCells(m.number, 1, m.number, 2); m.getCell(1).alignment = { wrapText: true }; m.height = 60;
+  const al = r.addRow([e.aviso_legal]); r.mergeCells(al.number, 1, al.number, 2); al.getCell(1).alignment = { wrapText: true }; al.font = { italic: true, size: 9 }; al.height = 30;
+  if ((e.no_encontrados ?? []).length) r.addRow(["No encontrados", e.no_encontrados.join(", ")]);
+  const t = wb.addWorksheet("Ranking");
+  const cols = ["#", "Puntaje", "Lote", "Predio", "Barrio", "Municipio", "Área lote m²", "Área útil m²", "Tratamiento", "Semáforo", "Unidades conservador", "Unidades base",
+    "Unidades máximo", "Pisos (base)", "Área construible base m²", "Cambio POT 2026", "Cesión EP m²", "Valor residual $/m²", "Valor referencia $/m²", "Alertas", "Lat", "Lon"];
+  encabezado(t.addRow(cols));
+  (e.ranking ?? []).forEach((f: any, i: number) => {
+    const row = t.addRow([i + 1, f.puntaje, f.nombre, f.predio, f.barrio, f.municipio, f.area_lote_m2, f.area_util_m2, f.tratamiento, f.semaforo, f.unidades?.conservador,
+      f.unidades?.base, f.unidades?.maximo, f.pisos_base, f.area_construible_base_m2, f.cambio_pot_2026, f.cesion_espacio_publico_m2, f.valor_residual_m2, f.valor_suelo_referencia_m2,
+      (f.alertas ?? []).join(" · "), f.lat, f.lon]);
+    const color = f.semaforo === "rojo" ? "FFF4CCCC" : f.semaforo === "amarillo" ? "FFFFF2CC" : "FFD9EAD3";
+    row.getCell(10).fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
+  });
+  cols.forEach((_, i) => (t.getColumn(i + 1).width = i === 19 ? 90 : i === 2 || i === 4 || i === 8 ? 26 : 13));
+  for (const c of [18, 19]) t.getColumn(c).numFmt = "$#,##0";
+  t.views = [{ state: "frozen", ySplit: 1, xSplit: 3 }];
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}

@@ -3,7 +3,7 @@ import { resolverMunicipio } from "./mercado";
 
 export type BuscarInput = {
   municipio?: string; barrio?: string; area_min?: number; area_max?: number; tratamiento?: string;
-  solo_potencial?: boolean; incluir_amenaza_alta?: boolean; construible_min?: number;
+  solo_potencial?: boolean; incluir_amenaza_alta?: boolean; construible_min?: number; gana_pot_2026?: boolean; max_construcciones?: number;
   orden?: "construible_restante" | "area" | "valor_suelo"; limite?: number;
 };
 
@@ -26,6 +26,9 @@ export async function buscarLotes(f: BuscarInput) {
       AND (${f.construible_min ?? null}::numeric IS NULL OR area_construible_restante_inferida >= ${f.construible_min ?? null}::numeric)
       AND (${f.solo_potencial ?? true} = false OR potencial_preliminar)
       AND (${f.incluir_amenaza_alta ?? false} OR NOT amenaza_alta)
+      AND (${f.gana_pot_2026 ?? false} = false OR EXISTS (SELECT 1 FROM norma_pot2026_equivalencia e JOIN norma_pot2026 n ON n.codigo = e.c26
+           WHERE e.c14 = parcel_profile.codigo_tratamiento AND n.ic_residencial > COALESCE(parcel_profile.ic_max, 0)))
+      AND (${f.max_construcciones ?? null}::int IS NULL OR COALESCE(construcciones, 0) <= ${f.max_construcciones ?? null})
     ORDER BY
       CASE WHEN ${orden} = 'construible_restante' THEN area_construible_restante_inferida END DESC NULLS LAST,
       CASE WHEN ${orden} = 'area' THEN area_lote END DESC NULLS LAST,

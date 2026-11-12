@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { Cifra, interpretarBusqueda, m2, num, Vacio } from "./comunes";
+import { FichaProyecto, PanelCartera, PanelComparar, PanelLote, PanelPot, PanelZona, ResultadoEstudio } from "./paneles";
 
 const MUNICIPIOS: [string, number, number][] = [
   ["Medellín", -75.5736, 6.2442], ["Envigado", -75.5906, 6.1716], ["Sabaneta", -75.6159, 6.1515], ["Itagüí", -75.6115, 6.1846],
@@ -12,122 +14,53 @@ const MUNICIPIOS: [string, number, number][] = [
   ["La Unión", -75.3610, 5.9734],
 ];
 
-const C = { petroleo: "#1a1a1f", turquesa: "#a28df5", lima: "#6c4de7", gris: "#8a8a93", ambar: "#f2a900" };
+const C = { oscuro: "#1a1a1f", lila: "#a28df5", morado: "#6c4de7", gris: "#8a8a93", ambar: "#f2a900", verde: "#3f8f4a", rojo: "#c0392b" };
 
-const millones = (v?: number | null) => (v ? `$${(v / 1e6).toLocaleString("es-CO", { maximumFractionDigits: v < 1e8 ? 1 : 0 })} M` : "—");
-const m2 = (v?: number | null) => (v ? `${Math.round(v).toLocaleString("es-CO")} m²` : "—");
-const num = (v?: number | null, d = 0) => (v === null || v === undefined ? "—" : Number(v).toLocaleString("es-CO", { maximumFractionDigits: d }));
-const pct = (v?: number | null) => (v === null || v === undefined ? "—" : `${Math.round(v * 100)}%`);
+type Seccion = "lote" | "oportunidades" | "estudio" | "cartera" | "comparar" | "zona" | "pot" | "galeria";
+const SECCIONES: [Seccion, string, string][] = [
+  ["lote", "⌖", "Lote"], ["oportunidades", "★", "Dónde construir"], ["estudio", "◎", "Competencia"], ["cartera", "▤", "Cartera"],
+  ["comparar", "⇄", "Comparar"], ["zona", "⬠", "Zona"], ["pot", "◆", "POT 2026"], ["galeria", "⇪", "Galería"],
+];
+type ModoCapa = "potencial" | "cambio" | "ninguno";
 
-type Pestana = "norma" | "estudio" | "detalle" | "oportunidades" | "galeria";
-
-function Cifra({ v, k }: { v: React.ReactNode; k: string }) {
-  return <div className="cifra"><div className="v">{v}</div><div className="k">{k}</div></div>;
-}
+const PINTURA: Record<ModoCapa, { color: any; opacidad: any }> = {
+  potencial: { color: ["case", ["get", "potencial"], C.morado, ["get", "amenaza"], C.gris, C.lila], opacidad: ["case", ["get", "potencial"], 0.5, 0.07] },
+  cambio: {
+    color: ["case", ["==", ["typeof", ["get", "delta_ic"]], "number"],
+      ["interpolate", ["linear"], ["get", "delta_ic"], -1.5, C.rojo, -0.01, "#f3b3a8", 0, "#e6e3da", 0.01, "#cbbcf8", 0.5, C.lila, 1.5, C.morado], "#e6e3da"],
+    opacidad: ["case", ["==", ["typeof", ["get", "delta_ic"]], "number"], ["case", ["==", ["get", "delta_ic"], 0], 0.12, 0.6], 0.03],
+  },
+  ninguno: { color: C.lila, opacidad: 0.02 },
+};
 
 export default function Mapa() {
   const contenedor = useRef<HTMLDivElement>(null);
   const mapa = useRef<maplibregl.Map | null>(null);
-  const [pestana, setPestana] = useState<Pestana>("norma");
-  const [detalle, setDetalle] = useState<{ tipo: "predio" | "proyecto"; datos: any } | null>(null);
-  const [oportunidades, setOportunidades] = useState<any>(null);
+  const [seccion, setSeccion] = useState<Seccion>("lote");
+  const [seleccion, setSeleccion] = useState<{ tipo: "predio" | "proyecto"; id: string; datos?: any } | null>(null);
   const [cargando, setCargando] = useState<string | null>(null);
   const [municipio, setMunicipio] = useState("Medellín");
-  const [contacto, setContacto] = useState<any>(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [errorBusqueda, setErrorBusqueda] = useState<string | null>(null);
   const [dibujando, setDibujando] = useState(false);
   const dibujandoRef = useRef(false);
   const [vertices, setVertices] = useState<[number, number][]>([]);
-  const [lote, setLote] = useState<{ id: string; nombre?: string } | null>(null);
-  const [form, setForm] = useState({ nombre: "", tipo_vivienda: "todos", vocacion: "ambos", min_unidades: 100, radio_m: 3000 });
+  const [comparar, setComparar] = useState<string[]>([]);
+  const [modoCapa, setModoCapa] = useState<ModoCapa>("potencial");
+  const [capas, setCapas] = useState({ proyectos: true, galeria: true, avisos: false });
+  const [form, setForm] = useState({ nombre: "", tipo_vivienda: "NO VIS", vocacion: "ambos", min_unidades: 100, radio_m: 3000 });
   const [estudio, setEstudio] = useState<any>(null);
   const [galeria, setGaleria] = useState<{ archivo: File | null; corte: string; msg: string; ok?: boolean }>({ archivo: null, corte: "", msg: "" });
-  const [sobre, setSobre] = useState(false);
   const [modoOp, setModoOp] = useState<"perfil" | "rapidas">("perfil");
-  const [busqNorma, setBusqNorma] = useState("");
-  const [resNorma, setResNorma] = useState<any>(null);
-  const [resLotes, setResLotes] = useState<any>(null);
-
-  async function consultarNorma() {
-    const q = busqNorma.trim();
-    if (!q) return;
-    const coord = q.match(/^\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*$/);
-    const body: any = coord ? (Math.abs(Number(coord[1])) < 20 ? { lat: Number(coord[1]), lon: Number(coord[2]) } : { lat: Number(coord[2]), lon: Number(coord[1]) })
-      : /^\d{11}$/.test(q) ? { cbml: q } : /^\d{5}:/.test(q) ? { id: q } : /^(\d{3}[a-z]?\s*-\s*)?\d{4,8}$/i.test(q) ? { matricula: q } : { direccion: q };
-    setCargando("Consultando la norma…"); setResNorma(null); setResLotes(null);
-    try {
-      const r = await fetch("/api/norma", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      const j = await r.json(); setResNorma(j);
-      if (j.encontrado && j.predio) { setLote({ id: j.predio }); marcarLote(j.predio); }
-      if (j.encontrado && coord) mapa.current?.flyTo({ center: [body.lon, body.lat], zoom: 17 });
-    } finally { setCargando(null); }
-  }
-
-  async function consultarKmz(file: File) {
-    setCargando("Leyendo el archivo y consultando la norma de cada lote…"); setResNorma(null); setResLotes(null);
-    try {
-      let kml: string;
-      if (/\.kmz$/i.test(file.name)) {
-        const { default: JSZip } = await import("jszip");
-        const zip = await JSZip.loadAsync(await file.arrayBuffer());
-        const k = Object.keys(zip.files).find((n) => /\.kml$/i.test(n));
-        if (!k) throw new Error("El KMZ no trae un archivo .kml adentro");
-        kml = await zip.files[k].async("string");
-      } else kml = await file.text();
-      const r = await fetch("/api/norma", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kml }) });
-      const j = await r.json(); setResLotes({ ...j, archivo: file.name });
-      const { leerKml } = await import("@/lib/kml");
-      const lugares = leerKml(kml);
-      const src = mapa.current?.getSource("zona") as maplibregl.GeoJSONSource | undefined;
-      src?.setData({ type: "FeatureCollection", features: lugares.map((l) => l.poligono
-        ? { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [l.poligono] } }
-        : { type: "Feature", properties: { vertice: true }, geometry: { type: "Point", coordinates: l.punto } }) } as any);
-      const pts = lugares.flatMap((l) => l.poligono ?? (l.punto ? [l.punto] : []));
-      if (pts.length && mapa.current) { const b = new maplibregl.LngLatBounds(); pts.forEach((c) => b.extend(c as [number, number])); mapa.current.fitBounds(b, { padding: 80, maxZoom: 16 }); }
-    } catch (e) { setResLotes({ error: (e as Error).message }); } finally { setCargando(null); }
-  }
-
-  function descargarCsvLotes() {
-    if (!resLotes?.resultados) return;
-    const filas = [["Lote", "Tipo", "Predios", "Área lotes m²", "Tratamiento", "Área construible m²", "Viviendas máx. densidad", "Unidades estimadas", "Construcciones actuales", "Amenaza alta"]];
-    for (const r of resLotes.resultados) {
-      const q = r.que_se_puede_hacer ?? {};
-      filas.push([r.nombre, r.tipo, r.predios ?? (r.predio ? 1 : 0), r.area_lotes_m2 ?? r.area_lote_m2 ?? "", (r.tratamientos ?? [r.norma?.tratamiento]).filter(Boolean).join(" / "),
-        q.area_construible_m2 ?? "", q.viviendas_max_por_densidad ?? "", q.unidades_estimadas ?? "", r.construccion_actual?.construcciones ?? "", r.amenaza_alta ? "sí" : "no"]);
-    }
-    const csv = "\ufeff" + filas.map((f) => f.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = `norma - ${resLotes.archivo ?? "lotes"}.csv`; a.click();
-  }
   const [perfil, setPerfil] = useState({ tipo_vivienda: "NO VIS", unidades_min: 150, unidades_max: 300, area_unidad_m2: 65, pisos_min: 12, area_lote_min: "", precio_m2_objetivo: "", barrios: "", norma: "2014" });
   const [resPerfil, setResPerfil] = useState<any>(null);
-
+  const [oportunidades, setOportunidades] = useState<any>(null);
   const rankingRef = useRef<any[]>([]);
-  function pintarRanking(lista: any[]) {
-    rankingRef.current = lista;
-    const src = mapa.current?.getSource("ranking") as maplibregl.GeoJSONSource | undefined;
-    if (!src) return; // el mapa aún carga: el manejador de "load" lo pinta al terminar
-    src?.setData({ type: "FeatureCollection", features: lista.map((o, i) => ({ type: "Feature", properties: { n: i + 1, id: o.id },
-      geometry: { type: "Point", coordinates: [Number(o.lon), Number(o.lat)] } })) } as any);
-    if (lista.length && mapa.current) {
-      const b = new maplibregl.LngLatBounds();
-      lista.forEach((o) => b.extend([Number(o.lon), Number(o.lat)]));
-      mapa.current.fitBounds(b, { padding: 80, maxZoom: 15 });
-    }
-  }
 
-  async function estudioPerfil() {
-    setCargando("Recorriendo todos los lotes del municipio…"); setResPerfil(null);
-    const n = (v: any) => (v === "" || v === null || v === undefined ? undefined : Number(v));
-    const body = { municipio, tipo_vivienda: perfil.tipo_vivienda, unidades_min: n(perfil.unidades_min), unidades_max: n(perfil.unidades_max),
-      area_unidad_m2: n(perfil.area_unidad_m2), pisos_min: n(perfil.pisos_min), area_lote_min: n(perfil.area_lote_min),
-      precio_m2_objetivo: perfil.precio_m2_objetivo ? Number(perfil.precio_m2_objetivo) * 1e6 : undefined,
-      barrios: perfil.barrios ? perfil.barrios.split(",").map((x) => x.trim()).filter(Boolean) : undefined, limite: 30, norma: perfil.norma };
-    try {
-      const r = await fetch("/api/perfil", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      const j = await r.json();
-      setResPerfil(j);
-      if (!j.error) pintarRanking(j.oportunidades ?? []);
-    } catch (e) { setResPerfil({ error: (e as Error).message }); } finally { setCargando(null); }
-  }
+  const loteId = seleccion?.tipo === "predio" ? seleccion.id : null;
+
+  /* ---------- mapa ---------- */
+  function marcarLote(id: string | null) { mapa.current?.setFilter("lote-sel", ["==", ["get", "id"], id ?? "__ninguno__"]); }
 
   function pintarZona(vs: [number, number][]) {
     const src = mapa.current?.getSource("zona") as maplibregl.GeoJSONSource | undefined;
@@ -139,56 +72,39 @@ export default function Mapa() {
     ] } as any);
   }
 
-  function marcarLote(id: string | null) {
-    mapa.current?.setFilter("lote-sel", ["==", ["get", "id"], id ?? "__ninguno__"]);
+  function pintarRanking(lista: { id: string; lat: number; lon: number }[]) {
+    rankingRef.current = lista;
+    const src = mapa.current?.getSource("ranking") as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    src.setData({ type: "FeatureCollection", features: lista.filter((o) => o.lat && o.lon).map((o, i) => ({ type: "Feature", properties: { n: i + 1, id: o.id },
+      geometry: { type: "Point", coordinates: [Number(o.lon), Number(o.lat)] } })) } as any);
+    if (lista.length && mapa.current) {
+      const b = new maplibregl.LngLatBounds();
+      lista.forEach((o) => o.lat && b.extend([Number(o.lon), Number(o.lat)]));
+      if (!b.isEmpty()) mapa.current.fitBounds(b, { padding: 80, maxZoom: 15 });
+    }
   }
 
-  async function generarEstudio() {
-    if (!lote && vertices.length < 3) return;
-    setCargando("Armando el estudio de competencia…"); setEstudio(null);
-    const centro = vertices.length >= 3 ? [vertices.reduce((a, v) => a + v[0], 0) / vertices.length, vertices.reduce((a, v) => a + v[1], 0) / vertices.length] : null;
-    const body: any = { nombre: form.nombre || undefined, tipo_vivienda: form.tipo_vivienda, vocacion: form.vocacion, min_unidades: Number(form.min_unidades),
-      lote: lote ? { id: lote.id } : { lon: centro![0], lat: centro![1] } };
-    if (vertices.length >= 3) body.poligono = { type: "Polygon", coordinates: [[...vertices, vertices[0]]] };
-    else body.radio_m = Number(form.radio_m);
-    try {
-      const r = await fetch("/api/estudio", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      setEstudio(await r.json());
-    } catch (e) { setEstudio({ error: (e as Error).message }); } finally { setCargando(null); }
+  function abrirLote(id: string, lon?: number, lat?: number) {
+    setSeleccion({ tipo: "predio", id }); setSeccion("lote"); marcarLote(id);
+    if (lon && lat) mapa.current?.flyTo({ center: [lon, lat], zoom: 17 });
   }
 
-  async function subirGaleria() {
-    if (!galeria.archivo) return;
-    setGaleria((g) => ({ ...g, msg: "Leyendo el Excel en tu navegador…", ok: undefined }));
-    try {
-      // El Excel se lee aquí y solo viajan las filas: así funciona con archivos de 30 MB aunque el servidor acepte 4,5 MB.
-      const [{ default: ExcelJS }, { leerLibroGaleria }] = await Promise.all([import("exceljs"), import("@/lib/galeria_parse")]);
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(await galeria.archivo.arrayBuffer());
-      const filas = leerLibroGaleria(wb);
-      if (!filas.length) { setGaleria((g) => ({ ...g, ok: false, msg: "No encontré proyectos: el archivo debe tener una fila de encabezado con 'Código' y 'Proyecto'." })); return; }
-      setGaleria((g) => ({ ...g, msg: `${filas.length} proyectos leídos. Cargando y ubicando en el mapa…` }));
-      const r = await fetch("/api/galeria", { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ filas, corte: galeria.corte || undefined, nombre: galeria.archivo.name }) });
-      const j = await r.json();
-      setGaleria((g) => ({ ...g, ok: !j.error, msg: j.error ? j.error : `${j.proyectos} proyectos cargados · ${j.ubicados} ubicados en el mapa` }));
-    } catch (e) { setGaleria((g) => ({ ...g, ok: false, msg: (e as Error).message })); }
+  async function abrirProyecto(id: string) {
+    setCargando("Cargando proyecto…"); setSeccion("lote");
+    try { setSeleccion({ tipo: "proyecto", id, datos: await (await fetch(`/api/datos?tipo=proyecto&id=${id}`)).json() }); }
+    finally { setCargando(null); }
   }
 
-  async function abrir(tipo: "predio" | "proyecto", qs: string) {
-    setCargando(tipo === "predio" ? "Cargando ficha del lote…" : "Cargando proyecto…");
-    setContacto(null); setPestana("detalle");
+  async function buscar() {
+    const body = interpretarBusqueda(busqueda);
+    if (!body) return;
+    setCargando("Buscando el lote…"); setErrorBusqueda(null);
     try {
-      const r = await fetch(`/api/datos?tipo=${tipo}&${qs}`);
-      setDetalle({ tipo, datos: await r.json() });
-    } finally { setCargando(null); }
-  }
-
-  async function verOportunidades() {
-    setCargando("Buscando oportunidades…");
-    try {
-      const r = await fetch(`/api/datos?tipo=oportunidades&municipio=${encodeURIComponent(municipio)}`);
-      setOportunidades(await r.json());
+      const j = await (await fetch("/api/norma", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json();
+      if (!j.encontrado) { setErrorBusqueda(j.mensaje ?? "No encontré el lote"); return; }
+      const [lon, lat] = await fetch(`/api/datos?tipo=predio&id=${encodeURIComponent(j.predio)}`).then((r) => r.json()).then((d) => [d?.ubicacion?.lon, d?.ubicacion?.lat]).catch(() => [body.lon, body.lat]);
+      abrirLote(j.predio, Number(lon ?? body.lon), Number(lat ?? body.lat));
     } finally { setCargando(null); }
   }
 
@@ -203,73 +119,124 @@ export default function Mapa() {
       for (const capa of ["predios", "proyectos", "avisos"]) {
         m.addSource(capa, { type: "vector", tiles: [`${origen}/api/tiles/${capa}/{z}/{x}/{y}`], minzoom: capa === "predios" ? 14 : 8, maxzoom: 16 });
       }
-      m.addLayer({ id: "predios-relleno", type: "fill", source: "predios", "source-layer": "predios",
-        paint: { "fill-color": ["case", ["get", "potencial"], C.lima, ["get", "amenaza"], C.gris, C.turquesa],
-                 "fill-opacity": ["case", ["get", "potencial"], 0.5, 0.08] } });
+      m.addLayer({ id: "predios-relleno", type: "fill", source: "predios", "source-layer": "predios", paint: { "fill-color": PINTURA.potencial.color, "fill-opacity": PINTURA.potencial.opacidad } });
       m.addLayer({ id: "predios-borde", type: "line", source: "predios", "source-layer": "predios",
-        paint: { "line-color": C.petroleo, "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.2, 18, 0.8], "line-opacity": 0.45 } });
-      m.addLayer({ id: "lote-sel", type: "line", source: "predios", "source-layer": "predios", filter: ["==", ["get", "id"], "__ninguno__"],
-        paint: { "line-color": C.petroleo, "line-width": 3 } });
-      m.addLayer({ id: "avisos", type: "circle", source: "avisos", "source-layer": "avisos",
+        paint: { "line-color": C.oscuro, "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.2, 18, 0.8], "line-opacity": 0.4 } });
+      m.addLayer({ id: "lote-sel", type: "line", source: "predios", "source-layer": "predios", filter: ["==", ["get", "id"], "__ninguno__"], paint: { "line-color": C.morado, "line-width": 3.5 } });
+      m.addLayer({ id: "avisos", type: "circle", source: "avisos", "source-layer": "avisos", layout: { visibility: "none" },
         paint: { "circle-radius": 3, "circle-color": C.ambar, "circle-opacity": ["case", ["get", "aprox"], 0.35, 0.85] } });
       m.addLayer({ id: "proyectos", type: "circle", source: "proyectos", "source-layer": "proyectos",
-        paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 4, 16, 8], "circle-color": C.petroleo, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
+        paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 3.5, 16, 7], "circle-color": C.oscuro, "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
+      m.addSource("galeria", { type: "geojson", data: `${origen}/api/analisis/galeria` });
+      m.addLayer({ id: "galeria", type: "circle", source: "galeria",
+        paint: { "circle-radius": ["interpolate", ["linear"], ["get", "ventas_mes"], 0, 4, 10, 8, 40, 14], "circle-color": C.morado, "circle-opacity": ["case", ["get", "aprox"], 0.35, 0.75],
+          "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
       m.addSource("zona", { type: "geojson", data: { type: "FeatureCollection", features: [] } as any });
-      m.addLayer({ id: "zona-relleno", type: "fill", source: "zona", filter: ["==", ["geometry-type"], "Polygon"], paint: { "fill-color": C.turquesa, "fill-opacity": 0.12 } });
-      m.addLayer({ id: "zona-borde", type: "line", source: "zona", filter: ["!=", ["geometry-type"], "Point"], paint: { "line-color": C.turquesa, "line-width": 2.5, "line-dasharray": [2, 1] } });
-      m.addLayer({ id: "zona-vertices", type: "circle", source: "zona", filter: ["==", ["geometry-type"], "Point"],
-        paint: { "circle-radius": 5, "circle-color": "#fff", "circle-stroke-color": C.turquesa, "circle-stroke-width": 2.5 } });
+      m.addLayer({ id: "zona-relleno", type: "fill", source: "zona", filter: ["==", ["geometry-type"], "Polygon"], paint: { "fill-color": C.lila, "fill-opacity": 0.15 } });
+      m.addLayer({ id: "zona-borde", type: "line", source: "zona", filter: ["!=", ["geometry-type"], "Point"], paint: { "line-color": C.morado, "line-width": 2.5, "line-dasharray": [2, 1] } });
+      m.addLayer({ id: "zona-vertices", type: "circle", source: "zona", filter: ["==", ["geometry-type"], "Point"], paint: { "circle-radius": 5, "circle-color": "#fff", "circle-stroke-color": C.morado, "circle-stroke-width": 2.5 } });
       m.addSource("ranking", { type: "geojson", data: { type: "FeatureCollection", features: [] } as any });
-      if (rankingRef.current.length) setTimeout(() => pintarRanking(rankingRef.current), 0);
-      m.addLayer({ id: "ranking", type: "circle", source: "ranking",
-        paint: { "circle-radius": 11, "circle-color": C.lima, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
+      m.addLayer({ id: "ranking", type: "circle", source: "ranking", paint: { "circle-radius": 11, "circle-color": C.morado, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
       m.addLayer({ id: "ranking-n", type: "symbol", source: "ranking",
-        layout: { "text-field": ["to-string", ["get", "n"]], "text-size": 11, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true },
-        paint: { "text-color": "#fff" } });
-      m.on("click", "ranking", (e) => {
-        const f = e.features?.[0]; if (!f || dibujandoRef.current) return;
-        const id = String(f.properties.id); setLote({ id }); marcarLote(id); abrir("predio", `id=${encodeURIComponent(id)}`);
-      });
+        layout: { "text-field": ["to-string", ["get", "n"]], "text-size": 11, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true }, paint: { "text-color": "#fff" } });
+      if (rankingRef.current.length) setTimeout(() => pintarRanking(rankingRef.current), 0);
+
       m.on("click", (e) => {
         if (!dibujandoRef.current) return;
         setVertices((vs) => { const n = [...vs, [e.lngLat.lng, e.lngLat.lat] as [number, number]]; pintarZona(n); return n; });
       });
-      m.on("click", "proyectos", (e) => { if (dibujandoRef.current) return; const f = e.features?.[0]; if (f) abrir("proyecto", `id=${f.properties.id}`); });
+      m.on("click", "ranking", (e) => { const f = e.features?.[0]; if (f && !dibujandoRef.current) abrirLote(String(f.properties.id)); });
+      m.on("click", "proyectos", (e) => { if (dibujandoRef.current) return; const f = e.features?.[0]; if (f) abrirProyecto(String(f.properties.id)); });
+      m.on("click", "galeria", (e) => {
+        if (dibujandoRef.current) return;
+        const f = e.features?.[0]; if (!f) return; const p: any = f.properties;
+        new maplibregl.Popup({ closeButton: true, maxWidth: "260px" }).setLngLat(e.lngLat).setHTML(
+          `<b>${p.proyecto}</b><br><span style="color:#4d4d57">${p.construye} · ${p.zona}</span><br>` +
+          `$${(p.precio_m2 / 1e6).toFixed(1)} M/m² · ${p.ventas_mes} und/mes · ${Math.round(p.vendido * 100)}% vendido<br>Oferta ${p.oferta} + ${p.por_lanzar} por lanzar` +
+          (p.aprox ? `<br><i style="color:#8a8a93">ubicación aproximada</i>` : "")).addTo(m);
+      });
       m.on("click", "predios-relleno", (e) => {
         if (dibujandoRef.current) return;
-        if (m.queryRenderedFeatures(e.point, { layers: ["proyectos"] }).length) return;
-        const f = e.features?.[0];
-        if (!f) return;
-        const id = String(f.properties.id);
-        setLote({ id }); marcarLote(id);
-        abrir("predio", `id=${encodeURIComponent(id)}`);
+        if (m.queryRenderedFeatures(e.point, { layers: ["proyectos", "galeria", "ranking"] }).length) return;
+        const f = e.features?.[0]; if (f) abrirLote(String(f.properties.id));
       });
-      for (const l of ["proyectos", "predios-relleno"]) {
+      for (const l of ["proyectos", "predios-relleno", "galeria", "ranking"]) {
         m.on("mouseenter", l, () => { if (!dibujandoRef.current) m.getCanvas().style.cursor = "pointer"; });
         m.on("mouseleave", l, () => { if (!dibujandoRef.current) m.getCanvas().style.cursor = ""; });
       }
     });
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const m = mapa.current; if (!m || !m.getLayer("predios-relleno")) return;
+    m.setPaintProperty("predios-relleno", "fill-color", PINTURA[modoCapa].color);
+    m.setPaintProperty("predios-relleno", "fill-opacity", PINTURA[modoCapa].opacidad);
+  }, [modoCapa]);
+  useEffect(() => {
+    const m = mapa.current; if (!m) return;
+    for (const [k, v] of Object.entries(capas)) if (m.getLayer(k)) m.setLayoutProperty(k, "visibility", v ? "visible" : "none");
+  }, [capas]);
 
   function empezarDibujo() {
     setVertices([]); pintarZona([]); setDibujando(true); dibujandoRef.current = true;
     if (mapa.current) mapa.current.getCanvas().style.cursor = "crosshair";
-    setPestana("estudio");
   }
-  function terminarDibujo() {
-    setDibujando(false); dibujandoRef.current = false;
-    if (mapa.current) mapa.current.getCanvas().style.cursor = "";
-  }
+  function terminarDibujo() { setDibujando(false); dibujandoRef.current = false; if (mapa.current) mapa.current.getCanvas().style.cursor = ""; }
   function borrarZona() { setVertices([]); pintarZona([]); }
+  function irA(nombre: string) { setMunicipio(nombre); const c = MUNICIPIOS.find((x) => x[0] === nombre); if (c) mapa.current?.flyTo({ center: [c[1], c[2]], zoom: 14 }); }
 
-  function irA(nombre: string) {
-    setMunicipio(nombre);
-    const c = MUNICIPIOS.find((x) => x[0] === nombre);
-    if (c) mapa.current?.flyTo({ center: [c[1], c[2]], zoom: 14 });
+  /* ---------- estudios ---------- */
+  async function generarEstudio() {
+    if (!loteId && vertices.length < 3) return;
+    setCargando("Armando el estudio de competencia…"); setEstudio(null);
+    const centro = vertices.length >= 3 ? [vertices.reduce((a, v) => a + v[0], 0) / vertices.length, vertices.reduce((a, v) => a + v[1], 0) / vertices.length] : null;
+    const body: any = { nombre: form.nombre || undefined, tipo_vivienda: form.tipo_vivienda, vocacion: form.vocacion, min_unidades: Number(form.min_unidades),
+      lote: loteId ? { id: loteId } : { lon: centro![0], lat: centro![1] } };
+    if (vertices.length >= 3) body.poligono = { type: "Polygon", coordinates: [[...vertices, vertices[0]]] }; else body.radio_m = Number(form.radio_m);
+    try { setEstudio(await (await fetch("/api/estudio", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json()); }
+    catch (e) { setEstudio({ error: (e as Error).message }); } finally { setCargando(null); }
+  }
+
+  async function estudioPerfil() {
+    setCargando("Recorriendo todos los lotes del municipio…"); setResPerfil(null);
+    const n = (v: any) => (v === "" || v === null || v === undefined ? undefined : Number(v));
+    const body = { municipio, tipo_vivienda: perfil.tipo_vivienda, unidades_min: n(perfil.unidades_min), unidades_max: n(perfil.unidades_max), area_unidad_m2: n(perfil.area_unidad_m2),
+      pisos_min: n(perfil.pisos_min), area_lote_min: n(perfil.area_lote_min), precio_m2_objetivo: perfil.precio_m2_objetivo ? Number(perfil.precio_m2_objetivo) * 1e6 : undefined,
+      barrios: perfil.barrios ? perfil.barrios.split(",").map((x) => x.trim()).filter(Boolean) : undefined, limite: 30, norma: perfil.norma };
+    try {
+      const j = await (await fetch("/api/perfil", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json();
+      setResPerfil(j); if (!j.error) pintarRanking(j.oportunidades ?? []);
+    } catch (e) { setResPerfil({ error: (e as Error).message }); } finally { setCargando(null); }
+  }
+
+  async function verOportunidades() {
+    setCargando("Buscando oportunidades…");
+    try { const j = await (await fetch(`/api/datos?tipo=oportunidades&municipio=${encodeURIComponent(municipio)}`)).json(); setOportunidades(j); pintarRanking((j.oportunidades ?? []).map((o: any) => ({ id: o.id, lat: o.lat, lon: o.lon }))); }
+    finally { setCargando(null); }
+  }
+
+  async function subirGaleria() {
+    if (!galeria.archivo) return;
+    setGaleria((g) => ({ ...g, msg: "Leyendo el Excel en tu navegador…", ok: undefined }));
+    try {
+      const [{ default: ExcelJS }, { leerLibroGaleria }] = await Promise.all([import("exceljs"), import("@/lib/galeria_parse")]);
+      const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await galeria.archivo.arrayBuffer());
+      const filas = leerLibroGaleria(wb);
+      if (!filas.length) { setGaleria((g) => ({ ...g, ok: false, msg: "No encontré proyectos: el archivo debe tener una fila de encabezado con 'Código' y 'Proyecto'." })); return; }
+      setGaleria((g) => ({ ...g, msg: `${filas.length} proyectos leídos. Cargando y ubicando en el mapa…` }));
+      const j = await (await fetch("/api/galeria", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ filas, corte: galeria.corte || undefined, nombre: galeria.archivo.name }) })).json();
+      setGaleria((g) => ({ ...g, ok: !j.error, msg: j.error ? j.error : `${j.proyectos} proyectos cargados · ${j.ubicados} ubicados en el mapa` }));
+      (mapa.current?.getSource("galeria") as maplibregl.GeoJSONSource | undefined)?.setData(`${window.location.origin}/api/analisis/galeria?t=${Date.now()}`);
+    } catch (e) { setGaleria((g) => ({ ...g, ok: false, msg: (e as Error).message })); }
   }
 
   const zonaLista = vertices.length >= 3;
-  const puedeGenerar = !!lote || zonaLista;
+  const titulos: Record<Seccion, [string, string]> = {
+    lote: ["Lote", "Norma, cabida, semáforo, cesiones y valor residual"], oportunidades: [`Dónde construir · ${municipio}`, "Lotes donde cabe tu edificio, en todo el municipio"],
+    estudio: ["Estudio de competencia", "Etapa 1 · pasos 3 a 9, con Excel"], cartera: ["Cartera de lotes", "Analiza hasta 250 lotes de una vez"],
+    comparar: ["Comparar lotes", "De 2 a 5 lotes lado a lado"], zona: ["Analizar una zona", "Norma, POT 2026, competencia y mercado de un polígono"],
+    pot: ["POT 2026", "Quién gana y quién pierde con la revisión del POT de Medellín"], galeria: ["Galería Inmobiliaria", "Carga la exportación mensual"],
+  };
 
   return (
     <>
@@ -277,217 +244,143 @@ export default function Mapa() {
         <a className="logo" href="/mapa"><img src="/marca/irrelevant.png" alt="" />irrelevant</a>
         <div className="sep" />
         <div className="producto">Inteligencia de suelo<small>Norma, mercado y competencia · Valle de Aburrá</small></div>
-        <div className="derecha"><a href="/como-funciona.html" target="_blank" style={{ color: "#fff" }}>Cómo funciona</a><a href="/api/logout" style={{ color: "#fff", marginLeft: 14 }}>Salir</a></div>
+        <div className="buscador">
+          <span>⌕</span>
+          <input placeholder="Busca un lote: CBML, matrícula, dirección o coordenada de Google Maps" value={busqueda}
+            onChange={(e) => { setBusqueda(e.target.value); setErrorBusqueda(null); }} onKeyDown={(e) => { if (e.key === "Enter") buscar(); }} />
+          {errorBusqueda && <div className="error-busqueda">{errorBusqueda}</div>}
+        </div>
+        <div className="derecha"><a href="/que-puedo-hacer.html" target="_blank">Guía</a><a href="/api/logout">Salir</a></div>
         <div className="franja" />
       </header>
 
       <div className="workspace">
         <div className="lienzo">
           <div ref={contenedor} className="mapa" />
-
           <div className="herramientas">
-            <select className="entrada" style={{ width: 170 }} value={municipio} onChange={(e) => irA(e.target.value)}>
-              {MUNICIPIOS.map(([n]) => <option key={n}>{n}</option>)}
-            </select>
+            <select className="entrada" style={{ width: 160 }} value={municipio} onChange={(e) => irA(e.target.value)}>{MUNICIPIOS.map(([n]) => <option key={n}>{n}</option>)}</select>
             {!dibujando
               ? <button className="btn btn-oscuro" onClick={empezarDibujo}>✎ Dibujar zona</button>
-              : <button className="btn btn-activo" onClick={terminarDibujo} disabled={vertices.length > 0 && vertices.length < 3}>✓ Terminar zona ({vertices.length})</button>}
+              : <button className="btn btn-activo" onClick={terminarDibujo} disabled={vertices.length > 0 && vertices.length < 3}>✓ Terminar ({vertices.length})</button>}
             {vertices.length > 0 && !dibujando && <button className="btn btn-borde" onClick={borrarZona}>Borrar zona</button>}
-            <button className="btn btn-borde" onClick={() => setPestana("oportunidades")}>★ Oportunidades</button>
           </div>
-
+          <div className="capas">
+            <div className="segmento">
+              {([["potencial", "Potencial"], ["cambio", "Cambio POT 2026"], ["ninguno", "Sin color"]] as [ModoCapa, string][]).map(([k, t]) => (
+                <button key={k} className={modoCapa === k ? "on" : ""} onClick={() => setModoCapa(k)}>{t}</button>
+              ))}
+            </div>
+            <div className="toggles">
+              {([["galeria", "Galería"], ["proyectos", "Proyectos"], ["avisos", "En venta"]] as [keyof typeof capas, string][]).map(([k, t]) => (
+                <label key={k}><input type="checkbox" checked={capas[k]} onChange={(e) => setCapas({ ...capas, [k]: e.target.checked })} />{t}</label>
+              ))}
+            </div>
+          </div>
           {dibujando && <div className="aviso-dibujo">Haz clic en el mapa para marcar los vértices de la zona. Mínimo 3 puntos.</div>}
           {cargando && <div className="cargando-mapa"><span className="giro" />{cargando}</div>}
-
           <div className="leyenda">
-            <b>Convenciones</b>
-            <span><i className="cuadro" style={{ background: C.lima, opacity: 0.7 }} /> Lote con potencial</span>
-            <span><i className="cuadro" style={{ border: `1.5px solid ${C.petroleo}`, background: "rgba(139,116,240,.1)" }} /> Predio</span>
-            <span><i className="punto" style={{ background: C.petroleo, border: "2px solid #fff", boxShadow: "0 0 0 1px #0002" }} /> Proyecto nuevo</span>
-            <span><i className="punto" style={{ background: C.ambar, width: 8, height: 8 }} /> Inmueble en venta</span>
-            <span><i className="cuadro" style={{ border: `2px dashed ${C.turquesa}` }} /> Zona del estudio</span>
-            <span><i className="punto" style={{ background: C.lima, border: "2px solid #fff", boxShadow: "0 0 0 1px #0002" }} /> Lote recomendado</span>
+            {modoCapa === "cambio" ? (
+              <>
+                <b>Cambio de índice de construcción (POT 2026)</b>
+                <div className="gradiente" />
+                <div className="extremos"><span>baja</span><span>igual</span><span>sube</span></div>
+              </>
+            ) : (
+              <>
+                <b>Convenciones</b>
+                <span><i className="cuadro" style={{ background: C.morado, opacity: 0.7 }} /> Lote con potencial</span>
+                <span><i className="punto" style={{ background: C.morado, opacity: 0.75, width: 12, height: 12 }} /> Proyecto Galería (tamaño = ventas)</span>
+                <span><i className="punto" style={{ background: C.oscuro, border: "2px solid #fff", boxShadow: "0 0 0 1px #0002" }} /> Proyecto nuevo (Zonario)</span>
+                {capas.avisos && <span><i className="punto" style={{ background: C.ambar, width: 8, height: 8 }} /> Inmueble en venta</span>}
+              </>
+            )}
           </div>
         </div>
 
         <aside className="panel">
-          <nav className="pestanas">
-            {([["norma", "Norma"], ["estudio", "Estudio"], ["detalle", "Lote"], ["oportunidades", "Oportunidades"], ["galeria", "Galería"]] as [Pestana, string][]).map(([k, t]) => (
-              <button key={k} className={pestana === k ? "on" : ""} onClick={() => setPestana(k)}>{t}</button>
+          <nav className="riel">
+            {SECCIONES.map(([k, ic, t]) => (
+              <button key={k} className={seccion === k ? "on" : ""} onClick={() => setSeccion(k)} title={t}>
+                <span className="ic">{ic}</span><span className="tx">{t}</span>
+                {k === "comparar" && comparar.length > 0 && <span className="globo">{comparar.length}</span>}
+              </button>
             ))}
           </nav>
-
           <div className="contenido">
-            {pestana === "norma" && (
-              <>
-                <div className="titulo">
-                  <h2>¿Qué se puede hacer en este lote?</h2>
-                  <div className="sub">Busca por CBML, matrícula, dirección de Medellín o coordenada de Google Maps, o sube un KMZ con varios lotes.</div>
-                </div>
-                <div className="tarjeta">
-                  <div className="campo">
-                    <label>Lote</label>
-                    <input className="entrada" placeholder="15090030008 · 001-728976 · Cl. 6 Sur #50C-104 · 6.2032, -75.5826" value={busqNorma}
-                      onChange={(e) => setBusqNorma(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") consultarNorma(); }} />
-                  </div>
-                  <button className="btn btn-primario btn-bloque" disabled={!busqNorma.trim() || !!cargando} onClick={consultarNorma}>Consultar norma</button>
-                  <label className={`soltar ${sobre ? "sobre" : ""}`}
-                    onDragOver={(e) => { e.preventDefault(); setSobre(true); }} onDragLeave={() => setSobre(false)}
-                    onDrop={(e) => { e.preventDefault(); setSobre(false); const f = e.dataTransfer.files?.[0]; if (f) consultarKmz(f); }}>
-                    <input type="file" accept=".kmz,.kml" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) consultarKmz(f); }} />
-                    <b>…o arrastra un KMZ / KML de Google Earth</b>
-                    <span className="nota">Puntos o polígonos; cada polígono suma los predios que cubre (englobe)</span>
-                  </label>
-                </div>
-                {resNorma && !resNorma.encontrado && <div className="error">{resNorma.mensaje ?? resNorma.error}</div>}
-                {resNorma?.encontrado && <FichaNorma r={resNorma} />}
-                {resLotes?.error && <div className="error">{resLotes.error}</div>}
-                {resLotes?.resultados && (
-                  <>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <b>{resLotes.lotes} lotes · {resLotes.archivo}</b>
-                      <button className="btn btn-borde" onClick={descargarCsvLotes}>⤓ CSV</button>
-                    </div>
-                    {resLotes.resultados.map((r: any, i: number) => (
-                      <div key={i} className="tarjeta">
-                        <h4>{r.nombre}</h4>
-                        {r.encontrado === false ? <div className="sub">{r.mensaje}</div> : (
-                          <>
-                            <div className="sub">{r.tipo === "poligono" ? `${r.predios} predios · ${m2(r.area_lotes_m2)} · ${(r.tratamientos ?? []).join(" / ")}` : `${r.predio} · ${m2(r.area_lote_m2)} · ${r.norma?.tratamiento ?? "sin tratamiento"}`}</div>
-                            <div className="cifras tres">
-                              <Cifra v={m2(r.que_se_puede_hacer?.area_construible_m2)} k="área construible" />
-                              <Cifra v={num(r.que_se_puede_hacer?.viviendas_max_por_densidad)} k="viviendas por densidad" />
-                              <Cifra v={num(r.que_se_puede_hacer?.unidades_estimadas)} k="unidades estimadas" />
-                            </div>
-                            {r.pot_2026_preliminar?.disponible !== false && (r.pot_2026_preliminar?.que_se_puede_hacer || r.pot_2026_preliminar?.area_construible_m2) && (
-                              <div className="sub">POT 2026 (preliminar): {m2(r.pot_2026_preliminar.que_se_puede_hacer?.area_construible_m2 ?? r.pot_2026_preliminar.area_construible_m2)} construibles · {num(r.pot_2026_preliminar.que_se_puede_hacer?.con_derechos?.viviendas_max_por_densidad ?? r.pot_2026_preliminar.con_derechos_viviendas)} viviendas con derechos</div>
-                            )}
-                            {(r.amenaza_alta || r.restricciones?.amenaza_alta) && <span className="etiqueta riesgo">Amenaza alta</span>}
-                          </>
-                        )}
-                      </div>
-                    ))}
-                    {resLotes.resultados.find((r: any) => r.aviso_pot) && <div className="alerta">{resLotes.resultados.find((r: any) => r.aviso_pot).aviso_pot}</div>}
-                  </>
-                )}
-              </>
+            <div className="titulo"><h2>{titulos[seccion][0]}</h2><div className="sub">{titulos[seccion][1]}</div></div>
+
+            {seccion === "lote" && (
+              !seleccion ? <Vacio icono="⌖" titulo="Busca o selecciona un lote" texto="Escribe un CBML, una matrícula, una dirección o una coordenada arriba, o acércate en el mapa y haz clic en un predio." />
+              : seleccion.tipo === "predio" ? <PanelLote id={seleccion.id} enComparacion={comparar.includes(seleccion.id)}
+                  onComparar={(id) => setComparar((c) => (c.includes(id) || c.length >= 5 ? c : [...c, id]))} onEstudio={() => setSeccion("estudio")} />
+              : seleccion.datos?.encontrado ? <FichaProyecto d={seleccion.datos} /> : <div className="error">No encontré el proyecto.</div>
             )}
 
-            {pestana === "estudio" && (
-              <>
-                <div className="titulo">
-                  <h2>Estudio de competencia</h2>
-                  <div className="sub">Etapa 1 · Concepción de producto, pasos 3 a 9</div>
-                </div>
+            {seccion === "comparar" && <PanelComparar ids={comparar} quitar={(id) => setComparar((c) => c.filter((x) => x !== id))} abrir={(id) => abrirLote(id)} />}
+            {seccion === "cartera" && <PanelCartera pintar={pintarRanking} abrir={(id) => abrirLote(id)} />}
+            {seccion === "zona" && <PanelZona vertices={vertices} dibujar={empezarDibujo} borrar={borrarZona} onEstudio={() => setSeccion("estudio")} />}
+            {seccion === "pot" && <PanelPot abrir={abrirLote} verCapa={() => { setModoCapa("cambio"); mapa.current?.flyTo({ center: [-75.58, 6.24], zoom: 14 }); }} />}
 
+            {seccion === "estudio" && (
+              <>
                 <div className="tarjeta">
                   <h4>1 · Lote y zona</h4>
                   <div className="etiquetas">
-                    <span className={`etiqueta ${lote ? "lima" : ""}`}>{lote ? `Lote ${lote.id}` : "Sin lote: haz clic en un predio"}</span>
+                    <span className={`etiqueta ${loteId ? "lima" : ""}`}>{loteId ? `Lote ${loteId}` : "Sin lote: búscalo o haz clic en un predio"}</span>
                     <span className={`etiqueta ${zonaLista ? "lima" : ""}`}>{zonaLista ? `Zona de ${vertices.length} vértices` : "Sin zona dibujada"}</span>
                   </div>
                   {!zonaLista && (
-                    <div className="campo">
-                      <label>Radio alrededor del lote</label>
-                      <div className="segmento">
-                        {[1500, 3000, 5000].map((r) => <button key={r} className={form.radio_m === r ? "on" : ""} onClick={() => setForm({ ...form, radio_m: r })}>{r / 1000} km</button>)}
-                      </div>
+                    <div className="campo"><label>Radio alrededor del lote</label>
+                      <div className="segmento">{[1500, 3000, 5000].map((r) => <button key={r} className={form.radio_m === r ? "on" : ""} onClick={() => setForm({ ...form, radio_m: r })}>{r / 1000} km</button>)}</div>
                     </div>
                   )}
                 </div>
-
                 <div className="tarjeta">
                   <h4>2 · Objetivo</h4>
-                  <div className="campo">
-                    <label>Nombre del lote</label>
-                    <input className="entrada" placeholder="p. ej. BONEM" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+                  <div className="campo"><label>Nombre del lote</label><input className="entrada" placeholder="p. ej. BONEM" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} /></div>
+                  <div className="campo"><label>Tipo de vivienda</label>
+                    <div className="segmento">{[["todos", "VIS y NO VIS"], ["VIS", "VIS"], ["NO VIS", "NO VIS"]].map(([v, t]) => <button key={v} className={form.tipo_vivienda === v ? "on" : ""} onClick={() => setForm({ ...form, tipo_vivienda: v })}>{t}</button>)}</div>
                   </div>
-                  <div className="campo">
-                    <label>Tipo de vivienda</label>
-                    <div className="segmento">
-                      {[["todos", "VIS y NO VIS"], ["VIS", "VIS"], ["NO VIS", "NO VIS"]].map(([v, t]) => <button key={v} className={form.tipo_vivienda === v ? "on" : ""} onClick={() => setForm({ ...form, tipo_vivienda: v })}>{t}</button>)}
-                    </div>
+                  <div className="campo"><label>Vocación</label>
+                    <div className="segmento">{[["ambos", "Ambas"], ["vivienda", "Vivienda"], ["rentas_cortas", "Rentas cortas"]].map(([v, t]) => <button key={v} className={form.vocacion === v ? "on" : ""} onClick={() => setForm({ ...form, vocacion: v })}>{t}</button>)}</div>
                   </div>
-                  <div className="campo">
-                    <label>Vocación</label>
-                    <div className="segmento">
-                      {[["ambos", "Ambas"], ["vivienda", "Vivienda"], ["rentas_cortas", "Rentas cortas"]].map(([v, t]) => <button key={v} className={form.vocacion === v ? "on" : ""} onClick={() => setForm({ ...form, vocacion: v })}>{t}</button>)}
-                    </div>
-                  </div>
-                  <div className="campo">
-                    <label>Proyectos de más de</label>
-                    <input className="entrada" type="number" min={0} value={form.min_unidades} onChange={(e) => setForm({ ...form, min_unidades: Number(e.target.value) })} />
-                  </div>
+                  <div className="campo"><label>Proyectos de más de</label><input className="entrada" type="number" min={0} value={form.min_unidades} onChange={(e) => setForm({ ...form, min_unidades: Number(e.target.value) })} /></div>
                 </div>
-
-                <button className="btn btn-primario btn-bloque" disabled={!puedeGenerar || !!cargando} onClick={generarEstudio}>
-                  {cargando?.startsWith("Armando") ? "Generando…" : "Generar estudio"}
-                </button>
-                {!puedeGenerar && <div className="nota" style={{ textAlign: "center" }}>Selecciona un lote en el mapa (acércate a nivel de manzana) o dibuja una zona.</div>}
-
+                <button className="btn btn-primario btn-bloque" disabled={(!loteId && !zonaLista) || !!cargando} onClick={generarEstudio}>{cargando?.startsWith("Armando") ? "Generando…" : "Generar estudio"}</button>
                 {estudio?.error && <div className="error">{estudio.error}</div>}
                 {estudio && !estudio.error && <ResultadoEstudio e={estudio} />}
               </>
             )}
 
-            {pestana === "detalle" && (
+            {seccion === "oportunidades" && (
               <>
-                {!detalle && (
-                  <div className="vacio"><div className="icono">⌖</div><b>Selecciona un lote o un proyecto</b>Acércate en el mapa hasta ver los predios y haz clic en uno.</div>
-                )}
-                {detalle?.datos?.error && <div className="error">{detalle.datos.error}</div>}
-                {detalle?.tipo === "predio" && detalle.datos?.encontrado && (
-                  <FichaPredio d={detalle.datos} contacto={contacto}
-                    pedirContacto={async () => { const r = await fetch(`/api/datos?tipo=contacto&id=${encodeURIComponent(detalle.datos.id)}`); setContacto(await r.json()); }}
-                    usarEnEstudio={() => setPestana("estudio")} />
-                )}
-                {detalle?.tipo === "proyecto" && detalle.datos?.encontrado && <FichaProyecto d={detalle.datos} />}
-              </>
-            )}
-
-            {pestana === "oportunidades" && (
-              <>
-                <div className="titulo">
-                  <h2>Oportunidades · {municipio}</h2>
-                  <div className="sub">Recorre todos los lotes del municipio y deja los que sirven para tu producto</div>
-                </div>
                 <div className="segmento">
                   <button className={modoOp === "perfil" ? "on" : ""} onClick={() => setModoOp("perfil")}>Por perfil de edificio</button>
                   <button className={modoOp === "rapidas" ? "on" : ""} onClick={() => setModoOp("rapidas")}>Ranking general</button>
                 </div>
-
                 {modoOp === "perfil" && (
                   <>
                     <div className="tarjeta">
-                      <h4>Perfil del edificio</h4>
-                      <div className="campo">
-                        <label>Tipo de vivienda</label>
-                        <div className="segmento">
-                          {[["NO VIS", "NO VIS"], ["VIS", "VIS"], ["todos", "Ambos"]].map(([v, t]) => (
-                            <button key={v} className={perfil.tipo_vivienda === v ? "on" : ""}
-                              onClick={() => setPerfil({ ...perfil, tipo_vivienda: v, area_unidad_m2: v === "VIS" ? 50 : perfil.area_unidad_m2 === 50 ? 65 : perfil.area_unidad_m2 })}>{t}</button>
-                          ))}
-                        </div>
+                      <div className="campo"><label>Tipo de vivienda</label>
+                        <div className="segmento">{[["NO VIS", "NO VIS"], ["VIS", "VIS"], ["todos", "Ambos"]].map(([v, t]) => (
+                          <button key={v} className={perfil.tipo_vivienda === v ? "on" : ""} onClick={() => setPerfil({ ...perfil, tipo_vivienda: v, area_unidad_m2: v === "VIS" ? 50 : perfil.area_unidad_m2 === 50 ? 65 : perfil.area_unidad_m2 })}>{t}</button>))}</div>
                       </div>
                       <div className="fila">
                         <div className="campo"><label>Unidades mínimas</label><input className="entrada" type="number" value={perfil.unidades_min} onChange={(e) => setPerfil({ ...perfil, unidades_min: Number(e.target.value) })} /></div>
                         <div className="campo"><label>Unidades máximas</label><input className="entrada" type="number" value={perfil.unidades_max} onChange={(e) => setPerfil({ ...perfil, unidades_max: Number(e.target.value) })} /></div>
                       </div>
                       <div className="fila">
-                        <div className="campo"><label>Área por unidad (m²)</label><input className="entrada" type="number" value={perfil.area_unidad_m2} onChange={(e) => setPerfil({ ...perfil, area_unidad_m2: Number(e.target.value) })} /></div>
+                        <div className="campo"><label>m² por unidad</label><input className="entrada" type="number" value={perfil.area_unidad_m2} onChange={(e) => setPerfil({ ...perfil, area_unidad_m2: Number(e.target.value) })} /></div>
                         <div className="campo"><label>Pisos mínimos</label><input className="entrada" type="number" value={perfil.pisos_min} onChange={(e) => setPerfil({ ...perfil, pisos_min: Number(e.target.value) })} /></div>
                       </div>
                       <div className="fila">
                         <div className="campo"><label>Lote mínimo (m²)</label><input className="entrada" type="number" placeholder="opcional" value={perfil.area_lote_min} onChange={(e) => setPerfil({ ...perfil, area_lote_min: e.target.value })} /></div>
                         <div className="campo"><label>Precio objetivo ($M/m²)</label><input className="entrada" type="number" step="0.1" placeholder="p. ej. 9,5" value={perfil.precio_m2_objetivo} onChange={(e) => setPerfil({ ...perfil, precio_m2_objetivo: e.target.value })} /></div>
                       </div>
-                      <div className="campo">
-                        <label>Norma (Medellín)</label>
-                        <div className="segmento">
-                          {[["2014", "POT 2014 vigente"], ["2026", "Proyecto POT 2026"]].map(([v, t]) => <button key={v} className={perfil.norma === v ? "on" : ""} onClick={() => setPerfil({ ...perfil, norma: v })}>{t}</button>)}
-                        </div>
+                      <div className="campo"><label>Norma (Medellín)</label>
+                        <div className="segmento">{[["2014", "POT 2014 vigente"], ["2026", "Proyecto POT 2026"]].map(([v, t]) => <button key={v} className={perfil.norma === v ? "on" : ""} onClick={() => setPerfil({ ...perfil, norma: v })}>{t}</button>)}</div>
                       </div>
-                      <div className="campo"><label>Barrios (opcional, separados por coma)</label><input className="entrada" placeholder="p. ej. Guayabal, Belén" value={perfil.barrios} onChange={(e) => setPerfil({ ...perfil, barrios: e.target.value })} /></div>
+                      <div className="campo"><label>Barrios (opcional)</label><input className="entrada" placeholder="p. ej. Guayabal, Belén" value={perfil.barrios} onChange={(e) => setPerfil({ ...perfil, barrios: e.target.value })} /></div>
                     </div>
                     <button className="btn btn-primario btn-bloque" disabled={!!cargando} onClick={estudioPerfil}>Buscar lotes para este edificio</button>
                     {resPerfil?.error && <div className="error">{resPerfil.error}</div>}
@@ -495,376 +388,60 @@ export default function Mapa() {
                       <>
                         <div className="tarjeta destacada">
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 10 }}>
-                            <div>
-                              <h3 style={{ fontSize: 17 }}>{resPerfil.resumen.lotes_que_cumplen_la_norma} lotes sirven</h3>
-                              <div style={{ fontSize: 12, opacity: 0.85 }}>{resPerfil.perfil.tipo_vivienda} · {resPerfil.perfil.unidades_min}{resPerfil.perfil.unidades_max ? `–${resPerfil.perfil.unidades_max}` : "+"} unidades de {resPerfil.perfil.area_unidad_m2} m²</div>
-                            </div>
+                            <div><h3 style={{ fontSize: 17 }}>{resPerfil.resumen.lotes_que_cumplen_la_norma} lotes sirven</h3>
+                              <div style={{ fontSize: 12, opacity: 0.85 }}>{resPerfil.perfil.tipo_vivienda} · {resPerfil.perfil.unidades_min}{resPerfil.perfil.unidades_max ? `–${resPerfil.perfil.unidades_max}` : "+"} unidades de {resPerfil.perfil.area_unidad_m2} m² · {resPerfil.perfil.norma}</div></div>
                             <a className="btn btn-primario" href={`/api/estudio/${resPerfil.id}/xlsx`}>⤓ Excel</a>
                           </div>
-                          <div className="cifras">
-                            <Cifra v={num(resPerfil.resumen.con_norma_base)} k="con la norma base" />
-                            <Cifra v={num(resPerfil.resumen.solo_comprando_derechos)} k="comprando derechos" />
-                          </div>
+                          <div className="cifras"><Cifra v={num(resPerfil.resumen.con_norma_base)} k="con la norma base" /><Cifra v={num(resPerfil.resumen.solo_comprando_derechos)} k="comprando derechos" /></div>
                         </div>
-                        <div className="tarjeta">
-                          <h4>Barrios con más lotes</h4>
-                          <table className="tabla">
-                            <thead><tr><th>Barrio</th><th>Lotes</th><th>Área</th><th>Unidades</th></tr></thead>
-                            <tbody>{resPerfil.resumen.barrios_con_mas_lotes.slice(0, 8).map((b: any) => (
-                              <tr key={b.barrio}><td>{b.barrio}</td><td>{b.lotes}</td><td>{num(b.area_lote_total / 10000, 1)} ha</td><td>{num(b.unidades_posibles)}</td></tr>
-                            ))}</tbody>
-                          </table>
+                        <div className="tarjeta"><h4>Barrios con más lotes</h4>
+                          <table className="tabla"><thead><tr><th>Barrio</th><th>Lotes</th><th>Área</th><th>Unidades</th></tr></thead>
+                            <tbody>{resPerfil.resumen.barrios_con_mas_lotes.slice(0, 8).map((b: any) => <tr key={b.barrio}><td>{b.barrio}</td><td>{b.lotes}</td><td>{num(b.area_lote_total / 10000, 1)} ha</td><td>{num(b.unidades_posibles)}</td></tr>)}</tbody></table>
                         </div>
-                        <div className="tarjeta">
-                          <h4>Mejores lotes ({resPerfil.oportunidades.length})</h4>
-                          <ul className="lista">
-                            {resPerfil.oportunidades.map((o: any, i: number) => (
-                              <li key={o.id} className="clicable" onClick={() => {
-                                mapa.current?.flyTo({ center: [Number(o.lon), Number(o.lat)], zoom: 17 });
-                                setLote({ id: o.id }); marcarLote(o.id); abrir("predio", `id=${encodeURIComponent(o.id)}`);
-                              }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                                  <span className="n">{i + 1}. {o.barrio ?? o.municipio}</span>
-                                  <span className="etiqueta lima">{o.puntaje} pts</span>
-                                </div>
-                                <span className="sub">{m2(o.area_lote_m2)} · ≈ {o.unidades_posibles} unidades{o.requiere_compra_derechos ? " (con derechos)" : ""} · {o.tratamiento}</span>
-                                <span className="nota">{o.por_que.slice(1, 3).join(" · ")}</span>
-                              </li>
-                            ))}
-                          </ul>
+                        <div className="tarjeta"><h4>Mejores lotes ({resPerfil.oportunidades.length})</h4>
+                          <ul className="lista">{resPerfil.oportunidades.map((o: any, i: number) => (
+                            <li key={o.id} className="clicable" onClick={() => abrirLote(o.id, Number(o.lon), Number(o.lat))}>
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span className="n">{i + 1}. {o.barrio ?? o.municipio}</span><span className="etiqueta lima">{o.puntaje} pts</span></div>
+                              <span className="sub">{m2(o.area_lote_m2)} · ≈ {o.unidades_posibles} unidades{o.requiere_compra_derechos ? " (con derechos)" : ""} · {o.tratamiento}</span>
+                              <span className="nota">{o.por_que.slice(1, 3).join(" · ")}</span>
+                            </li>))}</ul>
                         </div>
                         <div className="nota">{resPerfil.metodo}</div>
                       </>
                     )}
                   </>
                 )}
-
                 {modoOp === "rapidas" && (
                   <>
                     {!oportunidades && <button className="btn btn-oscuro btn-bloque" onClick={verOportunidades}>Ver ranking general de {municipio}</button>}
-                    {oportunidades?.error && <div className="error">{oportunidades.error}</div>}
                     {oportunidades && !oportunidades.error && (
-                      <>
-                        <div className="nota">{oportunidades.metodo}</div>
-                        <div className="tarjeta">
-                          <ul className="lista">
-                            {(oportunidades.oportunidades ?? []).map((o: any, i: number) => (
-                              <li key={o.id} className="clicable" onClick={() => {
-                                mapa.current?.flyTo({ center: [Number(o.lon), Number(o.lat)], zoom: 17 });
-                                setLote({ id: o.id }); marcarLote(o.id); abrir("predio", `id=${encodeURIComponent(o.id)}`);
-                              }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                                  <span className="n">{i + 1}. {o.barrio ?? o.municipio}</span>
-                                  <span className="etiqueta lima">{o.puntaje} pts</span>
-                                </div>
-                                <span className="sub">{m2(Number(o.area_lote))} · {o.por_que.join(" · ")}</span>
-                              </li>
-                            ))}
-                          </ul>
-                          {(oportunidades.oportunidades ?? []).length === 0 && <div className="nota">No hay lotes con potencial calculado en este municipio.</div>}
-                        </div>
-                      </>
+                      <div className="tarjeta"><ul className="lista">{(oportunidades.oportunidades ?? []).map((o: any, i: number) => (
+                        <li key={o.id} className="clicable" onClick={() => abrirLote(o.id, Number(o.lon), Number(o.lat))}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span className="n">{i + 1}. {o.barrio ?? o.municipio}</span><span className="etiqueta lima">{o.puntaje} pts</span></div>
+                          <span className="sub">{m2(Number(o.area_lote))} · {o.por_que.slice(0, 2).join(" · ")}</span>
+                        </li>))}</ul></div>
                     )}
                   </>
                 )}
               </>
             )}
 
-            {pestana === "galeria" && (
+            {seccion === "galeria" && (
               <>
-                <div className="titulo">
-                  <h2>Datos de Galería Inmobiliaria</h2>
-                  <div className="sub">Carga la exportación mensual para alimentar los estudios</div>
-                </div>
-                <label className={`soltar ${sobre ? "sobre" : ""}`}
-                  onDragOver={(e) => { e.preventDefault(); setSobre(true); }} onDragLeave={() => setSobre(false)}
-                  onDrop={(e) => { e.preventDefault(); setSobre(false); const f = e.dataTransfer.files?.[0]; if (f) setGaleria((g) => ({ ...g, archivo: f, msg: "" })); }}>
+                <label className="soltar">
                   <input type="file" accept=".xlsx" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) setGaleria((g) => ({ ...g, archivo: f, msg: "" })); }} />
-                  <b>{galeria.archivo ? galeria.archivo.name : "Arrastra el Excel aquí o haz clic"}</b>
-                  <span className="nota">{galeria.archivo ? `${(galeria.archivo.size / 1e6).toFixed(1)} MB` : "Formato .xlsx exportado de G.A.I.N."}</span>
+                  <b>{galeria.archivo ? galeria.archivo.name : "Sube el Excel exportado de G.A.I.N."}</b>
+                  <span className="nota">{galeria.archivo ? `${(galeria.archivo.size / 1e6).toFixed(1)} MB` : "Se lee en tu navegador; funciona con archivos grandes"}</span>
                 </label>
-                <div className="campo">
-                  <label>Fecha de corte</label>
-                  <input className="entrada" type="date" value={galeria.corte} onChange={(e) => setGaleria((g) => ({ ...g, corte: e.target.value }))} />
-                </div>
+                <div className="campo"><label>Fecha de corte</label><input className="entrada" type="date" value={galeria.corte} onChange={(e) => setGaleria((g) => ({ ...g, corte: e.target.value }))} /></div>
                 <button className="btn btn-primario btn-bloque" disabled={!galeria.archivo} onClick={subirGaleria}>Cargar a la plataforma</button>
-                {galeria.msg && <div className={galeria.ok === false ? "error" : "alerta"} style={galeria.ok ? { background: "rgba(108,77,231,.12)", borderLeftColor: C.lima } : {}}>{galeria.msg}</div>}
+                {galeria.msg && <div className={galeria.ok === false ? "error" : "alerta"}>{galeria.msg}</div>}
                 <div className="nota">Los datos de Galería son confidenciales y de uso interno de la empresa que los contrata. No se comparten con terceros.</div>
               </>
             )}
           </div>
         </aside>
       </div>
-    </>
-  );
-}
-
-function ResultadoEstudio({ e }: { e: any }) {
-  const mz = e.metricas_zona ?? {};
-  const i9 = e.paso9_insumos_recomendacion ?? {};
-  const pr = e.paso4_territorio?.predio;
-  return (
-    <>
-      <div className="tarjeta destacada">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 10 }}>
-          <div>
-            <h3 style={{ fontSize: 17 }}>{e.estudio}</h3>
-            <div style={{ fontSize: 12, opacity: 0.85 }}>Galería corte {e.corte_galeria ?? "—"}{pr?.tratamiento ? ` · ${pr.tratamiento}` : ""}</div>
-          </div>
-          <a className="btn btn-primario" href={`/api/estudio/${e.id}/xlsx`}>⤓ Excel</a>
-        </div>
-        <div className="cifras">
-          <Cifra v={num(mz.proyectos_en_zona)} k="proyectos en la zona" />
-          <Cifra v={num(mz.ventas_mes_zona_promedio_semestre, 1)} k="unidades vendidas al mes" />
-          <Cifra v={`${num(mz.oferta_disponible)} + ${num(mz.oferta_por_lanzar)}`} k="oferta actual + por lanzar" />
-          <Cifra v={num(mz.meses_de_inventario_con_futura, 1)} k="meses de inventario (con futura)" />
-        </div>
-      </div>
-
-      <div className="tarjeta">
-        <h4>Competencia directa</h4>
-        <table className="tabla">
-          <thead><tr><th>Proyecto</th><th>$/m²</th><th>Und/mes</th><th>Vendido</th><th>Oferta</th></tr></thead>
-          <tbody>
-            {(e.paso8_tabla_resumen ?? []).map((x: any) => (
-              <tr key={x.proyecto}>
-                <td title={x.proyecto}>{x.proyecto}<div className="nota" style={{ fontWeight: 400 }}>{x.zona} · {x.constructor}</div></td>
-                <td>{millones(x.precio_m2)}</td>
-                <td>{num(x.ventas_mes_promedio_semestre, 1)}</td>
-                <td>{pct(x.pct_vendido)}<div className="barra-pct" style={{ marginTop: 3 }}><i style={{ width: pct(x.pct_vendido) }} /></div></td>
-                <td>{num(x.oferta_actual)}<span className="nota"> +{num(x.oferta_futura)}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="tarjeta">
-        <h4>Insumos para recomendar</h4>
-        <div className="cifras">
-          <Cifra v={i9.area_promedio_objetivo ? `${num(i9.area_promedio_objetivo, 1)} m²` : "—"} k="área promedio objetivo" />
-          <Cifra v={`${millones(i9.precio_m2_objetivo_rango?.[0])}–${millones(i9.precio_m2_objetivo_rango?.[1])}`} k="precio por m² objetivo" />
-          <Cifra v={num(i9.ritmo_ventas_referencia_mes, 1)} k="ritmo de referencia (und/mes)" />
-          <Cifra v={num(i9.unidades_posibles_por_norma)} k="unidades posibles por norma" />
-        </div>
-        {i9.entrega_predominante && <div className="sub">Entrega predominante en la zona: <b>{i9.entrega_predominante}</b></div>}
-      </div>
-
-      {pr && (
-        <div className="tarjeta">
-          <h4>Norma del lote</h4>
-          <div className="cifras tres">
-            <Cifra v={m2(pr.area_lote_m2)} k="área del lote" />
-            <Cifra v={num(pr.indice_construccion, 1)} k="índice de construcción" />
-            <Cifra v={m2(pr.area_construible_m2)} k="área construible" />
-          </div>
-          <div className="sub">{pr.uso ?? ""}{pr.densidad_max_viv_ha ? ` · densidad ${pr.densidad_max_viv_ha} viv/ha` : ""}</div>
-        </div>
-      )}
-
-      <div className="nota">La redacción del territorio, las recomendaciones y la conclusión se completan desde Claude y salen en el Excel.</div>
-    </>
-  );
-}
-
-function FichaPredio({ d, contacto, pedirContacto, usarEnEstudio }: { d: any; contacto: any; pedirContacto: () => void; usarEnEstudio: () => void }) {
-  const pf = d.prefactibilidad_rapida ?? {};
-  const veredictoClase = pf.veredicto === "VA" ? "lima" : pf.veredicto === "NO VA" ? "riesgo" : "aviso";
-  return (
-    <>
-      <div className="titulo">
-        <h2>{d.ubicacion.barrio ?? d.ubicacion.municipio}</h2>
-        <div className="sub">{d.ubicacion.municipio} · {d.id} · {m2(d.lote.area_lote_m2)}</div>
-        <div className="etiquetas" style={{ marginTop: 4 }}>
-          {d.potencial.potencial_preliminar ? <span className="etiqueta lima">Con potencial</span> : <span className="etiqueta">Sin potencial marcado</span>}
-          {d.norma.tratamiento && <span className="etiqueta">{d.norma.tratamiento}</span>}
-          <span className="etiqueta">{d.nivel_dato}</span>
-        </div>
-      </div>
-      <button className="btn btn-primario btn-bloque" onClick={usarEnEstudio}>Usar este lote en un estudio de competencia</button>
-      {d.norma.advertencia && <div className="alerta">{d.norma.advertencia}</div>}
-      {d.norma.aviso_pot && <div className="alerta">{d.norma.aviso_pot}</div>}
-      <Comparacion2026 b={d.pot_2026_preliminar} />
-
-      <div className="tarjeta">
-        <h4>Norma y potencial</h4>
-        <div className="cifras">
-          <Cifra v={d.norma.altura_max_pisos ?? d.norma.altura_texto ?? "—"} k="altura máxima (pisos)" />
-          <Cifra v={num(d.norma.indice_construccion_max, 1)} k="índice de construcción" />
-          <Cifra v={m2(d.potencial.area_construible_m2)} k="área construible" />
-          <Cifra v={num(d.potencial.viviendas_max_por_densidad)} k="viviendas máx. por densidad" />
-        </div>
-        <div className="nota">Potencial calculado por inferencia sobre la norma; validar con estructuración.</div>
-      </div>
-
-      <div className="tarjeta">
-        <h4>Prefactibilidad rápida</h4>
-        {pf.disponible ? (
-          <>
-            <div className="etiquetas"><span className={`etiqueta ${veredictoClase}`}>{pf.veredicto}</span></div>
-            <div className="cifras">
-              <Cifra v={pf.lote_maximo_legible} k="lote máximo pagable" />
-              <Cifra v={pf.indice_tension ? `${pf.indice_tension}x` : "—"} k="tensión demanda / oferta" />
-            </div>
-            <div className="sub">Supone {pf.producto_supuesto?.unidades} unidades de {pf.producto_supuesto?.area_unidad_m2} m².</div>
-          </>
-        ) : <div className="sub">{pf.motivo}</div>}
-      </div>
-
-      <div className="tarjeta">
-        <h4>Mercado a 1,5 km</h4>
-        <div className="cifras">
-          <Cifra v={num(d.mercado_1500m.apartamentos_en_venta)} k="apartamentos en venta" />
-          <Cifra v={millones(d.mercado_1500m.precio_m2_mediana)} k="precio por m² típico" />
-          <Cifra v={millones(d.mercado_1500m.precio_mediana)} k="precio típico" />
-          <Cifra v={num(d.mercado_1500m.pedidos_compradores_90d)} k="compradores buscando (90 días)" />
-        </div>
-      </div>
-
-      <div className="tarjeta">
-        <h4>Proyectos nuevos cerca ({d.proyectos_nuevos_1500m.length})</h4>
-        <ul className="lista">
-          {d.proyectos_nuevos_1500m.map((p: any) => (
-            <li key={p.id}><span className="n">{p.nombre}</span><span className="sub">{p.constructora} · desde {millones(p.precio_desde)} · entrega {p.entrega ?? "—"} · a {num(p.distancia_m)} m</span></li>
-          ))}
-        </ul>
-        {d.proyectos_nuevos_1500m.length === 0 && <div className="sub">No hay proyectos registrados a menos de 1,5 km.</div>}
-      </div>
-
-      <div className="tarjeta">
-        <h4>Restricciones</h4>
-        <div className="etiquetas">
-          {d.restricciones.amenazas.length === 0 && <span className="etiqueta lima">Sin amenazas cruzadas</span>}
-          {d.restricciones.amenazas.map((a: any, i: number) => <span key={i} className={`etiqueta ${/alta/i.test(a.grado) ? "riesgo" : "aviso"}`}>{a.tipo.replace(/_/g, " ")}: {a.grado}</span>)}
-          {d.restricciones.protecciones.map((p: any, i: number) => <span key={`p${i}`} className="etiqueta riesgo">Protección: {p.categoria}</span>)}
-        </div>
-      </div>
-
-      <div className="tarjeta">
-        <h4>¿Cómo llegar al dueño?</h4>
-        {!contacto && <button className="btn btn-borde" onClick={pedirContacto}>Ver señales y ruta de contacto</button>}
-        {contacto?.encontrado && (
-          <>
-            <div className="cifras">
-              <Cifra v={contacto.senales_de_venta.probabilidad_venta ?? "—"} k="probabilidad de venta" />
-              <Cifra v={contacto.titular_probable} k="titular probable" />
-            </div>
-            <div className="sub">Matrícula {contacto.inmueble.matricula_principal ?? "—"} · {contacto.inmueble.folios_en_el_predio} folio(s) · PH: {contacto.inmueble.propiedad_horizontal}</div>
-            {contacto.inmueble.direcciones.length > 0 && <div className="sub">Dirección: {contacto.inmueble.direcciones.slice(0, 3).join(" · ")}</div>}
-            {contacto.senales_de_venta.senales && (
-              <ul className="lista">
-                {contacto.senales_de_venta.senales.map((x: any, i: number) => (
-                  <li key={i}><span className="n" style={{ color: x.efecto === "favorable" ? "#5a8500" : x.efecto === "riesgo" ? "#c0392b" : undefined }}>{x.señal}</span><span className="sub">{x.lectura}</span></li>
-                ))}
-              </ul>
-            )}
-            <ol className="pasos">{contacto.rutas_de_contacto.map((r: any, i: number) => <li key={i}><b>{r.paso}:</b> {r.como}</li>)}</ol>
-            <div className="nota">{contacto.aviso_legal}</div>
-          </>
-        )}
-      </div>
-    </>
-  );
-}
-
-function Comparacion2026({ b }: { b: any }) {
-  if (!b) return null;
-  if (!b.disponible) return <div className="nota">POT 2026: {b.motivo}</div>;
-  const f = b.frente_a_2014;
-  const fila = (k: string, x: any, fmt: (v: any) => string) => (
-    <tr key={k}><td>{k}</td><td>{fmt(x.pot2014)}</td><td><b>{fmt(x.pot2026)}</b></td><td style={{ color: String(x.cambio ?? "").startsWith("+") && x.cambio !== "+0 %" ? "#3f8f4a" : String(x.cambio ?? "").startsWith("-") ? "#c0392b" : undefined }}>{x.cambio ?? "—"}</td></tr>
-  );
-  const cd = b.que_se_puede_hacer?.con_derechos;
-  return (
-    <div className="tarjeta" style={{ borderColor: "var(--acento)" }}>
-      <h4>Proyecto POT 2026 · {b.codigo_2026}</h4>
-      <table className="tabla">
-        <thead><tr><th></th><th>POT 2014</th><th>POT 2026</th><th>Cambio</th></tr></thead>
-        <tbody>
-          {fila("Índice de construcción", f.indice_construccion, (v) => num(v, 1))}
-          {fila("Densidad viv/ha", f.densidad_viv_ha, (v) => num(v))}
-          {fila("Área construible", f.area_construible_m2, (v) => m2(v))}
-          {fila("Viviendas", f.viviendas, (v) => num(v))}
-        </tbody>
-      </table>
-      {cd && <div className="sub">Con compra de derechos (2026): {m2(cd.area_construible_m2)} construibles y hasta {num(cd.viviendas_max_por_densidad)} viviendas ({num(b.norma?.derechos_adicionales?.densidad_total_viv_ha)} viv/ha, IC {num(b.norma?.derechos_adicionales?.ic_total, 1)}).</div>}
-      {f.lectura && <div className="sub"><b>{f.lectura}</b></div>}
-      <div className="nota">{b.estado}</div>
-    </div>
-  );
-}
-
-function FichaNorma({ r }: { r: any }) {
-  const q = r.que_se_puede_hacer ?? {};
-  const nm = r.norma ?? {};
-  return (
-    <>
-      <div className="tarjeta destacada">
-        <div>
-          <h3 style={{ fontSize: 17 }}>{r.barrio ?? r.municipio} · {m2(r.area_lote_m2)}</h3>
-          <div style={{ fontSize: 12, opacity: 0.85 }}>{r.predio}{r.identificacion?.matriculas?.length ? ` · matrícula ${r.identificacion.matriculas.slice(0, 3).join(", ")}` : ""}</div>
-        </div>
-        <div className="cifras">
-          <Cifra v={m2(q.area_construible_m2)} k="área construible (norma base)" />
-          <Cifra v={m2(q.area_construible_con_derechos_m2)} k="con compra de derechos" />
-          <Cifra v={num(q.viviendas_max_por_densidad)} k="viviendas por densidad" />
-          <Cifra v={num(q.unidades_estimadas)} k={`unidades estimadas (${q.supuesto?.split(" ")[0] ?? 65} m²)`} />
-        </div>
-      </div>
-      <div className="tarjeta">
-        <h4>Norma</h4>
-        <div className="etiquetas">
-          {nm.tratamiento && <span className="etiqueta">{nm.tratamiento}{nm.codigo ? ` · ${nm.codigo}` : ""}</span>}
-          {nm.uso_del_suelo && <span className="etiqueta">{nm.uso_del_suelo}</span>}
-          <span className="etiqueta">{r.clase_suelo}</span>
-        </div>
-        <div className="cifras tres">
-          <Cifra v={nm.altura_max_pisos ?? nm.altura_texto ?? "—"} k="altura máx. (pisos)" />
-          <Cifra v={num(nm.indice_construccion_base, 1)} k="IC base" />
-          <Cifra v={num(nm.indice_construccion_con_derechos, 1)} k="IC con derechos" />
-          <Cifra v={num(nm.densidad_max_viv_ha)} k="densidad viv/ha" />
-          <Cifra v={num(nm.indice_ocupacion_max, 2)} k="índice de ocupación" />
-          <Cifra v={millones(r.valor_suelo_referencia_m2)} k="valor suelo $/m²" />
-        </div>
-        <div className="sub">Hoy: {num(r.construccion_actual?.construcciones)} construcciones, {m2(r.construccion_actual?.area_construida_m2)} construidos.</div>
-        {r.identificacion?.direcciones?.length > 0 && <div className="sub">Dirección: {r.identificacion.direcciones.slice(0, 2).join(" · ")}</div>}
-        <div className="etiquetas">
-          {r.restricciones?.amenazas?.length === 0 && <span className="etiqueta lima">Sin amenazas cruzadas</span>}
-          {(r.restricciones?.amenazas ?? []).map((a: string, i: number) => <span key={i} className={`etiqueta ${/alta/i.test(a) ? "riesgo" : "aviso"}`}>{a.replace(/_/g, " ").replace(":", ": ")}</span>)}
-          {(r.restricciones?.proteccion ?? []).map((a: string, i: number) => <span key={`p${i}`} className="etiqueta riesgo">Protección: {a}</span>)}
-        </div>
-      </div>
-      <Comparacion2026 b={r.pot_2026_preliminar} />
-      {r.advertencia && <div className="alerta">{r.advertencia}</div>}
-      {r.aviso_pot && <div className="alerta">{r.aviso_pot}</div>}
-    </>
-  );
-}
-
-function FichaProyecto({ d }: { d: any }) {
-  const p = d.proyecto;
-  return (
-    <>
-      <div className="titulo">
-        <h2>{p.nombre}</h2>
-        <div className="sub">{p.constructora} · {p.barrio ? `${p.barrio}, ` : ""}{p.municipio}</div>
-      </div>
-      <div className="tarjeta">
-        <h4>Producto</h4>
-        <div className="cifras">
-          <Cifra v={millones(p.precio_desde)} k="precio desde" />
-          <Cifra v={millones(p.precio_m2_desde)} k="precio por m² desde" />
-          <Cifra v={`${m2(p.area_min)} – ${m2(p.area_max)}`} k="áreas" />
-          <Cifra v={p.entrega ?? "—"} k="entrega" />
-        </div>
-      </div>
-      <div className="tarjeta">
-        <h4>Competencia a 1,5 km ({d.competencia_1500m.length})</h4>
-        <ul className="lista">
-          {d.competencia_1500m.map((c: any) => <li key={c.id}><span className="n">{c.nombre}</span><span className="sub">{c.constructora} · desde {millones(c.precio_desde)} · a {num(c.distancia_m)} m</span></li>)}
-        </ul>
-      </div>
-      <div className="nota">{d.atribucion}</div>
     </>
   );
 }

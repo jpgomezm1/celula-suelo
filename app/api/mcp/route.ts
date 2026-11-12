@@ -11,6 +11,24 @@ import { completarEstudio, crearEstudio, crearEstudioPerfil } from "@/lib/estudi
 import { origen, verificar } from "@/lib/auth";
 import { CORS, opciones } from "@/lib/oauth";
 import { consultaNorma, consultaNormaLotes } from "@/lib/consulta_norma";
+import { encontrarPredio } from "@/lib/ficha";
+import { analizarLote, cabida, usosPermitidos, afectaciones } from "@/lib/analisis_lote";
+import { analizarCartera, analizarZona, cambioPot, compararLotes, novedadesNormativas } from "@/lib/herramientas";
+import { bloque2026Predio } from "@/lib/norma2026";
+
+const URL_BASE = () => process.env.PUBLIC_URL ?? "https://celula-suelo.vercel.app";
+const urlFicha = (c: any) => `${URL_BASE()}/api/ficha?id=${encodeURIComponent(c.predio)}`;
+const LOTE = {
+  cbml: z.string().optional().describe("CBML de Medellín (11 dígitos)"), id: z.string().optional().describe("Id de predio 'dane:clave'"),
+  matricula: z.string().optional().describe("Matrícula inmobiliaria, con o sin oficina (p. ej. '001-728976')"),
+  direccion: z.string().optional().describe("Dirección de Medellín, p. ej. 'Cl. 6 Sur #50C-104'"),
+  lat: z.number().optional(), lon: z.number().optional(),
+};
+async function loteDe(a: any) {
+  const c: any = await consultaNorma(a);
+  if (!c.encontrado) return { c, p: null };
+  return { c, p: await encontrarPredio({ id: c.predio }) };
+}
 
 export const maxDuration = 300;
 
@@ -31,7 +49,7 @@ const LECTURA = { readOnlyHint: true, openWorldHint: false } as const;
 const ESCRITURA = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 const INSTRUCCIONES = `Inteligencia de suelo para 17 municipios del Valle de Aburrá y el Oriente antioqueño: catastro, norma del POT, mercado (Fynder), proyectos nuevos (Zonario y Galería Inmobiliaria) y señales de venta de los folios.
 Flujos recomendados:
-0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada); varios lotes o un KMZ → consulta_norma_lotes.
+0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
 1. "¿Dónde puedo hacer este edificio?" → oportunidades_por_perfil (perfil de producto sobre todo un municipio) → ficha_predio de los mejores → contacto_predio.
 2. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 3. "¿Este lote da?" → ficha_predio → prefactibilidad_lote (con el precio pedido por el lote).
@@ -72,6 +90,8 @@ const mcp = createMcpHandler(
         area_min: z.number().min(0).optional(), area_max: z.number().min(0).optional(),
         tratamiento: z.string().optional(), construible_min: z.number().optional().describe("m² construibles restantes mínimos"),
         solo_potencial: z.boolean().optional(), incluir_amenaza_alta: z.boolean().optional(),
+        gana_pot_2026: z.boolean().optional().describe("Solo lotes de Medellín cuyo índice de construcción sube con el proyecto POT 2026"),
+        max_construcciones: z.number().int().min(0).optional().describe("Excluir lotes con más construcciones (muchos dueños)"),
         orden: z.enum(["construible_restante", "area", "valor_suelo"]).optional(), limite: z.number().int().min(1).max(50).optional(),
       }),
     }, seguro(async (a: any) => buscarLotes(a)));
@@ -202,15 +222,23 @@ const mcp = createMcpHandler(
     server.registerTool("consulta_norma", {
       annotations: LECTURA,
       title: "Consulta de norma de un lote",
-      description: "Qué se puede hacer en un lote, en una respuesta corta: tratamiento, uso del suelo, altura, índice de construcción (base y con derechos), densidad, área construible, viviendas y unidades estimadas, construcción actual, amenazas y protección, valor del suelo de referencia y las matrículas y direcciones del predio. Se busca por CBML, id de predio, matrícula inmobiliaria (Medellín), dirección de Medellín o coordenada (p. ej. la de Google Maps). En Medellín incluye al lado la norma del proyecto de revisión del POT 2026 (v3, julio de 2026) y la comparación con la de 2014 (índice, densidad, área construible y viviendas). Incluye el aviso de vigencia del POT.",
+      description: "Qué se puede hacer en un lote (la consulta principal): semáforo de afectaciones, área útil, cabida en tres escenarios (pisos, sótanos, parqueaderos, m² vendibles, unidades), cesiones urbanísticas, usos permitidos, valor residual del suelo y enlace a la ficha normativa en PDF; además tratamiento, uso del suelo, altura, índice de construcción (base y con derechos), densidad, área construible, viviendas y unidades estimadas, construcción actual, amenazas y protección, valor del suelo de referencia y las matrículas y direcciones del predio. Se busca por CBML, id de predio, matrícula inmobiliaria (Medellín), dirección de Medellín o coordenada (p. ej. la de Google Maps). En Medellín incluye al lado la norma del proyecto de revisión del POT 2026 (v3, julio de 2026) y la comparación con la de 2014 (índice, densidad, área construible y viviendas). Incluye el aviso de vigencia del POT.",
       inputSchema: z.object({
         cbml: z.string().optional(), id: z.string().optional(),
         matricula: z.string().optional().describe("Matrícula inmobiliaria, con o sin oficina (p. ej. '001-728976' o '728976')"),
         direccion: z.string().optional().describe("Dirección de Medellín, p. ej. 'Cl. 6 Sur #50C-104'"),
         lat: z.number().optional(), lon: z.number().optional(),
         area_unidad_m2: z.number().min(20).max(300).optional().describe("Área por unidad para estimar unidades (defecto 65)"),
+        tipo_vivienda: z.enum(["VIS", "NO VIS"]).optional(), actividad: z.string().optional().describe("Actividad a verificar en usos, p. ej. 'clínica', 'restaurante', 'hotel'"),
+        costo_lote: z.number().optional().describe("Precio pedido por el lote en COP, para el valor residual"),
       }),
-    }, seguro(async (a: any) => consultaNorma(a)));
+    }, seguro(async (a: any) => {
+      const { c, p } = await loteDe(a);
+      if (!p) return c;
+      const an = await analizarLote(p, { area_unidad_m2: a.area_unidad_m2, tipo_vivienda: a.tipo_vivienda, actividad: a.actividad, costo_lote: a.costo_lote });
+      return { ...c, semaforo: an.semaforo, area_util: an.area_util, cabida: an.cabida, cesiones: an.cesiones, usos: an.usos, valor_residual: an.valor_residual,
+        ficha_pdf: urlFicha(c), aviso_legal: an.aviso_legal };
+    }));
 
     server.registerTool("consulta_norma_lotes", {
       annotations: LECTURA,
@@ -223,6 +251,92 @@ const mcp = createMcpHandler(
         area_unidad_m2: z.number().min(20).max(300).optional(),
       }),
     }, seguro(async (a: any) => consultaNormaLotes(a)));
+
+    server.registerTool("ficha_normativa_pdf", {
+      annotations: LECTURA,
+      title: "Ficha normativa en PDF",
+      description: "Genera la ficha normativa descargable (PDF fechado, con fuentes y aviso legal) de un lote: identificación, semáforo, norma POT 2014 y proyecto 2026, cabida, área útil, cesiones, usos y valor residual. Devuelve el enlace (se abre con el correo y clave del usuario) y un resumen.",
+      inputSchema: z.object({ ...LOTE, area_unidad_m2: z.number().optional(), actividad: z.string().optional() }),
+    }, seguro(async (a: any) => {
+      const { c, p } = await loteDe(a);
+      if (!p) return c;
+      const q = new URLSearchParams({ id: c.predio, ...(a.area_unidad_m2 ? { area_unidad_m2: String(a.area_unidad_m2) } : {}), ...(a.actividad ? { actividad: a.actividad } : {}) });
+      return { predio: c.predio, barrio: c.barrio, municipio: c.municipio, area_lote_m2: c.area_lote_m2, ficha_pdf: `${URL_BASE()}/api/ficha?${q}`,
+        nota: "Comparte el enlace: abre el PDF con la fecha de hoy. Para verlo en el navegador se pide el correo y clave del workspace." };
+    }));
+
+    server.registerTool("cabida_lote", {
+      annotations: LECTURA,
+      title: "Cabida de un lote (3 escenarios)",
+      description: "Cuánto cabe en un lote en tres escenarios: conservador (POT 2014 base), base (proyecto POT 2026 o POT vigente) y máximo (comprando derechos). Para cada uno: área construible y vendible, unidades (y si limita la densidad o el área), pisos sobre rasante, parqueaderos y sótanos aproximados, sobre el área útil (descontando protección y amenaza alta).",
+      inputSchema: z.object({ ...LOTE, area_unidad_m2: z.number().min(20).max(300).optional(), tipo_vivienda: z.enum(["VIS", "NO VIS"]).optional() }),
+    }, seguro(async (a: any) => {
+      const { c, p } = await loteDe(a);
+      if (!p) return c;
+      const af = await afectaciones(p);
+      return { predio: c.predio, barrio: c.barrio, area_lote_m2: c.area_lote_m2, area_util_m2: af.area_util_m2, tratamiento: c.norma?.tratamiento,
+        ...cabida(p, await bloque2026Predio(p, a.area_unidad_m2 ?? 65), { area_unidad_m2: a.area_unidad_m2, area_util_m2: af.area_util_m2 ?? 0, tipo_vivienda: a.tipo_vivienda }),
+        ficha_pdf: urlFicha(c) };
+    }));
+
+    server.registerTool("usos_permitidos", {
+      annotations: LECTURA,
+      title: "Usos permitidos en un lote",
+      description: "¿Qué actividades se pueden desarrollar en el lote? (vivienda, comercio, oficinas, restaurante, bar, hotel, rentas cortas, clínica, educación, bodega, industria liviana) según su área de mixtura. Orientativo: se valida con el anexo de actividades del POT y en la curaduría.",
+      inputSchema: z.object({ ...LOTE, actividad: z.string().optional().describe("Actividad puntual a verificar") }),
+    }, seguro(async (a: any) => {
+      const { c, p } = await loteDe(a);
+      if (!p) return c;
+      return { predio: c.predio, barrio: c.barrio, ...usosPermitidos(p, a.actividad) };
+    }));
+
+    server.registerTool("valor_residual", {
+      annotations: LECTURA,
+      title: "Valor residual del suelo",
+      description: "Cuánto vale el lote por lo que se puede hacer en él: lo máximo que se puede pagar para que el proyecto dé margen (modelo de prefactibilidad con precios y costos de la zona a 1,5 km), por m², frente al valor de referencia catastral y, si se da, frente al precio pedido.",
+      inputSchema: z.object({ ...LOTE, costo_lote: z.number().optional().describe("Precio pedido en COP"), area_unidad_m2: z.number().optional() }),
+    }, seguro(async (a: any) => {
+      const { c, p } = await loteDe(a);
+      if (!p) return c;
+      const an = await analizarLote(p, { costo_lote: a.costo_lote, area_unidad_m2: a.area_unidad_m2 });
+      return { predio: c.predio, barrio: c.barrio, area_lote_m2: c.area_lote_m2, ...an.valor_residual, precio_pedido: a.costo_lote ?? null };
+    }));
+
+    server.registerTool("comparar_lotes", {
+      annotations: LECTURA,
+      title: "Comparar lotes",
+      description: "Compara de 2 a 5 lotes lado a lado: área útil, semáforo y alertas, unidades en tres escenarios, pisos, cambio con el POT 2026, cesiones y valor residual; dice cuál tiene más unidades, mayor valor residual y mayor área útil.",
+      inputSchema: z.object({ lotes: z.array(z.object({ nombre: z.string().optional(), ...LOTE })).min(2).max(5), area_unidad_m2: z.number().optional(), tipo_vivienda: z.enum(["VIS", "NO VIS"]).optional() }),
+    }, seguro(async (a: any) => compararLotes(a.lotes, a)));
+
+    server.registerTool("analizar_cartera", {
+      annotations: ESCRITURA,
+      title: "Analizar cartera de lotes (hasta 250)",
+      description: "Analiza una cartera de lotes de una vez: pasa el texto de un KML (si el usuario adjunta un KMZ, descomprímelo y pasa doc.kml) o una lista de lotes por CBML, matrícula, dirección o coordenada. Para cada uno: semáforo, área útil, unidades en tres escenarios, cambio POT 2026, cesiones y (hasta 40 lotes) valor residual; los ordena con un puntaje, resume verdes/amarillos/rojos y entrega un Excel.",
+      inputSchema: z.object({ nombre: z.string().optional(), kml: z.string().optional(), lotes: z.array(z.object({ nombre: z.string().optional(), ...LOTE })).optional(),
+        area_unidad_m2: z.number().optional(), tipo_vivienda: z.enum(["VIS", "NO VIS"]).optional(), con_valor_residual: z.boolean().optional() }),
+    }, seguro(async (a: any) => analizarCartera(a)));
+
+    server.registerTool("analizar_zona", {
+      annotations: LECTURA,
+      title: "Analizar una zona (polígono)",
+      description: "Resumen de una zona dibujada: predios, lotes con potencial y tratamientos; área construible y viviendas con el POT 2014 y con el proyecto 2026 (y el cambio); competencia de Galería (proyectos, ventas al mes, oferta, meses de inventario, precio por m²) y mercado de usados (Fynder).",
+      inputSchema: z.object({ poligono: z.array(z.tuple([z.number(), z.number()])).min(3).describe("Anillo [[lon, lat], ...]"), nombre: z.string().optional() }),
+    }, seguro(async (a: any) => analizarZona(a.poligono, a.nombre)));
+
+    server.registerTool("cambio_pot", {
+      annotations: LECTURA,
+      title: "Cambio de norma POT 2014 → 2026 (Medellín)",
+      description: "Quién gana y quién pierde aprovechamiento con el proyecto de revisión del POT de Medellín (v3, julio de 2026): barrios o polígonos que más ganan y más pierden área construible, y los lotes que más ganan. Útil para buscar oportunidades creadas por el POT nuevo.",
+      inputSchema: z.object({ agrupar: z.enum(["barrio", "poligono"]).optional(), barrio: z.string().optional(), area_lote_min: z.number().optional(), limite: z.number().int().min(1).max(50).optional() }),
+    }, seguro(async (a: any) => cambioPot(a)));
+
+    server.registerTool("novedades_normativas", {
+      annotations: LECTURA,
+      title: "Novedades normativas",
+      description: "Documentos normativos nuevos que publicó la Alcaldía de Medellín (POT 2026, anexos, cartografía, decretos, planes parciales), detectados por el monitor diario, con su relevancia.",
+      inputSchema: z.object({ dias: z.number().int().min(1).max(365).optional() }),
+    }, seguro(async (a: any) => novedadesNormativas(a.dias ?? 30)));
 
     server.registerTool("fuentes", {
       annotations: LECTURA,

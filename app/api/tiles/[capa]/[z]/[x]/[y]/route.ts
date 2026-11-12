@@ -16,8 +16,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ capa: string; 
         SELECT pp.id, pp.area_lote::float8 AS area, pp.potencial_preliminar AS potencial, pp.amenaza_alta AS amenaza,
                pp.nivel_dato AS nivel, coalesce(pp.tratamiento, '') AS tratamiento,
                coalesce(pp.area_construible_restante_inferida, 0)::float8 AS restante,
+               (n.ic_residencial - pp.ic_max)::float8 AS delta_ic,
                ST_AsMVTGeom(ST_Transform(pp.geom, 3857), b.env, 4096, 64, true) AS g
-        FROM parcel_profile pp, b
+        FROM b, parcel_profile pp
+        LEFT JOIN norma_pot2026_equivalencia e ON pp.municipio_dane = '05001' AND e.c14 = pp.codigo_tratamiento
+        LEFT JOIN norma_pot2026 n ON n.codigo = e.c26
         WHERE pp.geom && ST_Transform(b.env, 4326)
       ) t`;
   } else if (capa === "proyectos") {
