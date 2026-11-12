@@ -114,11 +114,18 @@ export async function obtenerPerfil(id?: string | null): Promise<PerfilConstruct
   return r ? completarPerfil({ ...r.perfil, id }) : PERFIL_REFERENCIA;
 }
 
-export async function perfilDeUsuario(usuario?: string | null): Promise<PerfilConstructora> {
-  if (!usuario) return PERFIL_REFERENCIA;
+/** Constructora del usuario: la asignada o, si no tiene, la de su dominio de correo (conaltura.com → "conaltura"). */
+export async function constructoraDeUsuario(usuario?: string | null): Promise<string | null> {
+  if (!usuario) return null;
   await asegurarTabla();
   const [u] = await sql`SELECT constructora_id FROM app_usuario WHERE email = lower(${usuario})`;
-  return obtenerPerfil(u?.constructora_id ?? null);
+  if (u?.constructora_id) return u.constructora_id;
+  const dominio = String(usuario).toLowerCase().split("@")[1];
+  return dominio ? dominio.split(".")[0].replace(/[^a-z0-9-]/g, "") : null;
+}
+
+export async function perfilDeUsuario(usuario?: string | null): Promise<PerfilConstructora> {
+  return obtenerPerfil(await constructoraDeUsuario(usuario));
 }
 
 export async function guardarPerfil(p: Partial<PerfilConstructora> & { id: string; nombre: string }, por?: string) {

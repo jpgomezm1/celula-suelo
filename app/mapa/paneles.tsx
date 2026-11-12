@@ -14,6 +14,7 @@ const HERRAMIENTAS: [string, string, string, string][] = [
   ["comparar", "⇄", "Comparar lotes", "Pon de 2 a 5 lotes lado a lado. Agrégalos con “+ Comparar” desde el mapa."],
   ["cartera", "▤", "Analizar una cartera", "Sube un KMZ o pega una lista de hasta 250 lotes y obtén un ranking con semáforo y Excel."],
   ["zona", "⬠", "Analizar una zona", "Dibuja un polígono: norma, cambio POT, competencia y mercado de esa zona."],
+  ["adn", "⚙", "Mi constructora", "Carga tu sistema constructivo, costos, ritmo de obra y tesis de inversión: el anteproyecto y los números se calculan como los harías tú."],
 ];
 export function PanelInicio({ ir }: { ir: (k: string) => void }) {
   return (
@@ -920,6 +921,91 @@ export function FichaProyecto({ d }: { d: any }) {
         <ul className="lista">{d.competencia_1500m.map((c: any) => <li key={c.id}><span className="n">{c.nombre}</span><span className="sub">{c.constructora} · desde {millones(c.precio_desde)} · a {num(c.distancia_m)} m</span></li>)}</ul>
       </div>
       <div className="nota">{d.atribucion}</div>
+    </>
+  );
+}
+
+/* ───────────── Mi constructora (ADN constructivo) ───────────── */
+type CampoADN = [string, string, string?, number?]; // ruta, etiqueta, unidad, escala (millones = 1e6)
+const BLOQUES_ADN: [string, string, CampoADN[]][] = [
+  ["diseno", "Sistema y diseño", [["diseno.crujia_m", "Profundidad de apartamento", "m"], ["diseno.pasillo_m", "Ancho de pasillo", "m"], ["diseno.altura_piso_m", "Altura piso a piso", "m"],
+    ["diseno.altura_primer_piso_m", "Altura primer piso", "m"], ["diseno.largo_max_torre_m", "Largo máximo de torre", "m"], ["diseno.eficiencia_minima_pct", "Eficiencia mínima de planta", "%"],
+    ["diseno.plataforma_pisos", "Pisos de plataforma", "pisos"], ["diseno.parqueo_privados_viv", "Parqueaderos privados por vivienda", "und"], ["diseno.parqueo_visitantes_viv", "Visitantes por vivienda", "und"]]],
+  ["costos", "Costos", [["costos.directo_m2_sotano", "Directo sótanos", "M/m²", 1e6], ["costos.directo_m2_plataforma", "Directo plataforma", "M/m²", 1e6], ["costos.urbanismo_m2_lote_libre", "Urbanismo (lote libre)", "M/m²", 1e6],
+    ["costos.diseno_estudios_pct", "Diseños y estudios", "% directo"], ["costos.interventoria_pct", "Interventoría", "% directo"], ["costos.gerencia_pct", "Gerencia", "% directo"],
+    ["costos.honorarios_construccion_pct", "Honorarios de construcción", "% directo"], ["costos.imprevistos_pct", "Imprevistos", "% directo"], ["costos.reembolsables_pct", "Reembolsables y pólizas", "% directo"],
+    ["costos.licencias_impuestos_pct", "Licencias e impuestos", "% directo"], ["costos.ventas_publicidad_pct", "Ventas y publicidad", "% ventas"], ["costos.fiducia_pct", "Fiducia", "% ventas"],
+    ["costos.sala_ventas_fijo", "Sala de ventas", "M", 1e6], ["costos.compensacion_m2_equipamiento", "Compensación equipamiento", "M/m²", 1e6], ["costos.incremento_costo_anual_pct", "Inflación de costos", "% anual"]]],
+  ["ventas", "Ventas", [["ventas.cuota_inicial_pct", "Cuota inicial", "%"], ["ventas.preventa_equilibrio_pct", "Punto de equilibrio", "% preventa"], ["ventas.meses_preventa_antes_obra", "Preventa mínima antes de obra", "meses"],
+    ["ventas.incremento_precio_anual_pct", "Incremento de precios", "% anual"], ["ventas.precio_parqueadero_adicional", "Parqueadero adicional", "M", 1e6]]],
+  ["obra", "Ritmo de obra", [["obra.dias_por_piso", "Ciclo de estructura", "días/piso"], ["obra.meses_preliminares", "Preliminares", "meses"], ["obra.meses_por_sotano", "Por sótano", "meses"],
+    ["obra.meses_acabados", "Acabados", "meses"], ["obra.meses_entre_etapas", "Entre etapas (torres)", "meses"], ["obra.meses_escrituracion", "Escrituración tras entrega", "meses"]]],
+  ["financiacion", "Financiación", [["financiacion.credito_constructor_pct_directo", "Crédito constructor", "% directo"], ["financiacion.tasa_ea", "Tasa del crédito", "% E.A."], ["financiacion.tasa_descuento_ea", "Tasa de descuento", "% E.A."]]],
+  ["comite", "Comité de inversión", [["comite.margen_minimo_pct", "Margen mínimo", "% ventas"], ["comite.tir_minima_ea", "TIR mínima", "% E.A."], ["comite.lote_max_sobre_ventas_pct", "Lote máximo", "% ventas"]]],
+];
+const leer = (o: any, ruta: string) => ruta.split(".").reduce((x, k) => x?.[k], o);
+const escribir = (o: any, ruta: string, v: any) => { const c = structuredClone(o); const ks = ruta.split("."); let x = c; ks.slice(0, -1).forEach((k) => (x = x[k])); x[ks[ks.length - 1]] = v; return c; };
+
+export function PanelConstructora() {
+  const [d, setD] = useState<any>(null);
+  const [p, setP] = useState<any>(null);
+  const [estado, setEstado] = useState<string | null>(null);
+  useEffect(() => { fetch("/api/constructora").then((r) => r.json()).then((j) => { setD(j); setP(j.perfil); }); }, []);
+  if (!p) return <div className="cargando-panel"><span className="giro" />Cargando el perfil…</div>;
+  const ref = d.referencia;
+  async function guardar(restablecer = false) {
+    setEstado("Guardando…");
+    const r = await (await fetch("/api/constructora", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ perfil: p, restablecer }) })).json();
+    if (r.perfil) { setP(r.perfil); setD({ ...d, usa_referencia: false }); setEstado(`Guardado. El anteproyecto y los números de ${r.perfil.nombre} ya usan este perfil.`); } else setEstado(r.error ?? "No se pudo guardar");
+  }
+  const campo = ([ruta, et, u, k]: CampoADN) => {
+    const v = leer(p, ruta), vr = leer(ref, ruta), dif = v !== vr;
+    return (
+      <div className="campo" key={ruta}><label>{et}{u ? <span className="unidad"> · {u}</span> : null}</label>
+        <input className={`entrada ${dif ? "editado" : ""}`} type="number" step="any" value={k ? v / k : v} title={`Referencia: ${k ? vr / k : vr}`}
+          onChange={(e) => setP(escribir(p, ruta, e.target.value === "" ? 0 : Number(e.target.value) * (k ?? 1)))} />
+      </div>
+    );
+  };
+  const mezcla = (p.diseno.mezcla ?? []) as any[];
+  const pctDe = (t: string) => mezcla.find((x) => x.tipologia === t)?.pct ?? 0;
+  const ponerMezcla = (t: string, v: number) => setP(escribir(p, "diseno.mezcla", [...["estudio", "1A", "2A", "3A"].map((k) => ({ tipologia: k, pct: k === t ? v : pctDe(k) }))].filter((x) => x.pct > 0)));
+  return (
+    <>
+      <div className={`aviso-adn ${d.usa_referencia ? "ref" : "propio"}`}>
+        {d.usa_referencia ? <><b>Usando la referencia de mercado.</b> Ajusta los valores con los de tu constructora y guárdalos: el anteproyecto y los números de todos los usuarios de <b>{d.constructora_id ?? "tu equipo"}</b> pasarán a usarlos.</>
+          : <><b>Perfil de {p.nombre}.</b> Lo comparten los usuarios de {d.constructora_id}. Los campos resaltados son distintos a la referencia.</>}
+      </div>
+      <Seccion titulo="Identidad">
+        <div className="fila">
+          <div className="campo"><label>Nombre de la constructora</label><input className="entrada" value={p.id === "referencia" ? "" : p.nombre} placeholder="p. ej. Constructora XYZ" onChange={(e) => setP({ ...p, nombre: e.target.value })} /></div>
+          <div className="campo"><label>Sistema constructivo</label>
+            <select className="entrada" value={p.sistema} onChange={(e) => setP({ ...p, sistema: e.target.value })}>
+              <option value="muros_vaciados">Muros vaciados (formaleta industrializada)</option><option value="aporticado">Aporticado en concreto</option>
+              <option value="mamposteria_estructural">Mampostería estructural</option><option value="prefabricado">Prefabricado</option></select></div>
+        </div>
+      </Seccion>
+      <Seccion titulo="Mezcla de producto (%)">
+        <div className="fila cuatro">{["estudio", "1A", "2A", "3A"].map((t) => <div className="campo" key={t}><label>{t === "estudio" ? "Apartaestudio" : t.replace("A", " alc.")}</label>
+          <input className="entrada" type="number" value={pctDe(t)} onChange={(e) => ponerMezcla(t, Number(e.target.value))} /></div>)}</div>
+      </Seccion>
+      <Seccion titulo="Costo directo por m² construido según altura">
+        <table className="tabla"><thead><tr><th>Hasta (pisos)</th><th>$ millones / m²</th><th>Referencia</th></tr></thead>
+          <tbody>{p.costos.directo_m2_por_altura.map((x: any, i: number) => (
+            <tr key={i}><td><input className="entrada" type="number" value={x.hasta_pisos} onChange={(e) => setP(escribir(p, "costos.directo_m2_por_altura", p.costos.directo_m2_por_altura.map((y: any, j: number) => j === i ? { ...y, hasta_pisos: Number(e.target.value) } : y)))} /></td>
+              <td><input className="entrada" type="number" step="0.05" value={x.valor / 1e6} onChange={(e) => setP(escribir(p, "costos.directo_m2_por_altura", p.costos.directo_m2_por_altura.map((y: any, j: number) => j === i ? { ...y, valor: Number(e.target.value) * 1e6 } : y)))} /></td>
+              <td className="nota">{(ref.costos.directo_m2_por_altura[i]?.valor ?? 0) / 1e6}</td></tr>))}</tbody></table>
+      </Seccion>
+      {BLOQUES_ADN.map(([k, t, campos]) => <Seccion key={k} titulo={t} abierta={k === "comite" || k === "costos"}><div className="fila tres-col">{campos.map(campo)}</div></Seccion>)}
+      <Seccion titulo="Notas">
+        <textarea className="entrada" rows={3} value={p.notas ?? ""} onChange={(e) => setP({ ...p, notas: e.target.value })} placeholder="Fuente de los costos, obras de referencia, fecha de actualización…" />
+      </Seccion>
+      <div className="acciones">
+        <button className="btn btn-primario" onClick={() => guardar(false)}>Guardar perfil</button>
+        <button className="btn btn-borde" onClick={() => setP({ ...ref, id: p.id, nombre: p.nombre })}>Volver a la referencia</button>
+      </div>
+      {estado && <div className="nota">{estado}</div>}
+      <div className="nota">Próximamente: cargar los apartamentos tipo de la constructora desde sus planos (DXF) para que el anteproyecto los use.</div>
     </>
   );
 }
