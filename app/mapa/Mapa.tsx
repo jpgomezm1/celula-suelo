@@ -379,25 +379,39 @@ export default function Mapa() {
       <div className="workspace">
         <div className="lienzo">
           <div ref={contenedor} className="mapa" />
-          <div className="herramientas">
-            <select className="entrada" style={{ width: 160 }} value={municipio} onChange={(e) => irA(e.target.value)}>{MUNICIPIOS.map(([n]) => <option key={n}>{n}</option>)}</select>
-            {!dibujando
-              ? <button className="btn btn-oscuro" onClick={empezarDibujo}>✎ Dibujar zona</button>
-              : <button className="btn btn-activo" onClick={terminarDibujo} disabled={vertices.length > 0 && vertices.length < 3}>✓ Terminar ({vertices.length})</button>}
-            {vertices.length > 0 && !dibujando && <button className="btn btn-borde" onClick={borrarZona}>Borrar zona</button>}
-          </div>
-          <div className="capas">
-            <div className="segmento">
-              {([["potencial", "Potencial"], ["cambio", "Cambio POT 2026"], ["ninguno", "Sin color"]] as [ModoCapa, string][]).map(([k, t]) => (
-                <button key={k} className={modoCapa === k ? "on" : ""} onClick={() => setModoCapa(k)}>{t}</button>
-              ))}
+          <div className="panel-mapa">
+            <div className="pm-fila">
+              <select className="entrada pm-municipio" value={municipio} onChange={(e) => irA(e.target.value)}>{MUNICIPIOS.map(([n]) => <option key={n}>{n}</option>)}</select>
+              {!dibujando
+                ? <button className="btn btn-oscuro pm-dibujar" onClick={empezarDibujo}>✎ Dibujar zona</button>
+                : <button className="btn btn-activo pm-dibujar" onClick={terminarDibujo} disabled={vertices.length > 0 && vertices.length < 3}>✓ Terminar ({vertices.length})</button>}
             </div>
-            <div className="toggles">
-              <button className={`btn-3d ${modo3d ? "on" : ""}`} title="Inclina el mapa y muestra los edificios en 3D" onClick={() => { activar3D(!modo3d); if (modo3d) quitarVolumen(); }}>{modo3d ? "2D" : "3D"}</button>
-              <button className="btn-3d google" title="Ver esta zona en el 3D fotorrealista de Google" onClick={abrirMapaGoogle}>3D Google</button>
-              {([["galeria", "Galería"], ["proyectos", "Proyectos"], ["avisos", "En venta"]] as [keyof typeof capas, string][]).map(([k, t]) => (
-                <label key={k}><input type="checkbox" checked={capas[k]} onChange={(e) => setCapas({ ...capas, [k]: e.target.checked })} />{t}</label>
-              ))}
+            {vertices.length > 0 && !dibujando && <button className="pm-enlace" onClick={borrarZona}>Borrar zona dibujada</button>}
+            <div className="pm-bloque">
+              <span className="pm-rotulo">Color del mapa</span>
+              <div className="segmento pm-seg">
+                {([["potencial", "Potencial"], ["cambio", "Cambio POT 2026"], ["ninguno", "Sin color"]] as [ModoCapa, string][]).map(([k, t]) => (
+                  <button key={k} className={modoCapa === k ? "on" : ""} onClick={() => setModoCapa(k)}>{t}</button>
+                ))}
+              </div>
+            </div>
+            <div className="pm-bloque">
+              <span className="pm-rotulo">Vista</span>
+              <div className="segmento pm-seg">
+                <button className={!modo3d ? "on" : ""} onClick={() => { if (modo3d) { activar3D(false); quitarVolumen(); } }}>2D</button>
+                <button className={modo3d ? "on" : ""} title="Inclina el mapa y muestra los edificios en 3D" onClick={() => { if (!modo3d) activar3D(true); }}>3D</button>
+                <button title="Ver esta zona en el 3D fotorrealista de Google" onClick={abrirMapaGoogle}>3D Google ↗</button>
+              </div>
+            </div>
+            <div className="pm-bloque">
+              <span className="pm-rotulo">Capas</span>
+              <div className="pm-chips">
+                {([["galeria", "Galería", C.morado], ["proyectos", "Proyectos", C.oscuro], ["avisos", "En venta", C.ambar]] as [keyof typeof capas, string, string][]).map(([k, t, c]) => (
+                  <button key={k} className={`pm-chip ${capas[k] ? "on" : ""}`} onClick={() => setCapas({ ...capas, [k]: !capas[k] })} aria-pressed={capas[k]}>
+                    <i style={{ background: c }} />{t}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           {comparar.length > 0 && seccion !== "comparar" && (
