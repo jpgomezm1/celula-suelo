@@ -137,6 +137,7 @@ export default function Mapa() {
 
   function abrirLote(id: string, lon?: number, lat?: number) {
     setSeleccion({ tipo: "predio", id }); setSeccion("lote"); marcarLote(id);
+    if (colapsado) colapsar(false);
     if (lon && lat) mapa.current?.flyTo({ center: [lon, lat], zoom: 17 });
   }
 

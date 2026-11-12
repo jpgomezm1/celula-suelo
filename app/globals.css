@@ -429,3 +429,4 @@ textarea.entrada { resize: vertical; font-family: inherit; }
 .btn-3d.google:hover { background: var(--cta); border-color: var(--cta); }
 .modal-3d.completo { top: 60px; padding: 0; background: transparent; place-items: stretch; }
 .modal-3d.completo .caja-3d { width: 100%; height: 100%; border-radius: 0; box-shadow: none; }
+.modal-3d.completo { overflow: hidden; }

@@ -32,16 +32,18 @@ export function Google3D({ centro, lote, volumen, altura = 0, titulo, onCerrar, 
       try {
         const google = await cargarGoogle();
         const { Map3DElement, Polygon3DElement } = await google.maps.importLibrary("maps3d");
-        mapa = new Map3DElement({ center: { lat: centro.lat, lng: centro.lon, altitude: 0 }, range: rango, tilt: 62, heading: 25, mode: "HYBRID" });
+        // La altitud del centro es sobre el nivel del mar: con 0, en Medellín (≈1.500 m) la cámara quedaría bajo tierra.
+        const elev = await fetch(`/api/elevacion?lat=${centro.lat}&lon=${centro.lon}`).then((r) => r.json()).then((j) => Number(j.elevacion_m) || 1500).catch(() => 1500);
+        mapa = new Map3DElement({ center: { lat: centro.lat, lng: centro.lon, altitude: elev }, range: rango, tilt: 62, heading: 25, mode: "HYBRID" });
         const anillo = (g: any) => (g?.type === "MultiPolygon" ? g.coordinates[0][0] : g?.coordinates?.[0]) ?? [];
         if (lote) {
           const contorno = new Polygon3DElement({ altitudeMode: "CLAMP_TO_GROUND", fillColor: "rgba(242,169,0,0.18)", strokeColor: "#f2a900", strokeWidth: 3 });
-          contorno.outerCoordinates = anillo(lote).map(([lng, lat]: number[]) => ({ lat, lng }));
+          contorno.path = anillo(lote).map(([lng, lat]: number[]) => ({ lat, lng }));
           mapa.append(contorno);
         }
         if (volumen) {
           const v = new Polygon3DElement({ altitudeMode: "RELATIVE_TO_GROUND", fillColor: "rgba(108,77,231,0.62)", strokeColor: "#ffffff", strokeWidth: 2, extruded: true, drawsOccludedSegments: true });
-          v.outerCoordinates = anillo(volumen).map(([lng, lat]: number[]) => ({ lat, lng, altitude: altura }));
+          v.path = anillo(volumen).map(([lng, lat]: number[]) => ({ lat, lng, altitude: altura }));
           mapa.append(v);
         }
         ref.current?.replaceChildren(mapa);
