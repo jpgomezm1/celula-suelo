@@ -24,6 +24,8 @@ export type OpcionesProyecto = {
   // Sobrescriben la norma cargada (para probar alternativas)
   retiro_frontal_m?: number; retiro_lateral_m?: number; retiro_fondo_m?: number; separacion_torres_m?: number;
   estrato?: number;           // si no se da, se estima con los inmuebles en venta cercanos
+  parqueo_privados_viv?: number;   // objetivo de la constructora (sin pasar el tope de la norma); defecto 1
+  parqueo_visitantes_viv?: number; // defecto 0,2
 };
 
 export type Torre = { id: string; origen: Pt; rotada: boolean; planta: PlantaTorre; huella: Pt[] };
@@ -132,12 +134,27 @@ export async function anteproyecto(id: string, o: OpcionesProyecto = {}) {
   const parq = parqueaderos(p.municipio_dane ?? "05001", unidades, estrato);
   const nucleosLote = torres.map((t) => { const T = aLote(t); const c = caja(t.planta.nucleo.poly); return [T([c.x0, c.y0]), T([c.x1, c.y0]), T([c.x1, c.y1]), T([c.x0, c.y1])].map((q) => q) as Pt[]; })
     .map((pl) => { const c = caja(pl); return rect(c.x0, c.y0, c.x1, c.y1); });
-  const rp = rampa(3.0, parq.total);
+  // Objetivo de parqueaderos: el de la constructora, sin pasar el tope de la norma (en Medellín los del art. 364 son máximos).
+  const objPriv = Math.min(parq.privados, Math.ceil(unidades * (o.parqueo_privados_viv ?? 1)));
+  const objVis = Math.min(parq.visitantes, Math.ceil(unidades * (o.parqueo_visitantes_viv ?? 0.2)));
+  const objetivo = objPriv + objVis;
+  const rp = rampa(3.0, objetivo);
   const sotanos: PlantaSotano[] = [];
   let puestos = 0;
-  for (let s = 1; s <= 6 && puestos < parq.total; s++) {
-    const ps = plantaSotano(s, res.sotano, nucleosLote, { altura: 3.0, largo_rampa: rp.largo_m, ancho_rampa: rp.ancho_m, celda: parq.celda, calle: parq.calle, unidades, visitantes: s === 1 ? parq.visitantes : 0 });
+  let areaSotanos = 0;
+  for (let s = 1; s <= 6 && puestos < objetivo; s++) {
+    const ps: any = plantaSotano(s, res.sotano, nucleosLote, { altura: 3.0, largo_rampa: rp.largo_m, ancho_rampa: rp.ancho_m, celda: parq.celda, calle: parq.calle, unidades, visitantes: s === 1 ? objVis : 0 });
     if (!ps.puestos.length) break;
+    const faltan = objetivo - puestos, areaNivel = area(res.sotano);
+    if (ps.puestos.length > faltan) {
+      // Sótano parcial: solo la franja que se necesita desde la rampa (el resto no se excava)
+      const usados = [...ps.puestos].sort((a: any, b: any) => a.poly[0][1] - b.poly[0][1] || a.poly[0][0] - b.poly[0][0]).slice(0, faltan);
+      const yMax = Math.max(...usados.map((q: any) => q.poly[2][1])) + (parq.calle + 0.5);
+      const fraccion = Math.min(1, Math.max(0.15, (yMax - caja(res.sotano).y0) / (caja(res.sotano).y1 - caja(res.sotano).y0)));
+      ps.puestos = usados; ps.calles = ps.calles.filter((c: Pt[]) => caja(c).y0 < yMax); ps.depositos = ps.depositos.filter((d: Pt[]) => caja(d).y1 <= yMax);
+      ps.parcial = { y_max: yMax, fraccion: Math.round(fraccion * 100) / 100 };
+      areaSotanos += areaNivel * fraccion;
+    } else areaSotanos += areaNivel;
     sotanos.push(ps); puestos += ps.puestos.length;
   }
 
@@ -172,8 +189,8 @@ export async function anteproyecto(id: string, o: OpcionesProyecto = {}) {
     area_vendible_m2: Math.round(vendible), eficiencia_planta_pct: Math.round((areaPrivadaPiso / areaPisoTorres) * 100), area_comun_por_piso_m2: Math.round(areaComunPiso),
     indice_construccion: r2(construidaSobre / marco.area), indice_ocupacion: r2((pp > 0 ? areaPlataforma : areaPisoTorres) / marco.area),
     punto_fijo: pf, rampa: rp, obligaciones: { ...oblig, equipamiento_en_sitio_m2: Math.round(primerPiso.reduce((s, x) => s + x.equipamiento.reduce((t, e) => t + e.area, 0), 0)),
-      equipamiento_a_compensar_m2: Math.max(0, Math.round(faltaEquip)) }, parqueaderos_nota: parq.nota, sotanos: sotanos.length, parqueaderos_dibujados: puestos, parqueaderos_exigidos: parq.total, visitantes: parq.visitantes,
-    depositos: sotanos.reduce((s, x) => s + x.depositos.length, 0), area_sotanos_m2: Math.round(area(res.sotano) * sotanos.length),
+      equipamiento_a_compensar_m2: Math.max(0, Math.round(faltaEquip)) }, parqueaderos_nota: parq.nota, sotanos: sotanos.length, parqueaderos_dibujados: puestos, parqueaderos_exigidos: parq.total, parqueaderos_objetivo: objetivo, visitantes: objVis,
+    depositos: sotanos.reduce((s, x) => s + x.depositos.length, 0), area_sotanos_m2: Math.round(areaSotanos), estrato: estrato,
     area_lote_m2: Math.round(marco.area), area_edificable_m2: Math.round(area(res.edificable)),
   };
   return {

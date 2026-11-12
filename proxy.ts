@@ -31,4 +31,4 @@ export async function proxy(request: NextRequest) {
   return NextResponse.redirect(login);
 }
 
-export const config = { matcher: ["/mapa/:path*", "/api/tiles/:path*", "/api/datos/:path*", "/api/estudio/:path*", "/api/estudio", "/api/perfil", "/api/norma", "/api/ficha", "/api/analisis/:path*", "/api/kmz", "/api/fachada", "/api/elevacion", "/api/cabida"] };
+export const config = { matcher: ["/mapa/:path*", "/api/tiles/:path*", "/api/datos/:path*", "/api/estudio/:path*", "/api/estudio", "/api/perfil", "/api/norma", "/api/ficha", "/api/analisis/:path*", "/api/kmz", "/api/fachada", "/api/elevacion", "/api/cabida", "/api/finanzas", "/api/constructora/:path*", "/api/constructora"] };

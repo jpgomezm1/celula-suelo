@@ -17,6 +17,9 @@ import { analizarCartera, analizarZona, cambioPot, compararLotes, novedadesNorma
 import { bloque2026Predio } from "@/lib/norma2026";
 import { volumenesLote } from "@/lib/volumen";
 import { anteproyecto } from "@/lib/cabida/proyecto";
+import { modeloFinanciero } from "@/lib/finanzas/modelo";
+import { obtenerPerfil } from "@/lib/constructora/perfil";
+import { opcionesConPerfil } from "@/lib/constructora/sesion";
 import { topografiaLote } from "@/lib/topografia";
 import { entornoLote, lecturaEntorno } from "@/lib/entorno";
 import { fachadaLote } from "@/lib/fachada";
@@ -55,7 +58,7 @@ const LECTURA = { readOnlyHint: true, openWorldHint: false } as const;
 const ESCRITURA = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 const INSTRUCCIONES = `Inteligencia de suelo para 17 municipios del Valle de Aburrá y el Oriente antioqueño: catastro, norma del POT, mercado (Fynder), proyectos nuevos (Zonario y Galería Inmobiliaria) y señales de venta de los folios.
 Flujos recomendados:
-0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Cómo se ve el lote desde la calle → fachada_street_view. Anteproyecto esquemático con planos (DXF, PDF, 3D y Excel): torres, apartamentos distribuidos, punto fijo, primer piso y sótanos → cabida_arquitectonica. Cartera que se actualiza sola en Google Earth Pro → analizar_cartera (cartera_viva_google_earth_pro). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
+0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Cómo se ve el lote desde la calle → fachada_street_view. Anteproyecto esquemático con planos (DXF, PDF, 3D y Excel): torres, apartamentos distribuidos, punto fijo, primer piso y sótanos → cabida_arquitectonica. ¿Cuánto puedo pagar por el lote? / ¿Da a este precio? (flujo, TIR, utilidad, sensibilidades) → prefactibilidad_financiera. Cartera que se actualiza sola en Google Earth Pro → analizar_cartera (cartera_viva_google_earth_pro). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
 1. "¿Dónde puedo hacer este edificio?" → oportunidades_por_perfil (perfil de producto sobre todo un municipio) → ficha_predio de los mejores → contacto_predio.
 2. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 3. "¿Este lote da?" → ficha_predio → prefactibilidad_lote (con el precio pedido por el lote).
@@ -356,6 +359,30 @@ const mcp = createMcpHandler(
         entregables: { paquete_zip: u("zip"), planchas_pdf: u("pdf"), planos_dxf: u("dxf"), modelo_3d_dxf: u("dxf3d"), cuadro_de_areas_xlsx: u("xlsx") },
         ver_en_la_plataforma: `${URL_BASE()}/mapa (ficha del lote → Anteproyecto → Ver en 3D / Ver planchas)`,
         dwg: "AutoCAD y BricsCAD abren el DXF y lo guardan como DWG (Guardar como → DWG).", aviso: m.aviso };
+    }));
+
+    server.registerTool("prefactibilidad_financiera", {
+      annotations: LECTURA,
+      title: "Prefactibilidad financiera (¿cuánto puedo pagar por el lote?)",
+      description: "Arma el anteproyecto del lote y corre la prefactibilidad financiera: precios por tipología y velocidad de ventas desde Galería (comparables del mismo estrato ±1, sin vivienda turística ni desistidos), presupuesto paramétrico según el perfil de la constructora (costos directos por altura, sótanos, indirectos, licencias, ventas, fiducia), cronograma por torre (preventa, punto de equilibrio, obra, entrega, escrituración), flujo de caja mensual con fiducia y crédito constructor, utilidad, margen, TIR, VPN, exposición máxima, VALOR MÁXIMO A PAGAR POR EL LOTE (el menor entre margen mínimo, TIR mínima y lote/ventas máximo) y sensibilidades. Si se da costo_lote, devuelve el veredicto VA / VA CON AJUSTES / NO VA frente a la tesis de inversión del perfil. Los costos de referencia son supuestos a calibrar con los de la constructora: dígalo. Tarda 5–15 s.",
+      inputSchema: z.object({ ...LOTE,
+        costo_lote: z.number().optional().describe("Precio pedido o negociado del lote en COP"),
+        precio_m2: z.number().optional().describe("Sobrescribe el precio de venta por m² (COP)"), absorcion_mes: z.number().optional().describe("Sobrescribe las ventas por mes (unidades)"),
+        estrato: z.number().int().min(1).max(6).optional(), escenario: z.enum(["conservador", "base", "maximo"]).optional(),
+        mezcla: z.array(z.object({ tipologia: z.enum(["estudio", "1A", "2A", "3A"]), pct: z.number() })).optional(),
+        constructora: z.string().optional().describe("Id del perfil de constructora (ADN); por defecto el de referencia") }),
+    }, seguro(async (a: any) => {
+      const { c, p } = await loteDe(a);
+      if (!p) return c;
+      const perfil = await obtenerPerfil(a.constructora);
+      const m: any = await anteproyecto(c.predio, opcionesConPerfil({ escenario: a.escenario, estrato: a.estrato, mezcla: a.mezcla }, perfil));
+      if (!m.disponible) return { predio: c.predio, disponible: false, motivo: m.mensaje };
+      const f: any = await modeloFinanciero(m, perfil, { costo_lote: a.costo_lote, precio_m2: a.precio_m2, absorcion_mes: a.absorcion_mes, estrato: a.estrato ?? m.resumen.estrato });
+      const qs = new URLSearchParams({ id: c.predio, ...(a.estrato ? { estrato: String(a.estrato) } : {}), ...(a.costo_lote ? { costo_lote: String(a.costo_lote) } : {}) }).toString();
+      const { flujo, ...resto } = f;
+      return { predio: c.predio, barrio: m.barrio, anteproyecto: { torres: m.resumen.torres, pisos: m.resumen.pisos_totales, unidades: m.resumen.unidades, area_vendible_m2: m.resumen.area_vendible_m2, sotanos: m.resumen.sotanos },
+        ...resto, flujo_trimestral: flujo.filter((x: any) => x.mes % 3 === 0).map((x: any) => ({ mes: x.mes, neto: x.neto, acumulado: x.acumulado })),
+        excel: `${URL_BASE()}/api/finanzas?${qs}&formato=xlsx`, aviso: "Prefactibilidad con supuestos explícitos; los costos de referencia deben calibrarse con los de la constructora." };
     }));
 
     server.registerTool("fachada_street_view", {

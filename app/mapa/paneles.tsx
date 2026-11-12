@@ -270,6 +270,88 @@ function VisorPlanchas({ qs, planchas, onCerrar }: { qs: string; planchas: any[]
   );
 }
 
+/* ───────────── Números del proyecto (prefactibilidad financiera) ───────────── */
+const mill = (v?: number | null) => (v == null ? "—" : `$${Math.round(v / 1e6).toLocaleString("es-CO")} M`);
+function GraficoFlujo({ flujo }: { flujo: any[] }) {
+  if (!flujo?.length) return null;
+  const W = 560, H = 170, P = 8;
+  const max = Math.max(...flujo.map((f) => Math.abs(f.neto)), ...flujo.map((f) => Math.abs(f.acumulado)), 1);
+  const x = (i: number) => P + (i / Math.max(1, flujo.length - 1)) * (W - 2 * P), y = (v: number) => H / 2 - (v / max) * (H / 2 - P);
+  const bw = Math.max(1.5, (W - 2 * P) / flujo.length - 1);
+  const linea = flujo.map((f, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(f.acumulado).toFixed(1)}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="grafico-flujo" role="img" aria-label="Flujo de caja mensual">
+      <line x1={P} x2={W - P} y1={H / 2} y2={H / 2} stroke="#ccc" />
+      {flujo.map((f, i) => <rect key={i} x={x(i) - bw / 2} y={Math.min(y(f.neto), H / 2)} width={bw} height={Math.abs(y(f.neto) - H / 2)} fill={f.neto >= 0 ? "#3f8f4a" : "#c0392b"} opacity="0.55" />)}
+      <path d={linea} fill="none" stroke="#6c4de7" strokeWidth="2" />
+      <text x={W - P} y={14} fontSize="10" textAnchor="end" fill="#6c4de7">acumulado</text>
+      <text x={P} y={H - 4} fontSize="10" fill="#888">mes 0</text><text x={W - P} y={H - 4} fontSize="10" textAnchor="end" fill="#888">mes {flujo.length - 1}</text>
+    </svg>
+  );
+}
+
+function PanelNumeros({ qs }: { qs: string }) {
+  const [o, setO] = useState<any>({ costo_lote: "", precio_m2: "", absorcion_mes: "" });
+  const [f, setF] = useState<any>(null);
+  const [cargando, setCargando] = useState(false);
+  useEffect(() => { setF(null); }, [qs]);
+  const q = () => {
+    const x = new URLSearchParams(qs);
+    if (o.costo_lote !== "") x.set("costo_lote", String(Number(o.costo_lote) * 1e6));
+    if (o.precio_m2 !== "") x.set("precio_m2", String(Number(o.precio_m2) * 1e6));
+    if (o.absorcion_mes !== "") x.set("absorcion_mes", String(o.absorcion_mes));
+    return x.toString();
+  };
+  async function calcular() {
+    setCargando(true);
+    try { setF(await (await fetch(`/api/finanzas?${q()}`)).json()); } catch (e) { setF({ error: (e as Error).message }); } finally { setCargando(false); }
+  }
+  const campo = (k: string, t: string, ph: string, paso = 1) => (
+    <div className="campo"><label>{t}</label><input className="entrada" type="number" step={paso} placeholder={ph} value={o[k]} onChange={(e) => setO({ ...o, [k]: e.target.value })} /></div>);
+  const R = f?.resultado, L = f?.lote;
+  const color = f?.veredicto === "VA" ? "verde" : f?.veredicto === "VA CON AJUSTES" ? "amarillo" : f?.veredicto === "NO VA" ? "rojo" : "morado";
+  return (
+    <Seccion titulo="Números del proyecto (prefactibilidad)">
+      <div className="nota">Presupuesto paramétrico según el perfil de la constructora, precios y velocidad de ventas de Galería, cronograma por torre, flujo de caja con fiducia y crédito constructor. Si no das el costo del lote, calcula el máximo que se puede pagar.</div>
+      <div className="fila tres-col">{campo("costo_lote", "Costo del lote ($ millones)", "opcional")}{campo("precio_m2", "Precio m² ($ millones)", "mercado", 0.1)}{campo("absorcion_mes", "Ventas por mes (und.)", "mercado", 0.5)}</div>
+      <button className="btn btn-primario btn-bloque" disabled={cargando} onClick={calcular}>{cargando ? "Calculando flujo, TIR y sensibilidades…" : f ? "Recalcular números" : "Calcular números"}</button>
+      {f?.error && <div className="error">{f.error}</div>}
+      {R && (
+        <>
+          <div className={`veredicto ${color}`}>
+            <div><b>{f.veredicto === "VALOR MÁXIMO" ? "Valor máximo a pagar por el lote" : f.veredicto}</b>
+              <span>{f.veredicto === "VALOR MÁXIMO" ? `${mill(L.valor_maximo)} · ${mill(L.por_m2_lote).replace(" M", " M/m²").replace("$", "$")} de lote` : f.razones.join(" · ")}</span></div>
+            {f.veredicto !== "VALOR MÁXIMO" && <div className="vmax">Máximo: <b>{mill(L.valor_maximo)}</b></div>}
+          </div>
+          <div className="cifras tres">
+            <Cifra v={mill(R.ventas)} k="ventas" /><Cifra v={mill(R.utilidad)} k={`utilidad · margen ${num(R.margen_pct, 1)} %`} /><Cifra v={R.tir_ea_pct != null ? `${num(R.tir_ea_pct, 1)} %` : "—"} k="TIR efectiva anual" />
+          </div>
+          <div className="cifras tres">
+            <Cifra v={mill(R.exposicion_maxima)} k="exposición máxima de caja" /><Cifra v={`${R.duracion_meses} meses`} k={`${R.meses_de_ventas} meses de ventas`} /><Cifra v={mill(f.presupuesto.costo_total)} k={`costo total · directo $${num(f.presupuesto.costo_directo_m2 / 1e6, 2)} M/m²`} />
+          </div>
+          <div className="nota">Valor máximo del lote = el menor entre: margen mínimo {mill(L.por_margen)}, TIR mínima {mill(L.por_tir)}, lote/ventas máximo {mill(L.por_lote_sobre_ventas)} · perfil {f.perfil.nombre}.</div>
+          <h4 className="sub-h">Flujo de caja</h4>
+          <GraficoFlujo flujo={f.flujo} />
+          <table className="tabla"><thead><tr><th>Torre</th><th>Unid.</th><th>Lanza</th><th>Obra</th><th>Entrega</th><th>Escritura</th></tr></thead>
+            <tbody>{f.cronograma.map((c: any) => <tr key={c.torre}><td>{c.torre}</td><td>{c.unidades}</td><td>mes {c.lanzamiento}</td><td>mes {c.inicio_obra}</td><td>mes {c.entrega}</td><td>mes {c.escrituracion}</td></tr>)}</tbody></table>
+          <h4 className="sub-h">Sensibilidades (mismo costo de lote)</h4>
+          <table className="tabla"><thead><tr><th>Escenario</th><th>Margen</th><th>TIR</th><th>Valor máx. lote</th></tr></thead>
+            <tbody>{f.sensibilidades.map((x: any) => <tr key={x.escenario}><td>{x.escenario}</td><td>{num(x.margen_pct, 1)} %</td><td>{x.tir_ea_pct != null ? `${num(x.tir_ea_pct, 1)} %` : "—"}</td><td>{mill(x.valor_maximo_lote)}</td></tr>)}</tbody></table>
+          <h4 className="sub-h">Precios por tipología (torre {f.producto.etapas[0]?.torre})</h4>
+          <table className="tabla"><thead><tr><th>Tipología</th><th>Área</th><th>Precio m²</th><th>Precio</th></tr></thead>
+            <tbody>{f.producto.etapas[0]?.tipologias.map((x: any) => <tr key={x.tipologia}><td>{x.tipologia}</td><td>{num(x.area_promedio_m2, 1)} m²</td><td>{mill(x.precio_m2)}</td><td>{mill(x.precio_unidad)}</td></tr>)}</tbody></table>
+          <details className="avanzado"><summary>Comparables de Galería ({f.mercado.comparables} a {f.mercado.radio_m / 1000} km) · supuestos</summary>
+            <table className="tabla"><thead><tr><th>Proyecto</th><th>Estr.</th><th>$/m²</th><th>Área</th><th>Ventas/mes</th></tr></thead>
+              <tbody>{f.mercado.lista.map((c: any) => <tr key={c.proyecto}><td>{c.proyecto}</td><td>{c.estrato}</td><td>{num(c.precio_m2 / 1e6, 1)} M</td><td>{c.area_m2}</td><td>{num(c.ventas_mes, 1)}</td></tr>)}</tbody></table>
+            <ul className="lista-simple">{f.supuestos.map((x: string) => <li key={x}>{x}</li>)}</ul>
+          </details>
+          <div className="acciones"><a className="btn btn-primario" href={`/api/finanzas?${q()}&formato=xlsx`}>Descargar Excel de prefactibilidad</a></div>
+        </>
+      )}
+    </Seccion>
+  );
+}
+
 function PanelCabida({ id, anteMapa }: { id: string; anteMapa?: (fc: any | null) => void }) {
   const [o, setO] = useState<any>({ escenario: "base", estrato: "", pisos_plataforma: 0, crujia_m: 7.6, estudio: 0, a1: 20, a2: 55, a3: 25, retiro_frontal_m: "", retiro_lateral_m: "", separacion_torres_m: "" });
   const [m, setM] = useState<any>(null);
@@ -345,6 +427,7 @@ function PanelCabida({ id, anteMapa }: { id: string; anteMapa?: (fc: any | null)
           <div className="acciones">
             <a className="btn btn-primario" href={`/api/cabida?${qs()}&formato=zip`}>Descargar todo (ZIP)</a>
           </div>
+          <PanelNumeros qs={qs()} />
           <div className="acciones">
             <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=pdf`}>Planchas PDF</a>
             <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=dxf`}>Planos DXF</a>
