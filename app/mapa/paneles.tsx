@@ -322,7 +322,7 @@ function MezclaOptima({ qs, usar }: { qs: string; usar?: (m: any) => void }) {
   );
 }
 
-function PanelNumeros({ qs, usarMezcla, inicial, id, onGuardada }: { qs: string; usarMezcla?: (m: any) => void; inicial?: any; id?: string; onGuardada?: () => void }) {
+function PanelNumeros({ qs, usarMezcla, inicial, id, onGuardada }: { qs: string; usarMezcla?: (m: any, supuestos?: any) => void; inicial?: any; id?: string; onGuardada?: () => void }) {
   const [o, setO] = useState<any>(inicial ?? { costo_lote: "", precio_m2: "", absorcion_mes: "" });
   const [nombreV, setNombreV] = useState("");
   const [guardando, setGuardando] = useState<string | null>(null);
@@ -386,7 +386,7 @@ function PanelNumeros({ qs, usarMezcla, inicial, id, onGuardada }: { qs: string;
               <tbody>{f.mercado.lista.map((c: any) => <tr key={c.proyecto}><td>{c.proyecto}</td><td>{c.estrato}</td><td>{num(c.precio_m2 / 1e6, 1)} M</td><td>{c.area_m2}</td><td>{num(c.ventas_mes, 1)}</td></tr>)}</tbody></table>
             <ul className="lista-simple">{f.supuestos.map((x: string) => <li key={x}>{x}</li>)}</ul>
           </details>
-          <MezclaOptima qs={q()} usar={usarMezcla} />
+          <MezclaOptima qs={q()} usar={usarMezcla ? (x) => usarMezcla(x, o) : undefined} />
           {id && <div className="guardar-version"><input className="entrada" placeholder="Nombre de la versión (p. ej. 'Mezcla 1A, lote a 8.000')" value={nombreV} onChange={(e) => setNombreV(e.target.value)} />
             <button className="btn btn-borde" onClick={guardarVersion}>Guardar versión</button>{guardando && <span className="nota">{guardando}</span>}</div>}
           <div className="acciones"><a className="btn btn-primario" href={`/api/comite?${q()}`} target="_blank" rel="noreferrer">Carpeta para comité (PDF)</a><a className="btn btn-borde" href={`/api/finanzas?${q()}&formato=xlsx`}>Excel de prefactibilidad</a></div>
@@ -509,7 +509,7 @@ function PanelCabida({ id, anteMapa }: { id: string; anteMapa?: (fc: any | null)
           <div className="acciones">
             <a className="btn btn-primario" href={`/api/cabida?${qs()}&formato=zip`}>Descargar todo (ZIP)</a>
           </div>
-          <PanelNumeros key={JSON.stringify(numIni)} inicial={numIni ?? undefined} id={id} onGuardada={() => setRefresco((x) => x + 1)} qs={qs()} usarMezcla={(x) => { setO({ ...o, estudio: x.estudio, a1: x["1A"], a2: x["2A"], a3: x["3A"] }); setM(null); anteMapa?.(null); }} />
+          <PanelNumeros key={JSON.stringify(numIni)} inicial={numIni ?? undefined} id={id} onGuardada={() => setRefresco((x) => x + 1)} qs={qs()} usarMezcla={(x, sup) => { const nuevo = { ...o, estudio: x.estudio, a1: x["1A"], a2: x["2A"], a3: x["3A"] }; setO(nuevo); if (sup) setNumIni({ ...sup }); setM(null); anteMapa?.(null); }} />
           <div className="acciones">
             <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=pdf`}>Planchas PDF</a>
             <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=dxf`}>Planos DXF</a>
