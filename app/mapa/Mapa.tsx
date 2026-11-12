@@ -6,6 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { Cifra, interpretarBusqueda, m2, num, Vacio } from "./comunes";
 import { FichaProyecto, PanelCartera, PanelComparar, PanelInicio, PanelLote, PanelPot, PanelZona, ResultadoEstudio } from "./paneles";
 import { PopupLote } from "./PopupLote";
+import { Google3D } from "./Google3D";
 import { createRoot, type Root } from "react-dom/client";
 
 const MUNICIPIOS: [string, number, number][] = [
@@ -50,6 +51,8 @@ export default function Mapa() {
   const [comparar, setComparar] = useState<string[]>([]);
   const [modoCapa, setModoCapa] = useState<ModoCapa>("potencial");
   const [capas, setCapas] = useState({ proyectos: true, galeria: true, avisos: false });
+  const [modo3d, setModo3d] = useState(false);
+  const [vistaGoogle, setVistaGoogle] = useState<{ datos: any; clave: string } | null>(null);
   const [form, setForm] = useState({ nombre: "", tipo_vivienda: "NO VIS", vocacion: "ambos", min_unidades: 100, radio_m: 3000 });
   const [estudio, setEstudio] = useState<any>(null);
   const [modoOp, setModoOp] = useState<"perfil" | "rapidas">("perfil");
@@ -168,6 +171,12 @@ export default function Mapa() {
       m.addLayer({ id: "galeria", type: "circle", source: "galeria",
         paint: { "circle-radius": ["interpolate", ["linear"], ["get", "ventas_mes"], 0, 4, 10, 8, 40, 14], "circle-color": C.morado, "circle-opacity": ["case", ["get", "aprox"], 0.35, 0.75],
           "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 } });
+      m.addLayer({ id: "edificios-3d", type: "fill-extrusion", source: "openmaptiles", "source-layer": "building", minzoom: 14, layout: { visibility: "none" },
+        paint: { "fill-extrusion-color": "#d9d5cc", "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6], "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0], "fill-extrusion-opacity": 0.8 } });
+      m.addSource("volumen", { type: "geojson", data: { type: "FeatureCollection", features: [] } as any });
+      m.addLayer({ id: "volumen-lote", type: "line", source: "volumen", filter: ["==", ["get", "tipo"], "lote"], paint: { "line-color": "#f2a900", "line-width": 3 } });
+      m.addLayer({ id: "volumen-3d", type: "fill-extrusion", source: "volumen", filter: ["==", ["get", "tipo"], "volumen"],
+        paint: { "fill-extrusion-color": ["get", "color"], "fill-extrusion-height": ["get", "altura"], "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.85 } });
       m.addSource("zona", { type: "geojson", data: { type: "FeatureCollection", features: [] } as any });
       m.addLayer({ id: "zona-relleno", type: "fill", source: "zona", filter: ["==", ["geometry-type"], "Polygon"], paint: { "fill-color": C.lila, "fill-opacity": 0.15 } });
       m.addLayer({ id: "zona-borde", type: "line", source: "zona", filter: ["!=", ["geometry-type"], "Point"], paint: { "line-color": C.morado, "line-width": 2.5, "line-dasharray": [2, 1] } });
@@ -214,6 +223,26 @@ export default function Mapa() {
     const m = mapa.current; if (!m) return;
     for (const [k, v] of Object.entries(capas)) if (m.getLayer(k)) m.setLayoutProperty(k, "visibility", v ? "visible" : "none");
   }, [capas]);
+
+  function activar3D(on: boolean) {
+    const m = mapa.current; if (!m) return;
+    setModo3d(on);
+    if (m.getLayer("edificios-3d")) m.setLayoutProperty("edificios-3d", "visibility", on ? "visible" : "none");
+    m.easeTo({ pitch: on ? 60 : 0, bearing: on ? -20 : 0, duration: 800 });
+  }
+  const COLOR_ESC: Record<string, string> = { conservador: "#a28df5", base: "#6c4de7", maximo: "#2d1b8a" };
+  function verVolumen(datos: any, clave: string) {
+    const m = mapa.current; if (!m) return;
+    const v = datos.volumenes.find((x: any) => x.clave === clave) ?? datos.volumenes[0];
+    (m.getSource("volumen") as maplibregl.GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: [
+      { type: "Feature", properties: { tipo: "lote" }, geometry: datos.lote },
+      ...(v?.geojson ? [{ type: "Feature", properties: { tipo: "volumen", altura: v.altura_m, color: COLOR_ESC[v.clave] ?? "#6c4de7" }, geometry: v.geojson }] : []),
+    ] } as any);
+    setModo3d(true);
+    if (m.getLayer("edificios-3d")) m.setLayoutProperty("edificios-3d", "visibility", "visible");
+    m.flyTo({ center: [datos.centro.lon, datos.centro.lat], zoom: 17.2, pitch: 62, bearing: -25, duration: 1400 });
+  }
+  function quitarVolumen() { (mapa.current?.getSource("volumen") as maplibregl.GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: [] } as any); }
 
   function empezarDibujo() {
     setVertices([]); pintarZona([]); setDibujando(true); dibujandoRef.current = true;
@@ -279,6 +308,11 @@ export default function Mapa() {
         <div className="franja" />
       </header>
 
+      {vistaGoogle && (() => {
+        const v = vistaGoogle.datos.volumenes.find((x: any) => x.clave === vistaGoogle.clave) ?? vistaGoogle.datos.volumenes[0];
+        return <Google3D centro={vistaGoogle.datos.centro} lote={vistaGoogle.datos.lote} volumen={v?.geojson} altura={v?.altura_m ?? 0}
+          titulo={`${vistaGoogle.datos.barrio ?? vistaGoogle.datos.id} · ${v?.escenario ?? ""} · ${v?.pisos ?? "—"} pisos`} onCerrar={() => setVistaGoogle(null)} />;
+      })()}
       <div className="workspace">
         <div className="lienzo">
           <div ref={contenedor} className="mapa" />
@@ -296,6 +330,7 @@ export default function Mapa() {
               ))}
             </div>
             <div className="toggles">
+              <button className={`btn-3d ${modo3d ? "on" : ""}`} onClick={() => { activar3D(!modo3d); if (modo3d) quitarVolumen(); }}>{modo3d ? "2D" : "3D"}</button>
               {([["galeria", "Galería"], ["proyectos", "Proyectos"], ["avisos", "En venta"]] as [keyof typeof capas, string][]).map(([k, t]) => (
                 <label key={k}><input type="checkbox" checked={capas[k]} onChange={(e) => setCapas({ ...capas, [k]: e.target.checked })} />{t}</label>
               ))}
@@ -365,7 +400,7 @@ export default function Mapa() {
             )}
             {seccion === "lote" && (
               !seleccion ? <Vacio icono="⌖" titulo="Busca o selecciona un lote" texto="Escribe arriba un CBML, una matrícula, una dirección de Medellín o una coordenada de Google Maps, o acércate en el mapa y haz clic en un predio." />
-              : seleccion.tipo === "predio" ? <PanelLote id={seleccion.id} enComparacion={comparar.includes(seleccion.id)}
+              : seleccion.tipo === "predio" ? <PanelLote id={seleccion.id} enComparacion={comparar.includes(seleccion.id)} ver3D={verVolumen} google3D={(datos, clave) => setVistaGoogle({ datos, clave })}
                   onComparar={agregarComparar} onEstudio={() => setSeccion("estudio")} />
               : seleccion.datos?.encontrado ? <FichaProyecto d={seleccion.datos} /> : <div className="error">No encontré el proyecto.</div>
             )}

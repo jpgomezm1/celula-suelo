@@ -15,6 +15,7 @@ import { encontrarPredio } from "@/lib/ficha";
 import { analizarLote, cabida, usosPermitidos, afectaciones } from "@/lib/analisis_lote";
 import { analizarCartera, analizarZona, cambioPot, compararLotes, novedadesNormativas } from "@/lib/herramientas";
 import { bloque2026Predio } from "@/lib/norma2026";
+import { volumenesLote } from "@/lib/volumen";
 
 const URL_BASE = () => process.env.PUBLIC_URL ?? "https://celula-suelo.vercel.app";
 const urlFicha = (c: any) => `${URL_BASE()}/api/ficha?id=${encodeURIComponent(c.predio)}`;
@@ -49,7 +50,7 @@ const LECTURA = { readOnlyHint: true, openWorldHint: false } as const;
 const ESCRITURA = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 const INSTRUCCIONES = `Inteligencia de suelo para 17 municipios del Valle de Aburrá y el Oriente antioqueño: catastro, norma del POT, mercado (Fynder), proyectos nuevos (Zonario y Galería Inmobiliaria) y señales de venta de los folios.
 Flujos recomendados:
-0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
+0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
 1. "¿Dónde puedo hacer este edificio?" → oportunidades_por_perfil (perfil de producto sobre todo un municipio) → ficha_predio de los mejores → contacto_predio.
 2. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 3. "¿Este lote da?" → ficha_predio → prefactibilidad_lote (con el precio pedido por el lote).
@@ -237,7 +238,7 @@ const mcp = createMcpHandler(
       if (!p) return c;
       const an = await analizarLote(p, { area_unidad_m2: a.area_unidad_m2, tipo_vivienda: a.tipo_vivienda, actividad: a.actividad, costo_lote: a.costo_lote });
       return { ...c, semaforo: an.semaforo, area_util: an.area_util, cabida: an.cabida, cesiones: an.cesiones, usos: an.usos, valor_residual: an.valor_residual,
-        ficha_pdf: urlFicha(c), aviso_legal: an.aviso_legal };
+        ficha_pdf: urlFicha(c), kmz_google_earth: `${URL_BASE()}/api/kmz?id=${encodeURIComponent(c.predio)}`, aviso_legal: an.aviso_legal };
     }));
 
     server.registerTool("consulta_norma_lotes", {
@@ -300,6 +301,23 @@ const mcp = createMcpHandler(
       if (!p) return c;
       const an = await analizarLote(p, { costo_lote: a.costo_lote, area_unidad_m2: a.area_unidad_m2 });
       return { predio: c.predio, barrio: c.barrio, area_lote_m2: c.area_lote_m2, ...an.valor_residual, precio_pedido: a.costo_lote ?? null };
+    }));
+
+    server.registerTool("volumen_3d", {
+      annotations: LECTURA,
+      title: "Edificio posible en 3D (Google Earth)",
+      description: "Volumen del edificio que permite la norma en un lote, en los tres escenarios (conservador, base y máximo): pisos, altura en metros, huella y unidades, con dos tipologías: plataforma (índice de ocupación máximo) o torres (ocupación menor, más altura). Devuelve el enlace a un KMZ para abrir en Google Earth con los volúmenes en 3D, el contorno del lote coloreado por semáforo, su ficha y los proyectos de Galería a 2 km.",
+      inputSchema: z.object({ ...LOTE, tipologia: z.enum(["plataforma", "torres"]).optional().describe("plataforma (defecto) o torres (ocupación 30 %)"),
+        ocupacion: z.number().min(0.1).max(0.9).optional().describe("Ocupación para torres (defecto 0,3)") }),
+    }, seguro(async (a: any) => {
+      const { c, p } = await loteDe(a);
+      if (!p) return c;
+      const ocup = a.tipologia === "torres" || a.ocupacion ? (a.ocupacion ?? 0.3) : undefined;
+      const v: any = await volumenesLote(c.predio, { ocupacion: ocup });
+      return { predio: c.predio, barrio: c.barrio, area_lote_m2: c.area_lote_m2, tipologia: v.tipologia,
+        escenarios: v.volumenes.map((x: any) => ({ escenario: x.escenario, pisos: x.pisos, altura_m: x.altura_m, huella_m2: x.huella_m2, unidades: x.unidades, area_construible_m2: x.area_construible_m2 })),
+        kmz_google_earth: `${URL_BASE()}/api/kmz?id=${encodeURIComponent(c.predio)}${ocup ? `&ocupacion=${ocup}` : ""}`,
+        mapa_3d: `${URL_BASE()}/mapa`, nota: v.nota + " Abre el KMZ en Google Earth (web o Pro): activa en la carpeta “Volumen posible (3D)” el escenario que quieras ver." };
     }));
 
     server.registerTool("comparar_lotes", {

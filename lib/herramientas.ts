@@ -4,13 +4,22 @@ import { randomBytes } from "node:crypto";
 import { sql } from "./db";
 import { encontrarPredio } from "./ficha";
 import { analizarLote, AVISO_LEGAL } from "./analisis_lote";
-import { consultaNorma } from "./consulta_norma";
+import { consultaNorma, consultaNormaLotes } from "./consulta_norma";
 import { leerKml } from "./kml";
 import { mercadoZona } from "./mercado";
 import { ESTADO_2026 } from "./norma2026";
 
 const n = (v: unknown) => (v === null || v === undefined || v === "" ? null : Number(v));
 const base = () => process.env.PUBLIC_URL ?? "http://localhost:3077";
+
+/** Predio que contiene el centro de un polígono (o el que más área comparte con él). */
+async function predioPrincipal(poligono: [number, number][]) {
+  const geo = JSON.stringify({ type: "Polygon", coordinates: [poligono] });
+  const [r] = await sql`WITH z AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON(${geo}), 4326) AS g)
+    SELECT p.id FROM parcel_profile p, z WHERE ST_Intersects(p.geom, z.g)
+    ORDER BY ST_Contains(p.geom, ST_PointOnSurface(z.g)) DESC, ST_Area(ST_Intersection(p.geom, z.g)) DESC LIMIT 1`;
+  return r ? encontrarPredio({ id: r.id }) : null;
+}
 
 export type RefLote = { nombre?: string; id?: string; cbml?: string; matricula?: string; direccion?: string; lat?: number; lon?: number };
 
@@ -53,20 +62,30 @@ export async function compararLotes(lotes: RefLote[], opts: { area_unidad_m2?: n
 
 /** Cartera de lotes (hasta 250): KML/KMZ o lista. Norma, cabida, semáforo, cesiones y ranking; guarda el resultado y entrega Excel. */
 export async function analizarCartera(entrada: { nombre?: string; kml?: string; lotes?: RefLote[]; area_unidad_m2?: number; tipo_vivienda?: "VIS" | "NO VIS"; con_valor_residual?: boolean }) {
-  let refs: RefLote[] = entrada.lotes ?? [];
+  type Ref = RefLote & { carpeta?: string | null; notas?: string | null; datos?: Record<string, string>; poligono?: [number, number][] };
+  let refs: Ref[] = entrada.lotes ?? [];
   if (entrada.kml) refs = leerKml(entrada.kml).map((l) => {
     const c = l.punto ?? (l.poligono ? [l.poligono.reduce((a, p) => a + p[0], 0) / l.poligono.length, l.poligono.reduce((a, p) => a + p[1], 0) / l.poligono.length] : null);
-    return { nombre: l.nombre, lon: c?.[0], lat: c?.[1] };
+    return { nombre: l.nombre, lon: c?.[0], lat: c?.[1], carpeta: l.carpeta, notas: l.notas, datos: l.datos, poligono: l.poligono };
   });
   if (!refs.length) return { error: "No encontré lotes en la entrada." };
   if (refs.length > 250) return { error: "Máximo 250 lotes por cartera." };
   const conValor = entrada.con_valor_residual ?? refs.length <= 40;
   const filas: any[] = [];
   for (const r of refs) {
-    const p = await resolver(r);
-    if (!p) { filas.push({ nombre: r.nombre ?? r.cbml ?? r.id ?? "lote", encontrado: false }); continue; }
+    // Polígono dibujado en Google Earth: se analiza el predio principal (el que contiene el centro) y se suma el englobe.
+    let p = r.poligono ? await predioPrincipal(r.poligono) : null;
+    if (!p) p = await resolver(r);
+    const origen = { carpeta: r.carpeta ?? null, notas: r.notas ?? null, datos_google_earth: r.datos ?? null };
+    if (!p) { filas.push({ nombre: r.nombre ?? r.cbml ?? r.id ?? "lote", encontrado: false, ...origen }); continue; }
     const a = await analizarLote(p, { area_unidad_m2: entrada.area_unidad_m2, tipo_vivienda: entrada.tipo_vivienda, con_mercado: conValor });
-    filas.push({ nombre: r.nombre ?? p.id, encontrado: true, ...resumen(p, a) });
+    let englobe: any = null;
+    if (r.poligono) {
+      const c: any = (await consultaNormaLotes({ lotes: [{ nombre: r.nombre, poligono: r.poligono }], area_unidad_m2: entrada.area_unidad_m2 })).resultados?.[0];
+      if (c && c.encontrado !== false) englobe = { predios: c.predios, area_lotes_m2: c.area_lotes_m2, tratamientos: c.tratamientos, area_construible_2014_m2: c.que_se_puede_hacer?.area_construible_m2 ?? null,
+        unidades_2014: c.que_se_puede_hacer?.unidades_estimadas ?? null, area_construible_2026_m2: c.pot_2026_preliminar?.area_construible_m2 ?? null, viviendas_2026_con_derechos: c.pot_2026_preliminar?.con_derechos_viviendas ?? null };
+    }
+    filas.push({ nombre: r.nombre ?? p.id, encontrado: true, ...origen, ...resumen(p, a), englobe, poligono: r.poligono ?? null, io: a.cabida.supuestos.indice_ocupacion });
   }
   const ok = filas.filter((f) => f.encontrado);
   const maxU = Math.max(1, ...ok.map((f) => f.unidades.base ?? 0));
@@ -87,7 +106,7 @@ export async function analizarCartera(entrada: { nombre?: string; kml?: string; 
   };
   const id = `c_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}_${randomBytes(4).toString("hex")}`;
   await sql`INSERT INTO estudio (id, nombre, entrada, resultado) VALUES (${id}, ${resultado.estudio}, ${JSON.stringify({ ...entrada, kml: entrada.kml ? "(kml)" : undefined })}, ${JSON.stringify(resultado)})`;
-  return { id, ...resultado, excel: `${base()}/api/estudio/${id}/xlsx` };
+  return { id, ...resultado, excel: `${base()}/api/estudio/${id}/xlsx`, kmz_google_earth: `${base()}/api/estudio/${id}/kmz` };
 }
 
 /** Zona dibujada (polígono): norma, cambio de POT, lotes con potencial, mercado y competencia (Galería). */

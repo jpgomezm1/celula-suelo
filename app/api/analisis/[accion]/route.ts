@@ -1,6 +1,7 @@
 // Herramientas de análisis para el workspace (las mismas del MCP): comparar, cartera, zona, cambio de POT, novedades y capa de Galería.
 import { analizarCartera, analizarZona, cambioPot, compararLotes, novedadesNormativas, resumenLote } from "@/lib/herramientas";
 import { sql } from "@/lib/db";
+import { volumenesLote } from "@/lib/volumen";
 
 export const maxDuration = 300;
 
@@ -20,6 +21,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ accion: string
 
 export async function GET(req: Request, ctx: { params: Promise<{ accion: string }> }) {
   const { accion } = await ctx.params;
+  if (accion === "volumen") {
+    const q = new URL(req.url).searchParams;
+    const v: any = await volumenesLote(String(q.get("id") ?? ""), { ocupacion: q.get("ocupacion") ? Number(q.get("ocupacion")) : undefined });
+    if (!v.encontrado) return Response.json(v, { status: 404 });
+    const { analisis, ...resto } = v;
+    return Response.json(resto);
+  }
   if (accion === "resumen") return Response.json(await resumenLote(String(new URL(req.url).searchParams.get("id") ?? "")));
   if (accion === "novedades") return Response.json(await novedadesNormativas(Number(new URL(req.url).searchParams.get("dias") ?? 60)));
   if (accion === "galeria") {

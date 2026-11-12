@@ -33,5 +33,5 @@ export async function crearEstudioPerfil(perfil: import("./perfil_edificio").Per
   resultado.tipo = "perfil";
   const id = `p_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}_${randomBytes(4).toString("hex")}`;
   await sql`INSERT INTO estudio (id, nombre, entrada, resultado) VALUES (${id}, ${resultado.estudio}, ${JSON.stringify(perfil)}, ${JSON.stringify(resultado)})`;
-  return { id, ...resultado, excel: `${base()}/api/estudio/${id}/xlsx` };
+  return { id, ...resultado, excel: `${base()}/api/estudio/${id}/xlsx`, kmz_google_earth: `${base()}/api/estudio/${id}/kmz` };
 }

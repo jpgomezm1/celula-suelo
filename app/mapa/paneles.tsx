@@ -31,7 +31,7 @@ export function PanelInicio({ ir }: { ir: (k: string) => void }) {
 }
 
 /* ───────────── Ficha completa del lote ───────────── */
-export function PanelLote({ id, onComparar, onEstudio, enComparacion }: { id: string; onComparar: (id: string) => void; onEstudio: () => void; enComparacion: boolean }) {
+export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, google3D }: { id: string; onComparar: (id: string) => void; onEstudio: () => void; enComparacion: boolean; ver3D: (d: any, clave: string) => void; google3D: (d: any, clave: string) => void }) {
   const [f, setF] = useState<any>(null);
   const [d, setD] = useState<any>(null);
   const [contacto, setContacto] = useState<any>(null);
@@ -105,6 +105,8 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion }: { id: st
         </div>
         <div className="nota">{a.cabida.supuestos.area_unidad_m2} m²/unidad · 80 % vendible · IO {a.cabida.supuestos.indice_ocupacion} · {a.cabida.nota}</div>
       </Seccion>
+
+      <Panel3D id={f.predio} ver3D={ver3D} google3D={google3D} />
 
       <Seccion titulo="Norma: POT 2014 y proyecto POT 2026">
         <div className="etiquetas">
@@ -204,6 +206,40 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion }: { id: st
       {f.aviso_pot && <div className="alerta">{f.aviso_pot}</div>}
       <div className="nota legal">{a.aviso_legal}</div>
     </>
+  );
+}
+
+/* ───────────── Edificio posible en 3D ───────────── */
+function Panel3D({ id, ver3D, google3D }: { id: string; ver3D: (d: any, clave: string) => void; google3D: (d: any, clave: string) => void }) {
+  const [clave, setClave] = useState("base");
+  const [tipo, setTipo] = useState<"plataforma" | "torres">("plataforma");
+  const [d, setD] = useState<any>(null);
+  const [cargando, setCargando] = useState(false);
+  async function cargar(t = tipo) {
+    setCargando(true);
+    try { const j = await (await fetch(`/api/analisis/volumen?id=${encodeURIComponent(id)}${t === "torres" ? "&ocupacion=0.3" : ""}`)).json(); setD(j); return j; }
+    finally { setCargando(false); }
+  }
+  useEffect(() => { setD(null); }, [id]);
+  const v = d?.volumenes?.find((x: any) => x.clave === clave);
+  return (
+    <Seccion titulo="Edificio posible en 3D">
+      <div className="fila">
+        <div className="campo"><label>Escenario</label>
+          <div className="segmento">{[["conservador", "Conservador"], ["base", "Base"], ["maximo", "Máximo"]].map(([k, t]) => <button key={k} className={clave === k ? "on" : ""} onClick={() => { setClave(k); if (d) ver3D(d, k); }}>{t}</button>)}</div>
+        </div>
+        <div className="campo"><label>Tipología</label>
+          <div className="segmento">{[["plataforma", "Plataforma"], ["torres", "Torres"]].map(([k, t]) => <button key={k} className={tipo === k ? "on" : ""} onClick={async () => { setTipo(k as any); if (d) { const j = await cargar(k as any); ver3D(j, clave); } }}>{t}</button>)}</div>
+        </div>
+      </div>
+      {v && <div className="cifras tres"><Cifra v={`${v.pisos} pisos`} k={`${num(v.altura_m, 1)} m de altura`} /><Cifra v={m2(v.huella_m2)} k="huella" /><Cifra v={num(v.unidades)} k="unidades" /></div>}
+      <div className="acciones">
+        <button className="btn btn-primario" disabled={cargando} onClick={async () => ver3D(d ?? (await cargar()), clave)}>{cargando ? "Calculando…" : "Ver en el mapa 3D"}</button>
+        <a className="btn btn-borde" href={`/api/kmz?id=${encodeURIComponent(id)}${tipo === "torres" ? "&ocupacion=0.3" : ""}`}>Google Earth (KMZ)</a>
+        <button className="btn btn-borde" disabled={cargando} onClick={async () => google3D(d ?? (await cargar()), clave)}>Vista fotorrealista</button>
+      </div>
+      <div className="nota">{d?.nota ?? "Volumen esquemático de lo que permite la norma (huella × pisos); no es un diseño arquitectónico."} {d?.tipologia ? `Tipología: ${d.tipologia}.` : ""}</div>
+    </Seccion>
   );
 }
 
@@ -331,7 +367,7 @@ export function PanelCartera({ pintar, abrir }: { pintar: (l: any[]) => void; ab
           <div className="tarjeta destacada">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
               <div><h3 style={{ fontSize: 17 }}>{r.resumen.encontrados} de {r.resumen.lotes} lotes</h3><div style={{ fontSize: 12, opacity: 0.85 }}>{num(r.resumen.unidades_base_total)} unidades posibles en total</div></div>
-              <a className="btn btn-primario" href={`/api/estudio/${r.id}/xlsx`}>⤓ Excel</a>
+              <div style={{ display: "flex", gap: 6 }}><a className="btn btn-primario" href={`/api/estudio/${r.id}/xlsx`}>⤓ Excel</a><a className="btn btn-borde" href={`/api/estudio/${r.id}/kmz`}>Google Earth</a></div>
             </div>
             <div className="cifras tres">
               <Cifra v={<span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><Luz luz="verde" />{r.resumen.verdes}</span>} k="verdes" />
@@ -344,7 +380,7 @@ export function PanelCartera({ pintar, abrir }: { pintar: (l: any[]) => void; ab
               <thead><tr><th>#  Lote</th><th>Pts</th><th>Und base</th><th>POT 2026</th><th>$/m² resid.</th></tr></thead>
               <tbody>{r.ranking.map((f: any, i: number) => (
                 <tr key={f.predio + i} className="clicable" onClick={() => abrir(f.predio)}>
-                  <td><span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><Luz luz={f.semaforo} />{i + 1}. {f.nombre}</span><div className="nota">{f.barrio} · {m2(f.area_lote_m2)}</div></td>
+                  <td><span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><Luz luz={f.semaforo} />{i + 1}. {f.nombre}</span><div className="nota">{f.carpeta ? `${f.carpeta} · ` : ""}{f.barrio} · {m2(f.englobe?.area_lotes_m2 ?? f.area_lote_m2)}{f.englobe ? ` · englobe de ${f.englobe.predios} predios` : ""}</div>{f.notas && <div className="nota" style={{ fontStyle: "italic" }}>“{f.notas}”</div>}</td>
                   <td>{f.puntaje}</td><td>{num(f.unidades.base)}</td><td><Cambio v={f.cambio_pot_2026} /></td><td>{millones(f.valor_residual_m2)}</td>
                 </tr>
               ))}</tbody>
