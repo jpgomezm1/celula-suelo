@@ -307,3 +307,20 @@ textarea.entrada { resize: vertical; font-family: inherit; }
 .riel { width: 80px; background: #f6f5f0; }
 .riel button { padding: 10px 4px 8px; }
 @media (max-width: 1250px) { .panel { width: 500px; } .acciones { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ===== Panel ancho y ajustable ===== */
+.panel { width: clamp(600px, 45vw, 980px); position: relative; }
+.panel .tirador { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; }
+.panel .tirador:hover, .panel .tirador:active { background: linear-gradient(90deg, transparent 3px, var(--acento) 3px, var(--acento) 5px, transparent 5px); }
+.panel .expandir { position: absolute; left: -16px; top: 50%; transform: translateY(-50%); z-index: 6; width: 16px; height: 48px; border: 1px solid var(--linea);
+  border-right: 0; border-radius: 8px 0 0 8px; background: #fff; color: var(--acento-2); font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: -2px 0 6px rgba(8,6,26,.06); padding: 0; }
+.panel .expandir:hover { background: var(--lila); }
+.panel .contenido { padding: 24px 28px 36px; gap: 16px; }
+.cifra .v { font-size: 19px; }
+.cifras.tres .v { font-size: 18px; }
+/* Con espacio, la ficha usa más columnas */
+@container panel (min-width: 760px) {
+  .cifras { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.panel .contenido { container-type: inline-size; container-name: panel; }
+@media (max-width: 1250px) { .panel { width: clamp(480px, 50vw, 700px); } }

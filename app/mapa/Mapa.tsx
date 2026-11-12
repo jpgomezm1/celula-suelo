@@ -55,6 +55,26 @@ export default function Mapa() {
   const [resPerfil, setResPerfil] = useState<any>(null);
   const [oportunidades, setOportunidades] = useState<any>(null);
   const rankingRef = useRef<any[]>([]);
+  // Ancho del panel: por defecto ~45 % de la pantalla, ajustable arrastrando el borde y recordado en el navegador.
+  const [anchoPanel, setAnchoPanel] = useState<number | null>(null);
+  useEffect(() => {
+    let guardado: number | null = null;
+    try { guardado = Number(localStorage.getItem("ancho_panel")) || null; } catch {}
+    setAnchoPanel(guardado ?? Math.round(Math.min(Math.max(window.innerWidth * 0.45, 600), 980)));
+  }, []);
+  const fijarAncho = (w: number) => {
+    const v = Math.round(Math.min(Math.max(w, 460), window.innerWidth - 320));
+    setAnchoPanel(v);
+    try { localStorage.setItem("ancho_panel", String(v)); } catch {}
+    setTimeout(() => mapa.current?.resize(), 0);
+  };
+  function arrastrarBorde(e: React.PointerEvent) {
+    e.preventDefault();
+    const mover = (ev: PointerEvent) => fijarAncho(window.innerWidth - ev.clientX);
+    const soltar = () => { window.removeEventListener("pointermove", mover); window.removeEventListener("pointerup", soltar); mapa.current?.resize(); };
+    window.addEventListener("pointermove", mover); window.addEventListener("pointerup", soltar);
+  }
+  const amplio = anchoPanel !== null && typeof window !== "undefined" && anchoPanel > window.innerWidth * 0.55;
 
   const loteId = seleccion?.tipo === "predio" ? seleccion.id : null;
 
@@ -281,7 +301,10 @@ export default function Mapa() {
           </div>
         </div>
 
-        <aside className="panel">
+        <aside className="panel" style={anchoPanel ? { width: anchoPanel } : undefined}>
+          <div className="tirador" onPointerDown={arrastrarBorde} title="Arrastra para cambiar el ancho" />
+          <button className="expandir" title={amplio ? "Vista normal" : "Vista amplia"}
+            onClick={() => fijarAncho(amplio ? Math.min(Math.max(window.innerWidth * 0.45, 600), 980) : window.innerWidth * 0.68)}>{amplio ? "›" : "‹"}</button>
           <nav className="riel">
             {SECCIONES.map(([k, ic, t]) => (
               <button key={k} className={seccion === k ? "on" : ""} onClick={() => setSeccion(k)} title={t}>
