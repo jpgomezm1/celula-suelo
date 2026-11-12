@@ -24,14 +24,17 @@ await sql`INSERT INTO norma_pot2026 (codigo, densidad_viv_ha, io_baja_menor_2000
          ${FUENTE}, ${URL}
   FROM jsonb_array_elements(${JSON.stringify(filas)}::jsonb) x`;
 
-// Equivalencia código 2014 → código 2026
-await sql`CREATE OR REPLACE VIEW norma_pot2026_equivalencia AS
-  WITH viejos AS (SELECT DISTINCT codigo_tratamiento AS c14 FROM parcel_profile WHERE municipio_dane = '05001' AND codigo_tratamiento IS NOT NULL)
-  SELECT v.c14, COALESCE(
+// Equivalencia código 2014 → código 2026 (tabla precalculada: la usan teselas, búsquedas y fichas)
+await sql`DROP VIEW IF EXISTS norma_pot2026_equivalencia`;
+await sql`DROP TABLE IF EXISTS norma_pot2026_equivalencia`;
+await sql`CREATE TABLE norma_pot2026_equivalencia AS
+  WITH viejos AS (SELECT codigo_tratamiento AS c14, max(ic_max) AS ic_2014 FROM parcel_profile WHERE municipio_dane = '05001' AND codigo_tratamiento IS NOT NULL GROUP BY 1)
+  SELECT v.c14, v.ic_2014, COALESCE(
       (SELECT codigo FROM norma_pot2026 WHERE codigo = v.c14),
       (SELECT codigo FROM norma_pot2026 n WHERE v.c14 ~ '^Z[0-9]+_R_[0-9]+$'
          AND n.codigo ~ ('^' || split_part(v.c14, '_', 1) || '_RE[DAV]_' || split_part(v.c14, '_', 3) || '$') LIMIT 1)) AS c26
   FROM viejos v`;
+await sql`ALTER TABLE norma_pot2026_equivalencia ADD PRIMARY KEY (c14)`;
 const [c] = await sql`SELECT count(*)::int AS total, count(c26)::int AS con_equivalente FROM norma_pot2026_equivalencia`;
 const [p] = await sql`SELECT count(*)::int AS predios, count(e.c26)::int AS con_norma_2026 FROM parcel_profile pp
                       LEFT JOIN norma_pot2026_equivalencia e ON e.c14 = pp.codigo_tratamiento WHERE pp.municipio_dane = '05001'`;
