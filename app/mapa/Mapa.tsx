@@ -294,7 +294,26 @@ export default function Mapa() {
             <div className="titulo"><h2>{titulos[seccion][0]}</h2><div className="sub">{titulos[seccion][1]}</div></div>
 
             {seccion === "lote" && (
-              !seleccion ? <Vacio icono="⌖" titulo="Busca o selecciona un lote" texto="Escribe un CBML, una matrícula, una dirección o una coordenada arriba, o acércate en el mapa y haz clic en un predio." />
+              <div className="buscador-panel">
+                <div className="caja">
+                  <span>⌕</span>
+                  <input placeholder="CBML, matrícula, dirección o coordenada" value={busqueda}
+                    onChange={(e) => { setBusqueda(e.target.value); setErrorBusqueda(null); }} onKeyDown={(e) => { if (e.key === "Enter") buscar(); }} />
+                  <button className="btn btn-primario" disabled={!busqueda.trim() || !!cargando} onClick={buscar}>Buscar</button>
+                </div>
+                {errorBusqueda && <div className="error">{errorBusqueda}</div>}
+                {!seleccion && (
+                  <div className="ejemplos">
+                    <span className="nota">Prueba con:</span>
+                    {[["15090030008", "CBML"], ["001-728976", "Matrícula"], ["Cl. 6 Sur #50C-104", "Dirección"], ["6.2032, -75.5826", "Google Maps"]].map(([v, t]) => (
+                      <button key={v} className="etiqueta chip" onClick={() => setBusqueda(v)} title={t}>{t}: {v}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {seccion === "lote" && (
+              !seleccion ? <Vacio icono="⌖" titulo="Busca o selecciona un lote" texto="Escribe arriba un CBML, una matrícula, una dirección de Medellín o una coordenada de Google Maps, o acércate en el mapa y haz clic en un predio." />
               : seleccion.tipo === "predio" ? <PanelLote id={seleccion.id} enComparacion={comparar.includes(seleccion.id)}
                   onComparar={(id) => setComparar((c) => (c.includes(id) || c.length >= 5 ? c : [...c, id]))} onEstudio={() => setSeccion("estudio")} />
               : seleccion.datos?.encontrado ? <FichaProyecto d={seleccion.datos} /> : <div className="error">No encontré el proyecto.</div>
