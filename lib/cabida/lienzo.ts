@@ -166,7 +166,9 @@ export function aSvg(pl: Plancha, anchoPx = 1600) {
   const css = (capa: string) => { const c = CAPAS[capa]?.rgb ?? [0, 0, 0]; return `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`; };
   const sw = (capa: string) => Math.max(0.4, ((CAPAS[capa]?.mm ?? 0.18) / 1000) * pl.escala * k);
   const g: string[] = [];
+  let capaActual = "";
   for (const op of expandir(pl.ops)) {
+    if (op.capa !== capaActual) { if (capaActual) g.push("</g>"); g.push(`<g class="capa" data-capa="${op.capa}">`); capaActual = op.capa; }
     if (op.t === "linea") g.push(`<line x1="${(op.a[0] * k).toFixed(1)}" y1="${(H - op.a[1] * k).toFixed(1)}" x2="${(op.b[0] * k).toFixed(1)}" y2="${(H - op.b[1] * k).toFixed(1)}" stroke="${css(op.capa)}" stroke-width="${sw(op.capa).toFixed(2)}"/>`);
     else if (op.t === "relleno") g.push(`<polygon points="${op.pts.map(X).join(" ")}" fill="${css(op.capa)}"/>`);
     else if (op.t === "poli") g.push(`<${op.cerrada === false ? "polyline" : "polygon"} points="${op.pts.map(X).join(" ")}" fill="none" stroke="${css(op.capa)}" stroke-width="${sw(op.capa).toFixed(2)}"/>`);
@@ -181,5 +183,6 @@ export function aSvg(pl: Plancha, anchoPx = 1600) {
       g.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${(op.alto * k * 1.35).toFixed(1)}" text-anchor="${anchor}" fill="${css(op.capa)}"${op.negrita ? ' font-weight="700"' : ""}${op.rot ? ` transform="rotate(${-op.rot} ${x.toFixed(1)} ${y.toFixed(1)})"` : ""}>${op.txt.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>`);
     }
   }
+  if (capaActual) g.push("</g>");
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${anchoPx} ${H.toFixed(0)}" font-family="Arial, Helvetica, sans-serif"><rect width="100%" height="100%" fill="#fff"/>${g.join("")}</svg>`;
 }

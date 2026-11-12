@@ -1,6 +1,6 @@
 "use client";
 // Paneles del workspace: ficha completa del lote, comparación, cartera, zona, POT 2026 y estudio de competencia.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 const Cabida3D = dynamic(() => import("./Cabida3D"), { ssr: false });
 import { Cambio, Cifra, Luz, Seccion, Vacio, m2, millones, num, pct } from "./comunes";
@@ -33,7 +33,7 @@ export function PanelInicio({ ir }: { ir: (k: string) => void }) {
 }
 
 /* ───────────── Ficha completa del lote ───────────── */
-export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, google3D }: { id: string; onComparar: (id: string) => void; onEstudio: () => void; enComparacion: boolean; ver3D: (d: any, clave: string) => void; google3D: (d: any, clave: string) => void }) {
+export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, google3D, anteMapa }: { id: string; onComparar: (id: string) => void; onEstudio: () => void; enComparacion: boolean; ver3D: (d: any, clave: string) => void; google3D: (d: any, clave: string) => void; anteMapa?: (fc: any | null) => void }) {
   const [f, setF] = useState<any>(null);
   const [d, setD] = useState<any>(null);
   const [contacto, setContacto] = useState<any>(null);
@@ -114,7 +114,7 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, goo
 
       <PanelTopografia id={f.predio} />
 
-      <PanelCabida id={f.predio} />
+      <PanelCabida id={f.predio} anteMapa={anteMapa} />
 
       <Seccion titulo="Norma: POT 2014 y proyecto POT 2026">
         <div className="etiquetas">
@@ -218,23 +218,51 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, goo
 }
 
 /* ───────────── Anteproyecto esquemático (planos, 3D, Excel) ───────────── */
+const NOMBRES_CAPA: Record<string, string> = { "A-MURO": "Muros", "A-MURO-INT": "Muros interiores", "A-RELLENO-MURO": "Relleno de muros", "A-PUERTA": "Puertas", "A-VENTANA": "Ventanas",
+  "A-MOBILIARIO": "Mobiliario", "A-ESCALERA": "Escaleras", "A-ASCENSOR": "Ascensores", "A-DUCTO": "Ductos", "A-ESPACIO": "Nombres de espacios", "A-APTO": "Apartamentos",
+  "A-CIRCULACION": "Circulaciones", "A-COTA": "Cotas", "A-TEXTO": "Textos", "A-NIVEL": "Niveles", "A-LOTE": "Lote", "A-RETIRO": "Retiros", "A-PARQUEO": "Parqueaderos",
+  "A-RAMPA": "Rampa", "A-DEPOSITO": "Depósitos", "A-TECNICO": "Cuartos técnicos", "A-CORTE": "Corte", "A-FACHADA": "Fachada", "A-TERRENO": "Terreno",
+  "A-PLANCHA": "Marco", "A-ROTULO": "Rótulo", "A-TABLA": "Tablas" };
+
 function VisorPlanchas({ qs, planchas, onCerrar }: { qs: string; planchas: any[]; onCerrar: () => void }) {
   const [n, setN] = useState(1);
-  const [zoom, setZoom] = useState(1);
+  const [svg, setSvg] = useState<string>("");
+  const [vista, setVista] = useState({ k: 1, x: 0, y: 0 });
+  const [ocultas, setOcultas] = useState<Set<string>>(new Set());
+  const caja = useRef<HTMLDivElement>(null);
+  const arrastre = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
+  useEffect(() => { setSvg(""); fetch(`/api/cabida?${qs}&formato=svg&plancha=${n}&ancho=2400`).then((r) => r.text()).then(setSvg); setVista({ k: 1, x: 0, y: 0 }); }, [n, qs]);
+  const capas = [...new Set([...svg.matchAll(/data-capa="([^"]+)"/g)].map((x) => x[1]))];
   const p = planchas[n - 1];
+  const rueda = (e: React.WheelEvent) => {
+    const b = caja.current!.getBoundingClientRect(), mx = e.clientX - b.left, my = e.clientY - b.top;
+    const k2 = Math.min(12, Math.max(0.5, vista.k * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
+    setVista({ k: k2, x: mx - ((mx - vista.x) * k2) / vista.k, y: my - ((my - vista.y) * k2) / vista.k });
+  };
+  const css = [...ocultas].map((c) => `.lienzo-planos g[data-capa="${c}"]{display:none}`).join("");
   return (
     <div className="modal-3d completo">
-      <div className="caja-3d">
+      <div className="caja-3d con-capas">
         <div className="cabeza-3d">
-          <b>Plancha {n}/{planchas.length} · {p?.titulo}</b><span>Escala 1:{p?.escala} en A1 · usa + / − para acercar</span>
-          <button onClick={() => setZoom(Math.max(1, zoom - 0.5))} title="Alejar">−</button>
-          <button onClick={() => setZoom(Math.min(4, zoom + 0.5))} title="Acercar">+</button>
+          <b>Plancha {n}/{planchas.length} · {p?.titulo}</b><span>Escala 1:{p?.escala} · arrastra para moverte, rueda para acercar</span>
+          <button onClick={() => setVista({ k: 1, x: 0, y: 0 })} title="Ajustar a la pantalla">⤢</button>
           <button onClick={() => setN(Math.max(1, n - 1))} disabled={n <= 1} title="Anterior">‹</button>
           <button onClick={() => setN(Math.min(planchas.length, n + 1))} disabled={n >= planchas.length} title="Siguiente">›</button>
           <button onClick={onCerrar} title="Cerrar">✕</button>
         </div>
-        <div className="visor-planchas">
-          <img key={n} src={`/api/cabida?${qs}&formato=svg&plancha=${n}&ancho=2400`} alt={p?.titulo} style={{ width: `${zoom * 100}%` }} />
+        <div className="cuerpo-planos">
+          <div ref={caja} className="lienzo-planos" onWheel={rueda}
+            onPointerDown={(e) => { arrastre.current = { x: e.clientX, y: e.clientY, vx: vista.x, vy: vista.y }; (e.target as HTMLElement).setPointerCapture?.(e.pointerId); }}
+            onPointerMove={(e) => { const a = arrastre.current; if (a) setVista({ ...vista, x: a.vx + e.clientX - a.x, y: a.vy + e.clientY - a.y }); }}
+            onPointerUp={() => (arrastre.current = null)}>
+            <style>{css}</style>
+            {svg ? <div className="hoja" style={{ transform: `translate(${vista.x}px, ${vista.y}px) scale(${vista.k})` }} dangerouslySetInnerHTML={{ __html: svg }} />
+              : <div className="cargando-panel"><span className="giro" />Dibujando la plancha…</div>}
+          </div>
+          <div className="capas-planos">
+            <b>Capas</b>
+            {capas.map((c) => <label key={c}><input type="checkbox" checked={!ocultas.has(c)} onChange={() => { const o = new Set(ocultas); o.has(c) ? o.delete(c) : o.add(c); setOcultas(o); }} /> {NOMBRES_CAPA[c] ?? c}</label>)}
+          </div>
         </div>
         <div className="miniaturas-planchas">{planchas.map((x) => <button key={x.numero} className={x.numero === n ? "on" : ""} onClick={() => setN(x.numero)}>{x.numero}. {x.titulo}</button>)}</div>
       </div>
@@ -242,12 +270,12 @@ function VisorPlanchas({ qs, planchas, onCerrar }: { qs: string; planchas: any[]
   );
 }
 
-function PanelCabida({ id }: { id: string }) {
+function PanelCabida({ id, anteMapa }: { id: string; anteMapa?: (fc: any | null) => void }) {
   const [o, setO] = useState<any>({ escenario: "base", estrato: "", pisos_plataforma: 0, crujia_m: 7.6, estudio: 0, a1: 20, a2: 55, a3: 25, retiro_frontal_m: "", retiro_lateral_m: "", separacion_torres_m: "" });
   const [m, setM] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
   const [ver, setVer] = useState<"3d" | "planchas" | null>(null);
-  useEffect(() => { setM(null); setVer(null); }, [id]);
+  useEffect(() => { setM(null); setVer(null); anteMapa?.(null); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
   const qs = () => {
     const mezcla = [["estudio", o.estudio], ["1A", o.a1], ["2A", o.a2], ["3A", o.a3]].filter(([, v]) => Number(v) > 0).map(([k, v]) => `${k}:${v}`).join(",");
     const q: Record<string, string> = { id, escenario: o.escenario, pisos_plataforma: String(o.pisos_plataforma), crujia_m: String(o.crujia_m), mezcla };
@@ -256,7 +284,8 @@ function PanelCabida({ id }: { id: string }) {
   };
   async function generar() {
     setCargando(true);
-    try { setM(await (await fetch(`/api/cabida?${qs()}`)).json()); } catch (e) { setM({ disponible: false, mensaje: (e as Error).message }); } finally { setCargando(false); }
+    try { const j = await (await fetch(`/api/cabida?${qs()}`)).json(); setM(j); if (j.disponible && j.mapa) anteMapa?.(j.mapa); }
+    catch (e) { setM({ disponible: false, mensaje: (e as Error).message }); } finally { setCargando(false); }
   }
   const campo = (k: string, t: string, paso = 1, ph = "") => (
     <div className="campo"><label>{t}</label><input className="entrada" type="number" step={paso} placeholder={ph} value={o[k]} onChange={(e) => setO({ ...o, [k]: e.target.value === "" ? "" : Number(e.target.value) })} /></div>);
@@ -293,8 +322,27 @@ function PanelCabida({ id }: { id: string }) {
           <div className="nota">{r.por_tipologia.map((x: any) => `${x.tipologia}: ${x.unidades} (${x.pct} %, ${num(x.area_promedio_m2, 1)} m²)`).join(" · ")}</div>
           <div className="nota">Norma: {m.norma.fuente}. Retiros: frontal {m.norma.frontal} m, lateral {m.norma.lateral} m, fondo {m.norma.fondo} m, entre torres {m.norma.entre_torres} m. Equipamiento {num(r.obligaciones.equipamiento_en_sitio_m2)} m² en sitio · {r.obligaciones.viviendas_adaptables} viviendas adaptables.</div>
           <div className="acciones">
-            <button className="btn btn-primario" onClick={() => setVer("planchas")}>Ver planchas ({m.planchas.length})</button>
-            <button className="btn btn-borde" onClick={() => setVer("3d")}>Ver en 3D</button>
+            <button className="btn btn-primario" onClick={() => setVer("planchas")}>Ver planos ({m.planchas.length} planchas)</button>
+            <button className="btn btn-primario" onClick={() => setVer("3d")}>Ver en 3D por pisos</button>
+            <button className="btn btn-borde" onClick={() => anteMapa?.(m.mapa)}>Ver en el mapa</button>
+          </div>
+          <div className="nota">En el mapa: torres en 3D y la planta tipo por tipología (<span style={{ color: "#f2c94c" }}>■</span> estudio <span style={{ color: "#56ccf2" }}>■</span> 1 alc. <span style={{ color: "#6fcf97" }}>■</span> 2 alc. <span style={{ color: "#f2994a" }}>■</span> 3 alc.); clic en un apartamento para ver su área.</div>
+          <table className="tabla">
+            <thead><tr><th>Tipología</th><th>Unidades</th><th>Área prom.</th><th>Mezcla</th></tr></thead>
+            <tbody>{r.por_tipologia.map((x: any) => <tr key={x.clave}><td>{x.tipologia}</td><td>{x.unidades}</td><td>{num(x.area_promedio_m2, 1)} m²</td><td>{x.pct} %</td></tr>)}
+              <tr><td><b>Total</b></td><td><b>{r.unidades}</b></td><td colSpan={2}>{m2(r.area_vendible_m2)} vendibles</td></tr></tbody>
+          </table>
+          <table className="tabla">
+            <tbody>
+              <tr><td>Construido sobre rasante</td><td>{m2(r.area_construida_sobre_rasante_m2)}</td></tr>
+              <tr><td>Construible según norma</td><td>{m2(r.area_construible_norma_m2)} ({r.aprovechamiento_pct} %)</td></tr>
+              <tr><td>Índices resultantes</td><td>IC {num(r.indice_construccion, 2)} · IO {num(r.indice_ocupacion, 2)}</td></tr>
+              <tr><td>Área común por piso</td><td>{m2(r.area_comun_por_piso_m2)}</td></tr>
+              <tr><td>Sótanos</td><td>{r.sotanos} · {m2(r.area_sotanos_m2)} · {r.depositos} depósitos</td></tr>
+              <tr><td>Rampa</td><td>{Math.round(r.rampa.pendiente * 100)} % · {num(r.rampa.largo_m, 1)} m</td></tr>
+            </tbody>
+          </table>
+          <div className="acciones">
             <a className="btn btn-primario" href={`/api/cabida?${qs()}&formato=zip`}>Descargar todo (ZIP)</a>
           </div>
           <div className="acciones">

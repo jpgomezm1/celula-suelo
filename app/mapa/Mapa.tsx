@@ -280,6 +280,31 @@ export default function Mapa() {
     setMapaGoogle({ centro: { lat: c.lat, lon: c.lng }, rango, titulo: "Mapa 3D fotorrealista (Google)", ...extra });
   }
 
+  /** Pinta el anteproyecto sobre el mapa: torres en 3D con su altura, apartamentos de la planta tipo por tipología y núcleos. */
+  function verAnteproyecto(fc: any | null) {
+    const m = mapa.current; if (!m) return;
+    if (!m.getSource("anteproyecto")) {
+      m.addSource("anteproyecto", { type: "geojson", data: { type: "FeatureCollection", features: [] } as any });
+      m.addLayer({ id: "ante-edificable", type: "line", source: "anteproyecto", filter: ["==", ["get", "tipo"], "edificable"], paint: { "line-color": "#6c4de7", "line-width": 2, "line-dasharray": [2, 2] } });
+      m.addLayer({ id: "ante-torres", type: "fill-extrusion", source: "anteproyecto", filter: ["==", ["get", "tipo"], "torre"],
+        paint: { "fill-extrusion-color": "#8b74f0", "fill-extrusion-height": ["get", "altura"], "fill-extrusion-base": ["get", "base"], "fill-extrusion-opacity": 0.78 } });
+      m.addLayer({ id: "ante-aptos", type: "fill-extrusion", source: "anteproyecto", filter: ["==", ["get", "tipo"], "apto"],
+        paint: { "fill-extrusion-color": ["match", ["get", "tipologia"], "estudio", "#f2c94c", "1A", "#56ccf2", "2A", "#6fcf97", "3A", "#f2994a", "#ccc"],
+          "fill-extrusion-height": ["get", "altura"], "fill-extrusion-base": ["get", "base"], "fill-extrusion-opacity": 0.95 } });
+      m.addLayer({ id: "ante-nucleos", type: "fill-extrusion", source: "anteproyecto", filter: ["==", ["get", "tipo"], "nucleo"],
+        paint: { "fill-extrusion-color": "#c0392b", "fill-extrusion-height": ["get", "altura"], "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.9 } });
+      m.on("click", "ante-aptos", (e) => { const f = e.features?.[0]; if (f) new maplibregl.Popup({ closeButton: false }).setLngLat(e.lngLat).setHTML(`<b>${f.properties?.nombre ?? ""}</b>`).addTo(m); });
+    }
+    (m.getSource("anteproyecto") as maplibregl.GeoJSONSource).setData((fc ?? { type: "FeatureCollection", features: [] }) as any);
+    if (!fc) return;
+    quitarVolumen();
+    const pts = fc.features.flatMap((f: any) => f.geometry.coordinates[0]);
+    const lons = pts.map((p: number[]) => p[0]), lats = pts.map((p: number[]) => p[1]);
+    setModo3d(true);
+    if (m.getLayer("edificios-3d")) m.setLayoutProperty("edificios-3d", "visibility", "visible");
+    m.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: 80, pitch: 58, bearing: -25, duration: 1400 });
+  }
+
   function empezarDibujo() {
     setVertices([]); pintarZona([]); setDibujando(true); dibujandoRef.current = true;
     if (mapa.current) mapa.current.getCanvas().style.cursor = "crosshair";
@@ -446,7 +471,7 @@ export default function Mapa() {
             )}
             {seccion === "lote" && (
               !seleccion ? <Vacio icono="⌖" titulo="Busca o selecciona un lote" texto="Escribe arriba un CBML, una matrícula, una dirección de Medellín o una coordenada de Google Maps, o acércate en el mapa y haz clic en un predio." />
-              : seleccion.tipo === "predio" ? <PanelLote id={seleccion.id} enComparacion={comparar.includes(seleccion.id)} ver3D={verVolumen} google3D={(datos, clave) => setVistaGoogle({ datos, clave })}
+              : seleccion.tipo === "predio" ? <PanelLote id={seleccion.id} enComparacion={comparar.includes(seleccion.id)} ver3D={verVolumen} google3D={(datos, clave) => setVistaGoogle({ datos, clave })} anteMapa={verAnteproyecto}
                   onComparar={agregarComparar} onEstudio={() => setSeccion("estudio")} />
               : seleccion.datos?.encontrado ? <FichaProyecto d={seleccion.datos} /> : <div className="error">No encontré el proyecto.</div>
             )}

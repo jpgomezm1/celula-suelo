@@ -177,3 +177,24 @@ export async function paquete(m: Proyecto) {
   ].join("\r\n"));
   return { nombre, buffer: Buffer.from(await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" })) };
 }
+
+/** GeoJSON (WGS84) del anteproyecto para el mapa: torres con su altura, apartamentos de la planta tipo y lote. */
+export async function geojsonMapa(m: Proyecto) {
+  const { sql } = await import("../db");
+  const g = aGlobal(m.marco);
+  const feats: any[] = [];
+  const zTop = Math.max(...m.niveles.map((x: any) => x.z + x.altura));
+  const anillo = (poly: Pt[]) => { const c = poly.map(g); return [...c, c[0]]; };
+  for (const t of m.torres) {
+    const T = aLote(t), pl = t.planta;
+    feats.push({ type: "Feature", properties: { tipo: "torre", nombre: `Torre ${t.id}`, altura: zTop, base: 0 }, geometry: { type: "Polygon", coordinates: [anillo([T([0, 0]), T([pl.L, 0]), T([pl.L, pl.D]), T([0, pl.D])])] } });
+    for (const a of pl.aptos) feats.push({ type: "Feature", properties: { tipo: "apto", tipologia: a.tipologia, nombre: `${t.id} · ${a.nombre} · ${a.area_privada} m²`, altura: zTop + 0.05, base: zTop }, geometry: { type: "Polygon", coordinates: [anillo(transformar(t, a.poly))] } });
+    for (const e of [...pl.nucleo.escaleras, ...pl.nucleo.ascensores]) feats.push({ type: "Feature", properties: { tipo: "nucleo", altura: zTop + 1.5, base: 0 }, geometry: { type: "Polygon", coordinates: [anillo(transformar(t, e))] } });
+  }
+  feats.push({ type: "Feature", properties: { tipo: "edificable" }, geometry: { type: "Polygon", coordinates: [anillo(m.edificable)] } });
+  // EPSG 9377 → WGS84 en un solo viaje a PostGIS
+  const [r] = await sql`SELECT json_agg(ST_AsGeoJSON(ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(f->>'geometry'), 9377), 4326), 7)::json ORDER BY i) AS gs
+    FROM json_array_elements(${JSON.stringify(feats)}::json) WITH ORDINALITY AS x(f, i)`;
+  (r.gs as any[]).forEach((geom, i) => (feats[i].geometry = geom));
+  return { type: "FeatureCollection", features: feats };
+}
