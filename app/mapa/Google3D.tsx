@@ -8,9 +8,11 @@ let cargando: Promise<any> | null = null;
 function cargarGoogle(): Promise<any> {
   if ((window as any).google?.maps?.importLibrary) return Promise.resolve((window as any).google);
   cargando ??= new Promise((ok, mal) => {
+    // Google avisa por el callback cuando la librería está lista (onload llega antes de que exista importLibrary).
+    (window as any).__googleMapsListo = () => ok((window as any).google);
     const s = document.createElement("script");
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${LLAVE}&v=beta&loading=async&libraries=maps3d`;
-    s.async = true; s.onload = () => ok((window as any).google); s.onerror = () => mal(new Error("No se pudo cargar Google Maps"));
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${LLAVE}&v=beta&loading=async&libraries=maps3d&callback=__googleMapsListo`;
+    s.async = true; s.onerror = () => { cargando = null; mal(new Error("No se pudo cargar Google Maps")); };
     document.head.appendChild(s);
   });
   return cargando;
