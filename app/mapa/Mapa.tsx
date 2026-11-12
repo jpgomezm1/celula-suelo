@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Cifra, interpretarBusqueda, m2, num, Vacio } from "./comunes";
-import { FichaProyecto, PanelCartera, PanelComparar, PanelConstructora, PanelInicio, PanelLote, PanelPot, PanelZona, ResultadoEstudio } from "./paneles";
+import { FichaProyecto, PanelCartera, PanelComparar, PanelConstructora, PanelInicio, PanelNegociaciones, PanelLote, PanelPot, PanelZona, ResultadoEstudio } from "./paneles";
 import { PopupLote } from "./PopupLote";
 import { Google3D } from "./Google3D";
 import { createRoot, type Root } from "react-dom/client";
@@ -19,10 +19,10 @@ const MUNICIPIOS: [string, number, number][] = [
 
 const C = { oscuro: "#1a1a1f", lila: "#a28df5", morado: "#6c4de7", gris: "#8a8a93", ambar: "#f2a900", verde: "#3f8f4a", rojo: "#c0392b" };
 
-type Seccion = "inicio" | "lote" | "oportunidades" | "estudio" | "cartera" | "comparar" | "zona" | "pot" | "adn";
+type Seccion = "inicio" | "lote" | "oportunidades" | "estudio" | "cartera" | "comparar" | "zona" | "pot" | "adn" | "negociaciones";
 const SECCIONES: [Seccion, string, string][] = [
   ["inicio", "⌂", "Inicio"], ["lote", "⌖", "Un lote"], ["pot", "◆", "POT 2026"], ["oportunidades", "★", "Dónde construir"],
-  ["estudio", "◎", "Competencia"], ["comparar", "⇄", "Comparar"], ["cartera", "▤", "Cartera"], ["zona", "⬠", "Zona"], ["adn", "⚙", "Mi constructora"],
+  ["estudio", "◎", "Competencia"], ["comparar", "⇄", "Comparar"], ["cartera", "▤", "Cartera"], ["negociaciones", "◷", "Negociaciones"], ["zona", "⬠", "Zona"], ["adn", "⚙", "Mi constructora"],
 ];
 type ModoCapa = "potencial" | "cambio" | "ninguno";
 
@@ -201,6 +201,10 @@ export default function Mapa() {
       m.addLayer({ id: "ranking-n", type: "symbol", source: "ranking",
         layout: { "text-field": ["to-string", ["get", "n"]], "text-size": 11, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true }, paint: { "text-color": "#fff" } });
       if (rankingRef.current.length) setTimeout(() => pintarRanking(rankingRef.current), 0);
+      // Enlace directo a un lote: /mapa?lote=<id> (desde el MCP, la carpeta de comité o un correo del equipo)
+      const loteUrl = new URLSearchParams(window.location.search).get("lote");
+      if (loteUrl) fetch(`/api/ficha?formato=json&id=${encodeURIComponent(loteUrl)}`).then((r) => r.json())
+        .then((j) => abrirLote(j.predio ?? loteUrl, j.ubicacion?.lon, j.ubicacion?.lat)).catch(() => abrirLote(loteUrl));
 
       m.on("click", (e) => {
         if (!dibujandoRef.current) return;
@@ -349,7 +353,7 @@ export default function Mapa() {
     inicio: ["¿Qué quieres hacer?", "Elige una herramienta o haz clic en un lote del mapa"],
     lote: ["Un lote", "Norma, cabida, semáforo, cesiones y valor residual"], oportunidades: [`Dónde construir · ${municipio}`, "Lotes donde cabe tu edificio, en todo el municipio"],
     estudio: ["Estudio de competencia", "Etapa 1 · pasos 3 a 9, con Excel"], cartera: ["Cartera de lotes", "Analiza hasta 250 lotes de una vez"],
-    comparar: ["Comparar lotes", "Agrega lotes con “+ Comparar” desde el mapa o la ficha"], zona: ["Analizar una zona", "Norma, POT 2026, competencia y mercado de un polígono"], adn: ["Mi constructora", "ADN constructivo: sistema, costos, ritmo de obra y tesis de inversión"],
+    comparar: ["Comparar lotes", "Agrega lotes con “+ Comparar” desde el mapa o la ficha"], zona: ["Analizar una zona", "Norma, POT 2026, competencia y mercado de un polígono"], negociaciones: ["Negociaciones", "Lotes que tu equipo está estudiando o negociando, por estado"], adn: ["Mi constructora", "ADN constructivo: sistema, costos, ritmo de obra y tesis de inversión"],
     pot: ["POT 2026 de Medellín", "Qué cambia con la revisión del POT y a quién beneficia"],
   };
 
@@ -494,6 +498,7 @@ export default function Mapa() {
             {seccion === "comparar" && <PanelComparar ids={comparar} quitar={(id) => setComparar((c) => c.filter((x) => x !== id))} abrir={(id) => abrirLote(id)} />}
             {seccion === "cartera" && <PanelCartera pintar={pintarRanking} abrir={(id) => abrirLote(id)} />}
             {seccion === "adn" && <PanelConstructora />}
+            {seccion === "negociaciones" && <PanelNegociaciones pintar={pintarRanking} abrir={(id, lon, lat) => abrirLote(id, lon, lat)} />}
             {seccion === "zona" && <PanelZona vertices={vertices} dibujar={empezarDibujo} borrar={borrarZona} onEstudio={() => setSeccion("estudio")} />}
             {seccion === "pot" && <PanelPot abrir={abrirLote} verCapa={() => { setModoCapa("cambio"); mapa.current?.flyTo({ center: [-75.58, 6.24], zoom: 14 }); }} />}
 

@@ -14,6 +14,7 @@ const HERRAMIENTAS: [string, string, string, string][] = [
   ["comparar", "⇄", "Comparar lotes", "Pon de 2 a 5 lotes lado a lado. Agrégalos con “+ Comparar” desde el mapa."],
   ["cartera", "▤", "Analizar una cartera", "Sube un KMZ o pega una lista de hasta 250 lotes y obtén un ranking con semáforo y Excel."],
   ["zona", "⬠", "Analizar una zona", "Dibuja un polígono: norma, cambio POT, competencia y mercado de esa zona."],
+  ["negociaciones", "◷", "Negociaciones", "Los lotes que tu equipo estudia o negocia: estado, precio pedido contra el máximo que se puede pagar, próximas acciones e historial."],
   ["adn", "⚙", "Mi constructora", "Carga tu sistema constructivo, costos, ritmo de obra y tesis de inversión: el anteproyecto y los números se calculan como los harías tú."],
 ];
 export function PanelInicio({ ir }: { ir: (k: string) => void }) {
@@ -76,6 +77,7 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, goo
         <button className="btn btn-borde" onClick={() => onComparar(f.predio)} disabled={enComparacion}>{enComparacion ? "✓ En comparación" : "+ Comparar"}</button>
         <button className="btn btn-borde" onClick={onEstudio}>Estudio de competencia</button>
       </div>
+      <SeguimientoLote id={f.predio} />
 
       <Seccion titulo="Semáforo" extra={<span className={`etiqueta ${a.semaforo.general === "verde" ? "lima" : a.semaforo.general === "rojo" ? "riesgo" : "aviso"}`}>{a.semaforo.general}</span>}>
         <ul className="semaforo">
@@ -1083,6 +1085,101 @@ export function PanelConstructora() {
       </div>
       {estado && <div className="nota">{estado}</div>}
       <div className="nota">Próximamente: cargar los apartamentos tipo de la constructora desde sus planos (DXF) para que el anteproyecto los use.</div>
+    </>
+  );
+}
+
+/* ───────────── Seguimiento de lotes (negociaciones) ───────────── */
+const ESTADOS_LOTE: [string, string][] = [["identificado", "Identificado"], ["en_estudio", "En estudio"], ["contacto", "Contacto iniciado"], ["oferta", "Oferta enviada"],
+  ["negociacion", "En negociación"], ["promesa", "Promesa firmada"], ["comprado", "Comprado"], ["descartado", "Descartado"]];
+const fechaCorta = (d: any) => (d ? new Date(d).toLocaleDateString("es-CO", { day: "numeric", month: "short", timeZone: "UTC" }) : "");
+
+function SeguimientoLote({ id }: { id: string }) {
+  const [s, setS] = useState<any>(undefined);
+  const [e, setE] = useState<any>({});
+  const [nota, setNota] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const cargar = () => fetch(`/api/seguimiento?id=${encodeURIComponent(id)}`).then((r) => r.json()).then((j) => { setS(j.seguimiento); setE(j.seguimiento ? aEdicion(j.seguimiento) : {}); }).catch(() => setS(null));
+  useEffect(() => { setS(undefined); setMsg(null); cargar(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  function aEdicion(x: any) {
+    const m = (v: any) => (v != null ? Number(v) / 1e6 : "");
+    return { estado: x.estado, prioridad: x.prioridad, precio_pedido: m(x.precio_pedido), precio_ofertado: m(x.precio_ofertado), precio_acordado: m(x.precio_acordado),
+      responsable: x.responsable ?? "", proxima_accion: x.proxima_accion ?? "", proxima_fecha: x.proxima_fecha ? String(x.proxima_fecha).slice(0, 10) : "", motivo_descarte: x.motivo_descarte ?? "" };
+  }
+  async function enviar(cambios: any) {
+    setMsg("Guardando…");
+    const r = await (await fetch("/api/seguimiento", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, ...cambios }) })).json();
+    if (r.seguimiento) { setS(r.seguimiento); setE(aEdicion(r.seguimiento)); setNota(""); setMsg("Guardado"); } else setMsg(r.error ?? "No se pudo guardar");
+  }
+  const guardar = () => {
+    const p = (v: any) => (v === "" || v == null ? null : Number(v) * 1e6);
+    enviar({ estado: e.estado, prioridad: Number(e.prioridad), precio_pedido: p(e.precio_pedido), precio_ofertado: p(e.precio_ofertado), precio_acordado: p(e.precio_acordado),
+      responsable: e.responsable, proxima_accion: e.proxima_accion, proxima_fecha: e.proxima_fecha, motivo_descarte: e.motivo_descarte, ...(nota.trim() ? { nota } : {}) });
+  };
+  if (s === undefined) return null;
+  if (!s) return (
+    <div className="seg-vacio"><span>¿Lo está mirando tu equipo?</span><button className="btn btn-borde" onClick={() => enviar({ estado: "identificado" })}>+ Agregar a negociaciones</button></div>
+  );
+  const campo = (k: string, t: string, tipo = "number", ph = "") => <div className="campo"><label>{t}</label><input className="entrada" type={tipo} placeholder={ph} value={e[k]} onChange={(ev) => setE({ ...e, [k]: ev.target.value })} /></div>;
+  return (
+    <Seccion titulo="Seguimiento de la negociación" extra={<span className={`etiqueta estado-${s.estado}`}>{s.estado_nombre}</span>}>
+      <div className="fila">
+        <div className="campo"><label>Estado</label><select className="entrada" value={e.estado} onChange={(ev) => setE({ ...e, estado: ev.target.value })}>{ESTADOS_LOTE.map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></div>
+        <div className="campo"><label>Prioridad</label><select className="entrada" value={e.prioridad} onChange={(ev) => setE({ ...e, prioridad: ev.target.value })}><option value={1}>Alta</option><option value={2}>Media</option><option value={3}>Baja</option></select></div>
+      </div>
+      <div className="fila tres-col">{campo("precio_pedido", "Precio pedido ($ M)")}{campo("precio_ofertado", "Nuestra oferta ($ M)")}{campo("precio_acordado", "Precio acordado ($ M)")}</div>
+      <div className="fila">{campo("proxima_accion", "Próxima acción", "text", "p. ej. enviar oferta formal")}{campo("proxima_fecha", "Fecha", "date")}</div>
+      <div className="fila">{campo("responsable", "Responsable del equipo", "text", "quién lleva el lote")}{e.estado === "descartado" ? campo("motivo_descarte", "Motivo del descarte", "text") : <div />}</div>
+      <div className="campo"><label>Nota (queda en el historial)</label><textarea className="entrada" rows={2} value={nota} onChange={(ev) => setNota(ev.target.value)} placeholder="Qué pasó, qué se acordó…" /></div>
+      <div className="nota aviso-datos">No escribas nombres, teléfonos ni correos de propietarios (Ley 1581): los teléfonos, correos y cédulas se borran solos.</div>
+      <div className="acciones"><button className="btn btn-primario" onClick={guardar}>Guardar seguimiento</button>{msg && <span className="nota">{msg}</span>}</div>
+      {s.eventos?.length > 0 && (
+        <ul className="historial">{s.eventos.map((v: any, i: number) => <li key={i}><span className="fecha">{fechaCorta(v.fecha)}</span><span className={`tipo ${v.tipo}`}>{v.texto}</span>{v.usuario && <span className="quien">{String(v.usuario).split("@")[0]}</span>}</li>)}</ul>
+      )}
+    </Seccion>
+  );
+}
+
+export function PanelNegociaciones({ pintar, abrir }: { pintar: (l: any[]) => void; abrir: (id: string, lon?: number, lat?: number) => void }) {
+  const [d, setD] = useState<any>(null);
+  const [ver, setVer] = useState<"activos" | "todos">("activos");
+  useEffect(() => { fetch("/api/seguimiento").then((r) => r.json()).then((j) => { setD(j); pintar(j.lotes ?? []); }).catch(() => setD({ lotes: [] })); return () => pintar([]); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!d) return <div className="cargando-panel"><span className="giro" />Cargando negociaciones…</div>;
+  const lotes = (d.lotes as any[]).filter((l) => ver === "todos" || !["comprado", "descartado"].includes(l.estado));
+  const vencidas = lotes.filter((l) => l.vencida).length;
+  const enJuego = lotes.filter((l) => ["oferta", "negociacion", "promesa"].includes(l.estado)).reduce((s, l) => s + (l.precio_ofertado ?? l.precio_pedido ?? 0), 0);
+  if (!d.lotes.length) return (
+    <div className="vacio-neg"><b>Aún no hay lotes en seguimiento.</b><span>Abre cualquier lote en el mapa y usa “+ Agregar a negociaciones”. Aquí verás todos los lotes de tu equipo por estado, con precios, próximas acciones y su valor máximo según la última versión guardada.</span></div>
+  );
+  return (
+    <>
+      <div className="cifras tres">
+        <Cifra v={String(lotes.length)} k={ver === "activos" ? "lotes activos" : "lotes en total"} />
+        <Cifra v={String(vencidas)} k="próximas acciones vencidas" />
+        <Cifra v={mill(enJuego)} k="en oferta o negociación" />
+      </div>
+      <div className="segmento">{[["activos", "Activos"], ["todos", "Todos (incluye comprados y descartados)"]].map(([k, t]) => <button key={k} className={ver === k ? "on" : ""} onClick={() => setVer(k as any)}>{t}</button>)}</div>
+      {ESTADOS_LOTE.map(([k, t]) => {
+        const ls = lotes.filter((l) => l.estado === k);
+        if (!ls.length) return null;
+        return (
+          <Seccion key={k} titulo={`${t} (${ls.length})`}>
+            <div className="tarjetas-neg">{ls.map((l) => (
+              <button key={l.predio} className={`tarjeta-neg ${l.vencida ? "vencida" : ""} prio-${l.prioridad}`} onClick={() => abrir(l.predio, l.lon, l.lat)}>
+                <div className="t1"><b>{l.barrio ?? l.predio}</b><span>{l.municipio} · {num(l.area_lote)} m²</span></div>
+                <div className="t2">
+                  {l.precio_pedido != null && <span>Piden {mill(l.precio_pedido)}</span>}
+                  {l.precio_ofertado != null && <span>Ofertamos {mill(l.precio_ofertado)}</span>}
+                  {l.precio_acordado != null && <span>Acordado {mill(l.precio_acordado)}</span>}
+                  {l.ultima_version?.valor_maximo_lote != null && <span className="vmax">Máx. {mill(Number(l.ultima_version.valor_maximo_lote))}</span>}
+                  {l.brecha_pct != null && <span className={l.brecha_pct > 0 ? "malo" : "bueno"}>{l.brecha_pct > 0 ? `piden ${num(l.brecha_pct, 0)} % sobre el máximo` : `${num(-l.brecha_pct, 0)} % bajo el máximo`}</span>}
+                </div>
+                {(l.proxima_accion || l.proxima_fecha) && <div className="t3">{l.vencida ? "⚠ " : "→ "}{l.proxima_accion ?? "Próxima acción"}{l.proxima_fecha ? ` · ${fechaCorta(l.proxima_fecha)}` : ""}{l.responsable ? ` · ${l.responsable}` : ""}</div>}
+              </button>))}</div>
+          </Seccion>
+        );
+      })}
+      <div className="acciones"><a className="btn btn-borde" href="/api/seguimiento/excel">Descargar Excel de negociaciones</a></div>
     </>
   );
 }

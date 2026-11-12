@@ -19,6 +19,7 @@ import { volumenesLote } from "@/lib/volumen";
 import { anteproyecto } from "@/lib/cabida/proyecto";
 import { modeloFinanciero } from "@/lib/finanzas/modelo";
 import { mezclaOptima } from "@/lib/finanzas/mezcla";
+import { listarSeguimiento } from "@/lib/seguimiento";
 import { obtenerPerfil } from "@/lib/constructora/perfil";
 import { opcionesConPerfil } from "@/lib/constructora/sesion";
 import { topografiaLote } from "@/lib/topografia";
@@ -59,7 +60,7 @@ const LECTURA = { readOnlyHint: true, openWorldHint: false } as const;
 const ESCRITURA = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 const INSTRUCCIONES = `Inteligencia de suelo para 17 municipios del Valle de Aburrá y el Oriente antioqueño: catastro, norma del POT, mercado (Fynder), proyectos nuevos (Zonario y Galería Inmobiliaria) y señales de venta de los folios.
 Flujos recomendados:
-0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Cómo se ve el lote desde la calle → fachada_street_view. Anteproyecto esquemático con planos (DXF, PDF, 3D y Excel): torres, apartamentos distribuidos, punto fijo, primer piso y sótanos → cabida_arquitectonica. ¿Cuánto puedo pagar por el lote? / ¿Da a este precio? (flujo, TIR, utilidad, sensibilidades) → prefactibilidad_financiera. ¿Qué mezcla de apartamentos deja más? → mezcla_optima. Cartera que se actualiza sola en Google Earth Pro → analizar_cartera (cartera_viva_google_earth_pro). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
+0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Cómo se ve el lote desde la calle → fachada_street_view. Anteproyecto esquemático con planos (DXF, PDF, 3D y Excel): torres, apartamentos distribuidos, punto fijo, primer piso y sótanos → cabida_arquitectonica. ¿Cuánto puedo pagar por el lote? / ¿Da a este precio? (flujo, TIR, utilidad, sensibilidades) → prefactibilidad_financiera. ¿Qué mezcla de apartamentos deja más? → mezcla_optima. Lotes que el equipo negocia, ofertas y acciones vencidas → negociaciones. Cartera que se actualiza sola en Google Earth Pro → analizar_cartera (cartera_viva_google_earth_pro). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
 1. "¿Dónde puedo hacer este edificio?" → oportunidades_por_perfil (perfil de producto sobre todo un municipio) → ficha_predio de los mejores → contacto_predio.
 2. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 3. "¿Este lote da?" → ficha_predio → prefactibilidad_lote (con el precio pedido por el lote).
@@ -402,6 +403,22 @@ const mcp = createMcpHandler(
       const limpiar = (x: any) => x && ({ mezcla_construida: x.texto, mezcla_pedida: x.pedida, unidades: x.unidades, torres: x.torres, pisos: x.pisos, ventas: x.ventas, utilidad: x.utilidad,
         margen_pct: x.margen_pct, tir_ea_pct: x.tir_ea_pct, meses_de_ventas: x.meses_de_ventas, valor_maximo_lote: x.valor_maximo_lote });
       return { predio: c.predio, criterio: r.criterio, lectura: r.lectura, evaluadas: r.evaluadas, actual: limpiar(r.actual), mejor: limpiar(r.mejor), ranking: r.ranking.map(limpiar), advertencias: r.advertencias };
+    }));
+
+    server.registerTool("negociaciones", {
+      annotations: LECTURA,
+      title: "Lotes en negociación de la constructora",
+      description: "Lista los lotes que el equipo de una constructora está estudiando o negociando (CRM de suelo): estado (identificado, en estudio, contacto, oferta, negociación, promesa, comprado, descartado), precio pedido, oferta, precio acordado, valor máximo según la última versión guardada y cuánto piden por encima o por debajo de ese máximo, próxima acción y si está vencida. Útil para '¿qué lotes tenemos en negociación?', '¿qué acciones están vencidas?', '¿en cuáles piden más de lo que podemos pagar?'. No incluye datos de propietarios.",
+      inputSchema: z.object({ constructora: z.string().describe("Id de la constructora (dominio de correo, p. ej. 'conaltura')"),
+        estado: z.string().optional(), solo_activos: z.boolean().optional().describe("Excluye comprados y descartados (defecto true)") }),
+    }, seguro(async (a: any) => {
+      let ls: any[] = await listarSeguimiento(a.constructora);
+      if (a.solo_activos !== false) ls = ls.filter((l) => !["comprado", "descartado"].includes(l.estado));
+      if (a.estado) ls = ls.filter((l) => l.estado === a.estado || l.estado_nombre.toLowerCase() === String(a.estado).toLowerCase());
+      return { constructora: a.constructora, total: ls.length, vencidas: ls.filter((l) => l.vencida).length,
+        lotes: ls.map((l) => ({ predio: l.predio, municipio: l.municipio, barrio: l.barrio, area_lote_m2: l.area_lote, estado: l.estado_nombre, prioridad: ["", "alta", "media", "baja"][l.prioridad],
+          precio_pedido: l.precio_pedido, oferta: l.precio_ofertado, precio_acordado: l.precio_acordado, valor_maximo_ultima_version: l.ultima_version?.valor_maximo_lote ?? null,
+          pedido_vs_maximo_pct: l.brecha_pct, proxima_accion: l.proxima_accion, fecha: l.proxima_fecha, vencida: l.vencida, responsable: l.responsable, ficha: `${URL_BASE()}/mapa?lote=${encodeURIComponent(l.predio)}` })) };
     }));
 
     server.registerTool("fachada_street_view", {
