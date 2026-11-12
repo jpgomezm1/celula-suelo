@@ -273,3 +273,37 @@ textarea.entrada { resize: vertical; font-family: inherit; }
 .buscador-panel .caja input { flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 14px; color: var(--texto); background: transparent; padding: 8px 0; }
 .buscador-panel .ejemplos { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .buscador-panel .ejemplos button { border: 0; font: inherit; font-size: 11px; font-weight: 600; }
+
+/* ===== Ajuste del panel: nada se sale del ancho, más aire y jerarquía ===== */
+.panel { width: 560px; }
+.panel .contenido { grid-template-columns: minmax(0, 1fr); overflow-x: hidden; padding: 20px 20px 32px; gap: 14px; }
+.panel .contenido > * { min-width: 0; max-width: 100%; }
+.cifras { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cifras.tres { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cifra { min-width: 0; padding: 10px 12px; border-radius: 10px; }
+.cifra .v { font-size: 17px; overflow: hidden; text-overflow: ellipsis; }
+.cifras.tres .v { font-size: 15px; }
+.cifra .k { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.escenarios { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.escenario { min-width: 0; }
+.escenario .linea { min-width: 0; }
+.escenario .linea span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabla { table-layout: auto; }
+.tabla td, .tabla th { overflow-wrap: anywhere; }
+.buscador-panel .caja { min-width: 0; }
+.buscador-panel .caja .btn { flex: none; padding: 8px 14px; border-radius: 9px; }
+.acciones { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.acciones .btn { justify-content: center; padding: 9px 8px; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel .titulo h2 { font-size: 20px; }
+.cabecera-lote { padding: 4px 0 2px; }
+.cabecera-lote > div:first-child { min-width: 0; }
+.cabecera-lote .sub { overflow-wrap: anywhere; }
+.seccion > summary { min-width: 0; }
+.seccion > summary h4 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seccion > summary .etiqueta { flex: none; }
+.semaforo li span { overflow-wrap: anywhere; }
+.etiquetas { min-width: 0; }
+.etiqueta { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.riel { width: 80px; background: #f6f5f0; }
+.riel button { padding: 10px 4px 8px; }
+@media (max-width: 1250px) { .panel { width: 500px; } .acciones { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
