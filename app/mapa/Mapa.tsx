@@ -53,6 +53,7 @@ export default function Mapa() {
   const [capas, setCapas] = useState({ proyectos: true, galeria: true, avisos: false });
   const [modo3d, setModo3d] = useState(false);
   const [vistaGoogle, setVistaGoogle] = useState<{ datos: any; clave: string } | null>(null);
+  const [mapaGoogle, setMapaGoogle] = useState<{ centro: { lat: number; lon: number }; rango: number; lote?: any; volumen?: any; altura?: number; titulo: string } | null>(null);
   const [form, setForm] = useState({ nombre: "", tipo_vivienda: "NO VIS", vocacion: "ambos", min_unidades: 100, radio_m: 3000 });
   const [estudio, setEstudio] = useState<any>(null);
   const [modoOp, setModoOp] = useState<"perfil" | "rapidas">("perfil");
@@ -90,11 +91,20 @@ export default function Mapa() {
   };
   function arrastrarBorde(e: React.PointerEvent) {
     e.preventDefault();
-    const mover = (ev: PointerEvent) => fijarAncho(window.innerWidth - ev.clientX);
+    // Arrastrar el borde casi hasta el final cierra el panel; arrastrarlo de nuevo lo abre.
+    const mover = (ev: PointerEvent) => { const w = window.innerWidth - ev.clientX; if (w < 300) colapsar(true); else { if (colapsado) colapsar(false); fijarAncho(w); } };
     const soltar = () => { window.removeEventListener("pointermove", mover); window.removeEventListener("pointerup", soltar); mapa.current?.resize(); };
     window.addEventListener("pointermove", mover); window.addEventListener("pointerup", soltar);
   }
   const amplio = anchoPanel !== null && typeof window !== "undefined" && anchoPanel > window.innerWidth * 0.55;
+  // Panel colapsado: solo queda la barra de íconos y el mapa ocupa casi toda la pantalla.
+  const [colapsado, setColapsado] = useState(false);
+  useEffect(() => { try { setColapsado(localStorage.getItem("panel_colapsado") === "1"); } catch {} }, []);
+  const colapsar = (v: boolean) => {
+    setColapsado(v);
+    try { localStorage.setItem("panel_colapsado", v ? "1" : "0"); } catch {}
+    setTimeout(() => mapa.current?.resize(), 0); setTimeout(() => mapa.current?.resize(), 250);
+  };
 
   const loteId = seleccion?.tipo === "predio" ? seleccion.id : null;
   const agregarComparar = (id: string) => setComparar((c) => (c.includes(id) || c.length >= 5 ? c : [...c, id]));
@@ -252,6 +262,23 @@ export default function Mapa() {
     for (const f of ["volumen", "entorno"]) (mapa.current?.getSource(f) as maplibregl.GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: [] } as any);
   }
 
+  /** Abre el 3D fotorrealista de Google donde está el mapa; si hay un lote abierto, con su contorno y el edificio base. */
+  async function abrirMapaGoogle() {
+    const m = mapa.current; if (!m) return;
+    const c = m.getCenter(); const z = m.getZoom();
+    const rango = Math.round(Math.min(25000, Math.max(250, 40000000 / Math.pow(2, z) * 0.9)));
+    let extra: any = {};
+    if (seleccion?.tipo === "predio") {
+      try {
+        const v = await (await fetch(`/api/analisis/volumen?id=${encodeURIComponent(seleccion.id)}`)).json();
+        const b = v.volumenes?.find((x: any) => x.clave === "base");
+        extra = { lote: v.lote, volumen: b?.geojson, altura: b?.altura_m ?? 0, centro: v.centro, rango: Math.min(rango, 600),
+          titulo: `${v.barrio ?? seleccion.id} · edificio base ${b?.pisos ?? "—"} pisos` };
+      } catch {}
+    }
+    setMapaGoogle({ centro: { lat: c.lat, lon: c.lng }, rango, titulo: "Mapa 3D fotorrealista (Google)", ...extra });
+  }
+
   function empezarDibujo() {
     setVertices([]); pintarZona([]); setDibujando(true); dibujandoRef.current = true;
     if (mapa.current) mapa.current.getCanvas().style.cursor = "crosshair";
@@ -316,6 +343,8 @@ export default function Mapa() {
         <div className="franja" />
       </header>
 
+      {mapaGoogle && <Google3D completo centro={mapaGoogle.centro} rango={mapaGoogle.rango} lote={mapaGoogle.lote} volumen={mapaGoogle.volumen} altura={mapaGoogle.altura}
+        titulo={mapaGoogle.titulo} onCerrar={() => setMapaGoogle(null)} />}
       {vistaGoogle && (() => {
         const v = vistaGoogle.datos.volumenes.find((x: any) => x.clave === vistaGoogle.clave) ?? vistaGoogle.datos.volumenes[0];
         return <Google3D centro={vistaGoogle.datos.centro} lote={vistaGoogle.datos.lote} volumen={v?.geojson} altura={v?.altura_m ?? 0}
@@ -338,7 +367,8 @@ export default function Mapa() {
               ))}
             </div>
             <div className="toggles">
-              <button className={`btn-3d ${modo3d ? "on" : ""}`} onClick={() => { activar3D(!modo3d); if (modo3d) quitarVolumen(); }}>{modo3d ? "2D" : "3D"}</button>
+              <button className={`btn-3d ${modo3d ? "on" : ""}`} title="Inclina el mapa y muestra los edificios en 3D" onClick={() => { activar3D(!modo3d); if (modo3d) quitarVolumen(); }}>{modo3d ? "2D" : "3D"}</button>
+              <button className="btn-3d google" title="Ver esta zona en el 3D fotorrealista de Google" onClick={abrirMapaGoogle}>3D Google</button>
               {([["galeria", "Galería"], ["proyectos", "Proyectos"], ["avisos", "En venta"]] as [keyof typeof capas, string][]).map(([k, t]) => (
                 <label key={k}><input type="checkbox" checked={capas[k]} onChange={(e) => setCapas({ ...capas, [k]: e.target.checked })} />{t}</label>
               ))}
@@ -372,13 +402,20 @@ export default function Mapa() {
           </div>
         </div>
 
-        <aside className="panel" style={anchoPanel ? { width: anchoPanel } : undefined}>
-          <div className="tirador" onPointerDown={arrastrarBorde} title="Arrastra para cambiar el ancho" />
-          <button className="expandir" title={amplio ? "Vista normal" : "Vista amplia"}
-            onClick={() => fijarAncho(amplio ? Math.min(Math.max(window.innerWidth * 0.45, 600), 980) : window.innerWidth * 0.68)}>{amplio ? "›" : "‹"}</button>
+        <aside className={`panel ${colapsado ? "colapsado" : ""}`} style={anchoPanel && !colapsado ? { width: anchoPanel } : undefined}>
+          <div className="tirador" onPointerDown={arrastrarBorde} title="Arrastra para cambiar el ancho (hasta el final para cerrarlo)" />
+          {colapsado ? (
+            <button className="expandir" title="Abrir el panel" onClick={() => colapsar(false)}>‹</button>
+          ) : (
+            <div className="expandir-grupo">
+              <button className="expandir" title={amplio ? "Vista normal" : "Vista amplia"}
+                onClick={() => fijarAncho(amplio ? Math.min(Math.max(window.innerWidth * 0.45, 600), 980) : window.innerWidth * 0.68)}>{amplio ? "›" : "‹"}</button>
+              <button className="expandir cerrar" title="Cerrar el panel (ver el mapa completo)" onClick={() => colapsar(true)}>»</button>
+            </div>
+          )}
           <nav className="riel">
             {SECCIONES.map(([k, ic, t]) => (
-              <button key={k} className={seccion === k ? "on" : ""} onClick={() => setSeccion(k)} title={t}>
+              <button key={k} className={seccion === k && !colapsado ? "on" : ""} onClick={() => { setSeccion(k); if (colapsado) colapsar(false); }} title={t}>
                 <span className="ic">{ic}</span><span className="tx">{t}</span>
                 {k === "comparar" && comparar.length > 0 && <span className="globo">{comparar.length}</span>}
               </button>

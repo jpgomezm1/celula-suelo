@@ -18,8 +18,8 @@ function cargarGoogle(): Promise<any> {
 
 export const google3dDisponible = !!LLAVE;
 
-export function Google3D({ centro, lote, volumen, altura, titulo, onCerrar }: {
-  centro: { lat: number; lon: number }; lote: any; volumen: any; altura: number; titulo: string; onCerrar: () => void;
+export function Google3D({ centro, lote, volumen, altura = 0, titulo, onCerrar, rango = 420, completo = false }: {
+  centro: { lat: number; lon: number }; lote?: any; volumen?: any; altura?: number; titulo: string; onCerrar: () => void; rango?: number; completo?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +30,7 @@ export function Google3D({ centro, lote, volumen, altura, titulo, onCerrar }: {
       try {
         const google = await cargarGoogle();
         const { Map3DElement, Polygon3DElement } = await google.maps.importLibrary("maps3d");
-        mapa = new Map3DElement({ center: { lat: centro.lat, lng: centro.lon, altitude: 0 }, range: 420, tilt: 62, heading: 25, mode: "HYBRID" });
+        mapa = new Map3DElement({ center: { lat: centro.lat, lng: centro.lon, altitude: 0 }, range: rango, tilt: 62, heading: 25, mode: "HYBRID" });
         const anillo = (g: any) => (g?.type === "MultiPolygon" ? g.coordinates[0][0] : g?.coordinates?.[0]) ?? [];
         if (lote) {
           const contorno = new Polygon3DElement({ altitudeMode: "CLAMP_TO_GROUND", fillColor: "rgba(242,169,0,0.18)", strokeColor: "#f2a900", strokeWidth: 3 });
@@ -46,12 +46,12 @@ export function Google3D({ centro, lote, volumen, altura, titulo, onCerrar }: {
       } catch (e) { setError((e as Error).message); }
     })();
     return () => { mapa?.remove?.(); };
-  }, [centro.lat, centro.lon, altura]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [centro.lat, centro.lon, altura, rango]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="modal-3d" onClick={onCerrar}>
+    <div className={`modal-3d ${completo ? "completo" : ""}`} onClick={completo ? undefined : onCerrar}>
       <div className="caja-3d" onClick={(e) => e.stopPropagation()}>
-        <div className="cabeza-3d"><b>{titulo}</b><span>Vista fotorrealista de Google · volumen esquemático de la norma</span><button onClick={onCerrar}>✕</button></div>
+        <div className="cabeza-3d"><b>{titulo}</b><span>{completo ? "Arrastra para mover · clic derecho o Ctrl + arrastrar para girar · rueda para acercar" : "Vista fotorrealista de Google · volumen esquemático de la norma"}</span><button onClick={onCerrar} title="Volver al mapa">✕</button></div>
         {!LLAVE ? (
           <div className="sin-llave">
             <h3>Falta activar la vista fotorrealista de Google</h3>

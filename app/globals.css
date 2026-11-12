@@ -418,3 +418,14 @@ textarea.entrada { resize: vertical; font-family: inherit; }
 .fachada { width: 100%; border-radius: 10px; display: block; aspect-ratio: 16 / 10; object-fit: cover; background: #eee; }
 .perfil-svg { width: 100%; height: auto; color: var(--texto-2, #555); margin: 6px 0 2px; }
 .lista-simple { margin: 8px 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
+
+/* ===== Panel colapsable y mapa Google a pantalla completa ===== */
+.panel.colapsado { width: 80px !important; }
+.panel.colapsado .contenido { display: none; }
+.panel .expandir-grupo { position: absolute; left: -16px; top: 50%; transform: translateY(-50%); z-index: 6; display: grid; gap: 6px; }
+.panel .expandir-grupo .expandir { position: static; transform: none; }
+.panel .expandir.cerrar { height: 32px; font-weight: 700; }
+.btn-3d.google { color: #fff; background: var(--marca-osc, #08061a); border-color: var(--marca-osc, #08061a); }
+.btn-3d.google:hover { background: var(--cta); border-color: var(--cta); }
+.modal-3d.completo { top: 60px; padding: 0; background: transparent; place-items: stretch; }
+.modal-3d.completo .caja-3d { width: 100%; height: 100%; border-radius: 0; box-shadow: none; }
