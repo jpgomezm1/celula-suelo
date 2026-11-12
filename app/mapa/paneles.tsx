@@ -219,11 +219,18 @@ export function PanelComparar({ ids, quitar, abrir }: { ids: string[]; quitar: (
   }
   if (ids.length < 2) return (
     <>
-      <ol className="pasos-guia">
-        <li className={ids.length >= 1 ? "hecho" : ""}><b>Haz clic en un lote del mapa</b> y pulsa <span className="etiqueta">+ Comparar</span> en la ventana que aparece.</li>
-        <li className={ids.length >= 2 ? "hecho" : ""}><b>Agrega otro lote</b> (hasta 5). Los verás en la bandeja de abajo del mapa.</li>
-        <li><b>La comparación aparece aquí sola</b>: unidades, semáforo, cambio POT 2026, cesiones y valor residual.</li>
-      </ol>
+      <div className="pasos-guia">
+        {[
+          ["Elige un lote", "Haz clic en un predio del mapa y, en la ventana que aparece, pulsa “+ Comparar”.", ids.length >= 1],
+          ["Agrega otro lote", "Repite con un segundo lote (puedes llevar hasta 5). Los verás en la bandeja de abajo del mapa.", ids.length >= 2],
+          ["Mira la comparación", "Aparece aquí sola: unidades, semáforo, cambio POT 2026, cesiones y valor residual.", false],
+        ].map(([t, d, hecho], i) => (
+          <div key={i} className={`paso ${hecho ? "hecho" : ""}`}>
+            <span className="numero">{hecho ? "✓" : i + 1}</span>
+            <div><b>{t as string}</b><p>{d as string}</p></div>
+          </div>
+        ))}
+      </div>
       {ids.length === 1 && <div className="etiquetas"><span className="etiqueta chip" onClick={() => abrir(ids[0])}>{ids[0]} <b onClick={(e) => { e.stopPropagation(); quitar(ids[0]); }}>×</b></span></div>}
     </>
   );
