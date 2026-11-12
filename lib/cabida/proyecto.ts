@@ -59,15 +59,26 @@ export async function anteproyecto(id: string, o: OpcionesProyecto = {}) {
     const pf = puntoFijo({ pisos, altura_m: pisos * hPiso, viviendas_torre: 60, alcobas_torre: 120, area_piso_m2: 700 });
     res = await implantar(marco, norma, { F, pas, largo_max: o.largo_max_torre_m ?? 45, max_torres: o.max_torres ?? 6, mezcla, pf: { escaleras: pf.escaleras, ascensores: pf.ascensores, vestibulo: pf.a_prueba_de_humo } });
     if (!res.torres.length) break;
-    const aptosPiso = res.torres.reduce((s, t) => s + t.planta.aptos.length, 0);
-    const areaPiso = res.torres.reduce((s, t) => s + t.planta.L * t.planta.D, 0);
+    // Cuántas torres conviene: con densidad limitante, menos torres y más altas aprovechan mejor la norma.
     const areaPlat = pp > 0 ? area(res.edificable) * pp : 0;
-    // Densidad: no pasar las unidades que permite la norma (el lobby del primer piso libera algunas).
-    const lobbies = pp > 0 ? 0 : res.torres.length;
-    const porUnidades = Math.floor((Number(esc.unidades) + lobbies) / Math.max(aptosPiso, 1));
-    const porArea = Math.floor(Math.max(0, Number(esc.area_construible_m2) - areaPlat) / Math.max(areaPiso, 1));
-    let nuevo = Math.max(1, Math.min(porUnidades, Math.max(porArea, 1))) + pp;
-    if (tope && nuevo > tope) nuevo = tope;
+    let mejor: { k: number; pisos: number; area: number } | null = null;
+    for (let k = 1; k <= res.torres.length; k++) {
+      const sub = res.torres.slice(0, k);
+      const aptosPiso = sub.reduce((s, t) => s + t.planta.aptos.length, 0);
+      const areaPiso = sub.reduce((s, t) => s + t.planta.L * t.planta.D, 0);
+      // Densidad: no pasar las unidades que permite la norma (el lobby del primer piso libera algunas).
+      const lobbies = pp > 0 ? 0 : k;
+      const porUnidades = Math.floor((Number(esc.unidades) + lobbies) / Math.max(aptosPiso, 1));
+      const porArea = Math.floor(Math.max(0, Number(esc.area_construible_m2) - areaPlat) / Math.max(areaPiso, 1));
+      let pk = Math.max(1, Math.min(porUnidades, Math.max(porArea, 1))) + pp;
+      if (tope && pk > tope) pk = tope;
+      const areaK = areaPiso * (pk - pp) + areaPlat;
+      // Se prefiere la mayor área construida; con empate (±2 %), menos torres. Un solo piso de torre no es un edificio.
+      if (pk - pp >= 2 && (!mejor || areaK > mejor.area * 1.02)) mejor = { k, pisos: pk, area: areaK };
+    }
+    if (!mejor) mejor = { k: 1, pisos: Math.max(2, Math.min(tope ?? 99, pisos)), area: 0 };
+    res.torres = res.torres.slice(0, mejor.k);
+    let nuevo = mejor.pisos;
     if (nuevo === pisos) break;
     pisos = nuevo;
   }
