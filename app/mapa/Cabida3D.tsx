@@ -7,7 +7,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 type Pt = [number, number];
 const COLOR: Record<string, number> = {
   LOTE: 0xf2a900, AREA_EDIFICABLE: 0x9a9a9a, SOTANO: 0x8d8a83, PARQUEADEROS: 0x3f8f4a, CIRCULACION_VEHICULAR: 0xb9b5ab, RAMPA: 0xc2185b,
-  PLATAFORMA: 0xe39b4a, TORRE: 0x6c4de7, NUCLEO: 0xc0392b, CIRCULACION: 0xd9d5cc, APARTAMENTOS: 0x8b74f0, MURO: 0x3a3a3a,
+  PLATAFORMA: 0xe39b4a, TORRE: 0x6c4de7, NUCLEO: 0xc0392b, CIRCULACION: 0xd9d5cc, APARTAMENTOS: 0xb9a9f7, MURO: 0xf4f1ea,
 };
 const CAPAS_UI: [string, string][] = [["sotanos", "Sótanos"], ["parqueaderos", "Parqueaderos"], ["plataforma", "Plataforma"], ["torres", "Torres"], ["nucleos", "Puntos fijos"], ["lote", "Lote y retiros"]];
 
