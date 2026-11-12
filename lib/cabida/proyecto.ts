@@ -1,3 +1,4 @@
+import { memo } from "../memo";
 // Anteproyecto esquemático de un lote: implanta torres de crujía doble según la norma volumétrica, distribuye los
 // apartamentos (mezcla editable), dimensiona el punto fijo, arma el primer piso (lobby, portería, basuras) y los
 // sótanos (rampa, parqueaderos, depósitos y cuartos técnicos), y calcula el cuadro de áreas.
@@ -36,14 +37,14 @@ export const aLote = (t: { origen: Pt; rotada: boolean; planta: { D: number } })
   (t.rotada ? [r2(t.origen[0] + t.planta.D - q), r2(t.origen[1] + s)] : [r2(t.origen[0] + s), r2(t.origen[1] + q)]);
 
 export async function anteproyecto(id: string, o: OpcionesProyecto = {}) {
-  const p = await encontrarPredio({ id });
+  const p = await memo(`predio:${id}`, () => encontrarPredio({ id }));
   if (!p) return { encontrado: false as const, mensaje: "Predio no encontrado" };
-  const an: any = await analizarLote(p, { con_mercado: false });
+  const an: any = await memo(`analisis:${id}`, () => analizarLote(p, { con_mercado: false }));
   const clave = o.escenario ?? "base";
   const esc = (an.cabida.escenarios as any[]).find((e) => (clave === "conservador" ? /conservador/i : clave === "maximo" ? /m[aá]ximo/i : /^base/i).test(e.escenario))
     ?? (an.cabida.escenarios as any[]).find((e) => e.disponible);
   if (!esc?.disponible) return { encontrado: true as const, disponible: false as const, mensaje: "La norma de este predio no permite calcular una cabida." };
-  const marco = await marcoLote(id);
+  const marco = await memo(`marco:${id}`, () => marcoLote(id));
   if (!marco) return { encontrado: true as const, disponible: false as const, mensaje: "Sin geometría del lote." };
 
   const mezcla = o.mezcla?.length ? o.mezcla : MEZCLA_DEFECTO;
@@ -128,8 +129,8 @@ export async function anteproyecto(id: string, o: OpcionesProyecto = {}) {
 
   // Sótanos
   // Estrato estimado: mediana de los inmuebles en venta (Fynder) a 500 m.
-  const [est] = await sql`SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY l.estrato) AS e FROM listing l, parcel q
-    WHERE q.id = ${id} AND l.estrato BETWEEN 1 AND 6 AND l.geom && ST_Expand(q.geom, 0.005) AND ST_DWithin(l.geom::geography, q.geom::geography, 500)`;
+  const [est] = await memo(`estrato:${id}`, () => sql`SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY l.estrato) AS e FROM listing l, parcel q
+    WHERE q.id = ${id} AND l.estrato BETWEEN 1 AND 6 AND l.geom && ST_Expand(q.geom, 0.005) AND ST_DWithin(l.geom::geography, q.geom::geography, 500)`);
   const estrato = o.estrato ?? (est?.e != null ? Number(est.e) : null);
   const parq = parqueaderos(p.municipio_dane ?? "05001", unidades, estrato);
   const nucleosLote = torres.map((t) => { const T = aLote(t); const c = caja(t.planta.nucleo.poly); return [T([c.x0, c.y0]), T([c.x1, c.y0]), T([c.x1, c.y1]), T([c.x0, c.y1])].map((q) => q) as Pt[]; })
@@ -205,8 +206,9 @@ export async function anteproyecto(id: string, o: OpcionesProyecto = {}) {
 async function implantar(m: MarcoLote, n: NormaVol, o: { F: number; pas: number; largo_max: number; max_torres: number; mezcla: Mezcla; pf: { escaleras: number; ascensores: number; vestibulo: boolean } }) {
   // Torre normal (eje largo en X): sus culatas cerradas miran a los linderos laterales y las fachadas abiertas al frente y al fondo.
   // Torre girada: las fachadas abiertas miran a los linderos laterales. Se calcula un área edificable para cada caso.
-  const { edificable: E, sotano } = await edificable(m.lote, Math.min(n.cabecera, n.lateral), n.frontal, n.fondo);
-  const { edificable: Eg } = await edificable(m.lote, n.lateral, n.frontal, n.fondo);
+  const ed = (a: number, b: number, c: number) => memo(`edif:${JSON.stringify(m.lote[0])}:${m.lote.length}:${a}:${b}:${c}`, () => edificable(m.lote, a, b, c));
+  const { edificable: E, sotano } = await ed(Math.min(n.cabecera, n.lateral), n.frontal, n.fondo);
+  const { edificable: Eg } = await ed(n.lateral, n.frontal, n.fondo);
   const torres: Torre[] = [];
   if (E.length < 3) return { torres, edificable: E, sotano };
   const b = caja(E);

@@ -507,3 +507,8 @@ details.avanzado { font-size: 13px; } details.avanzado summary { cursor: pointer
 .aviso-adn.propio { background: var(--lila); border: 1px solid #cfc4fa; color: var(--acento-2); }
 .campo label .unidad { color: var(--gris); font-weight: 500; text-transform: none; letter-spacing: 0; }
 .entrada.editado { border-color: var(--cta); background: #f7f4ff; }
+
+.bloque-mezcla { display: grid; gap: 8px; margin-top: 4px; }
+.tabla tr.fila-actual td { background: var(--lila); font-weight: 600; }
+.btn-mini { border: 1px solid var(--cta); color: var(--cta); background: #fff; border-radius: 8px; padding: 2px 8px; font-size: 12px; cursor: pointer; }
+.btn-mini:hover { background: var(--cta); color: #fff; }

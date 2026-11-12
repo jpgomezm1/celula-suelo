@@ -291,7 +291,35 @@ function GraficoFlujo({ flujo }: { flujo: any[] }) {
   );
 }
 
-function PanelNumeros({ qs }: { qs: string }) {
+function MezclaOptima({ qs, usar }: { qs: string; usar?: (m: any) => void }) {
+  const [r, setR] = useState<any>(null);
+  const [cargando, setCargando] = useState(false);
+  useEffect(() => { setR(null); }, [qs]);
+  async function buscar() {
+    setCargando(true);
+    try { setR(await (await fetch(`/api/mezcla?${qs}`)).json()); } catch (e) { setR({ error: (e as Error).message }); } finally { setCargando(false); }
+  }
+  const conPrecio = new URLSearchParams(qs).has("costo_lote");
+  return (
+    <div className="bloque-mezcla">
+      <button className="btn btn-borde btn-bloque" disabled={cargando} onClick={buscar}>{cargando ? "Probando mezclas de apartamentos (hasta 1 minuto)…" : "Buscar la mezcla de apartamentos que más deja"}</button>
+      {r?.error && <div className="error">{r.error}</div>}
+      {r?.ranking && (
+        <>
+          <div className="nota"><b>{r.lectura}</b> Se probaron {r.evaluadas} mezclas ({r.edificios_distintos} edificios distintos); criterio: {r.criterio}.</div>
+          <table className="tabla"><thead><tr><th>Mezcla construida</th><th>Viv.</th><th>{conPrecio ? "Utilidad" : "Máx. lote"}</th><th>TIR</th><th></th></tr></thead>
+            <tbody>{r.ranking.map((x: any, i: number) => (
+              <tr key={i} className={x.firma === r.actual?.firma ? "fila-actual" : ""}><td>{x.texto}{x.firma === r.actual?.firma ? " (actual)" : ""}</td><td>{x.unidades}</td>
+                <td>{mill(conPrecio ? x.utilidad : x.valor_maximo_lote)}</td><td>{x.tir_ea_pct != null ? `${num(x.tir_ea_pct, 1)} %` : "—"}</td>
+                <td>{usar && x.firma !== r.actual?.firma && <button className="btn-mini" onClick={() => usar(x.mezcla)}>Usar</button>}</td></tr>))}</tbody></table>
+          <ul className="lista-simple">{r.advertencias.map((a: string) => <li key={a}>{a}</li>)}</ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PanelNumeros({ qs, usarMezcla }: { qs: string; usarMezcla?: (m: any) => void }) {
   const [o, setO] = useState<any>({ costo_lote: "", precio_m2: "", absorcion_mes: "" });
   const [f, setF] = useState<any>(null);
   const [cargando, setCargando] = useState(false);
@@ -346,6 +374,7 @@ function PanelNumeros({ qs }: { qs: string }) {
               <tbody>{f.mercado.lista.map((c: any) => <tr key={c.proyecto}><td>{c.proyecto}</td><td>{c.estrato}</td><td>{num(c.precio_m2 / 1e6, 1)} M</td><td>{c.area_m2}</td><td>{num(c.ventas_mes, 1)}</td></tr>)}</tbody></table>
             <ul className="lista-simple">{f.supuestos.map((x: string) => <li key={x}>{x}</li>)}</ul>
           </details>
+          <MezclaOptima qs={q()} usar={usarMezcla} />
           <div className="acciones"><a className="btn btn-primario" href={`/api/comite?${q()}`} target="_blank" rel="noreferrer">Carpeta para comité (PDF)</a><a className="btn btn-borde" href={`/api/finanzas?${q()}&formato=xlsx`}>Excel de prefactibilidad</a></div>
         </>
       )}
@@ -428,7 +457,7 @@ function PanelCabida({ id, anteMapa }: { id: string; anteMapa?: (fc: any | null)
           <div className="acciones">
             <a className="btn btn-primario" href={`/api/cabida?${qs()}&formato=zip`}>Descargar todo (ZIP)</a>
           </div>
-          <PanelNumeros qs={qs()} />
+          <PanelNumeros qs={qs()} usarMezcla={(x) => { setO({ ...o, estudio: x.estudio, a1: x["1A"], a2: x["2A"], a3: x["3A"] }); setM(null); anteMapa?.(null); }} />
           <div className="acciones">
             <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=pdf`}>Planchas PDF</a>
             <a className="btn btn-borde" href={`/api/cabida?${qs()}&formato=dxf`}>Planos DXF</a>

@@ -18,6 +18,7 @@ import { bloque2026Predio } from "@/lib/norma2026";
 import { volumenesLote } from "@/lib/volumen";
 import { anteproyecto } from "@/lib/cabida/proyecto";
 import { modeloFinanciero } from "@/lib/finanzas/modelo";
+import { mezclaOptima } from "@/lib/finanzas/mezcla";
 import { obtenerPerfil } from "@/lib/constructora/perfil";
 import { opcionesConPerfil } from "@/lib/constructora/sesion";
 import { topografiaLote } from "@/lib/topografia";
@@ -58,7 +59,7 @@ const LECTURA = { readOnlyHint: true, openWorldHint: false } as const;
 const ESCRITURA = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 const INSTRUCCIONES = `Inteligencia de suelo para 17 municipios del Valle de Aburrá y el Oriente antioqueño: catastro, norma del POT, mercado (Fynder), proyectos nuevos (Zonario y Galería Inmobiliaria) y señales de venta de los folios.
 Flujos recomendados:
-0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Cómo se ve el lote desde la calle → fachada_street_view. Anteproyecto esquemático con planos (DXF, PDF, 3D y Excel): torres, apartamentos distribuidos, punto fijo, primer piso y sótanos → cabida_arquitectonica. ¿Cuánto puedo pagar por el lote? / ¿Da a este precio? (flujo, TIR, utilidad, sensibilidades) → prefactibilidad_financiera. Cartera que se actualiza sola en Google Earth Pro → analizar_cartera (cartera_viva_google_earth_pro). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
+0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Cómo se ve el lote desde la calle → fachada_street_view. Anteproyecto esquemático con planos (DXF, PDF, 3D y Excel): torres, apartamentos distribuidos, punto fijo, primer piso y sótanos → cabida_arquitectonica. ¿Cuánto puedo pagar por el lote? / ¿Da a este precio? (flujo, TIR, utilidad, sensibilidades) → prefactibilidad_financiera. ¿Qué mezcla de apartamentos deja más? → mezcla_optima. Cartera que se actualiza sola en Google Earth Pro → analizar_cartera (cartera_viva_google_earth_pro). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
 1. "¿Dónde puedo hacer este edificio?" → oportunidades_por_perfil (perfil de producto sobre todo un municipio) → ficha_predio de los mejores → contacto_predio.
 2. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 3. "¿Este lote da?" → ficha_predio → prefactibilidad_lote (con el precio pedido por el lote).
@@ -383,6 +384,24 @@ const mcp = createMcpHandler(
       return { predio: c.predio, barrio: m.barrio, anteproyecto: { torres: m.resumen.torres, pisos: m.resumen.pisos_totales, unidades: m.resumen.unidades, area_vendible_m2: m.resumen.area_vendible_m2, sotanos: m.resumen.sotanos },
         ...resto, flujo_trimestral: flujo.filter((x: any) => x.mes % 3 === 0).map((x: any) => ({ mes: x.mes, neto: x.neto, acumulado: x.acumulado })),
         excel: `${URL_BASE()}/api/finanzas?${qs}&formato=xlsx`, carpeta_comite_pdf: `${URL_BASE()}/api/comite?${qs}`, aviso: "Prefactibilidad con supuestos explícitos; los costos de referencia deben calibrarse con los de la constructora." };
+    }));
+
+    server.registerTool("mezcla_optima", {
+      annotations: LECTURA,
+      title: "Mezcla de apartamentos que más deja",
+      description: "Prueba decenas de mezclas de producto (apartaestudio, 1, 2 y 3 alcobas) sobre el mismo lote: para cada una arma el anteproyecto y corre los números, y ordena por el valor máximo que se puede pagar por el lote (o por la utilidad si se da costo_lote). Devuelve la mezcla que realmente queda construida (la planta reparte por piso), unidades, ventas, margen, TIR y meses de ventas, frente a la mezcla actual. Tarda 20–60 s.",
+      inputSchema: z.object({ ...LOTE, costo_lote: z.number().optional(), estrato: z.number().int().min(1).max(6).optional(), escenario: z.enum(["conservador", "base", "maximo"]).optional(),
+        max_estudio_pct: z.number().optional().describe("Tope de apartaestudios (defecto 20 %)"), max_por_tipo_pct: z.number().optional().describe("Tope por tipología (defecto 60 %)"),
+        constructora: z.string().optional() }),
+    }, seguro(async (a: any) => {
+      const { c, p } = await loteDe(a);
+      if (!p) return c;
+      const perfil = await obtenerPerfil(a.constructora);
+      const r: any = await mezclaOptima(c.predio, opcionesConPerfil({ escenario: a.escenario, estrato: a.estrato }, perfil), perfil,
+        { costo_lote: a.costo_lote, estrato: a.estrato, max_estudio_pct: a.max_estudio_pct, max_por_tipo_pct: a.max_por_tipo_pct, segundos: 60 });
+      const limpiar = (x: any) => x && ({ mezcla_construida: x.texto, mezcla_pedida: x.pedida, unidades: x.unidades, torres: x.torres, pisos: x.pisos, ventas: x.ventas, utilidad: x.utilidad,
+        margen_pct: x.margen_pct, tir_ea_pct: x.tir_ea_pct, meses_de_ventas: x.meses_de_ventas, valor_maximo_lote: x.valor_maximo_lote });
+      return { predio: c.predio, criterio: r.criterio, lectura: r.lectura, evaluadas: r.evaluadas, actual: limpiar(r.actual), mejor: limpiar(r.mejor), ranking: r.ranking.map(limpiar), advertencias: r.advertencias };
     }));
 
     server.registerTool("fachada_street_view", {

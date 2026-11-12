@@ -3,10 +3,12 @@
 // utilidad, TIR, exposición máxima, valor máximo del lote, sensibilidades y veredicto frente a la tesis de inversión.
 // Es prefactibilidad: supuestos explícitos y editables; no reemplaza el presupuesto detallado ni el modelo de la constructora.
 import { sql } from "../db";
+import { memo } from "../memo";
 import { costoDirectoM2, type PerfilConstructora } from "../constructora/perfil";
 
 type Proyecto = any;
 export type OpcionesFinanzas = {
+  sin_sensibilidades?: boolean;
   costo_lote?: number;              // precio pedido o negociado (COP). Si no se da, se evalúa el valor máximo.
   precio_m2?: number;               // sobrescribe el precio de mercado (COP/m² privado)
   absorcion_mes?: number;           // sobrescribe la velocidad de ventas (unidades/mes)
@@ -76,9 +78,9 @@ export function etapasDe(m: Proyecto) {
 }
 
 export async function modeloFinanciero(m: Proyecto, perfil: PerfilConstructora, o: OpcionesFinanzas = {}) {
-  const [pt] = await sql`SELECT ST_Y(ST_PointOnSurface(geom)) lat, ST_X(ST_PointOnSurface(geom)) lon FROM parcel WHERE id = ${m.predio}`;
+  const [pt] = await memo(`pt:${m.predio}`, () => sql`SELECT ST_Y(ST_PointOnSurface(geom)) lat, ST_X(ST_PointOnSurface(geom)) lon FROM parcel WHERE id = ${m.predio}`);
   const estrato = o.estrato ?? m.resumen.estrato ?? null;
-  const merc = await comparablesGaleria(Number(pt.lat), Number(pt.lon), estrato);
+  const merc = await memo(`comp:${m.predio}:${estrato}`, () => comparablesGaleria(Number(pt.lat), Number(pt.lon), estrato));
   const curva = curvaPrecio(merc.comparables);
   const absorcionMercado = mediana(merc.comparables.filter((c) => c.v > 0).map((c) => c.v)) ?? 3;
   const aj = o.ajustes ?? {};
@@ -213,7 +215,7 @@ export async function modeloFinanciero(m: Proyecto, perfil: PerfilConstructora, 
 
   // ---------- Sensibilidades (sobre el mismo costo de lote) ----------
   const sens: any[] = [];
-  if (!o.ajustes) {
+  if (!o.ajustes && !o.sin_sensibilidades) {
     for (const [nombre, a] of [["Precio −5 %", { precio_pct: -5 }], ["Precio −10 %", { precio_pct: -10 }], ["Costo +5 %", { costo_pct: 5 }], ["Costo +10 %", { costo_pct: 10 }],
       ["Ventas 30 % más lentas", { absorcion_pct: -30 }], ["Obra 6 meses más larga", { obra_meses: 6 }]] as [string, any][]) {
       const r: any = await modeloFinanciero(m, perfil, { ...o, costo_lote: costoLote, ajustes: a });
