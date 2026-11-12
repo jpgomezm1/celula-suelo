@@ -84,7 +84,7 @@
 </header>
 
 <nav class="indice"><div class="dentro">
-  <a href="#norma">Consulta de norma</a><a href="#competencia">Estudio de competencia</a><a href="#perfil">Dónde hacer un edificio</a><a href="#lote">Analizar un lote</a>
+  <a href="#norma">Consulta de norma</a><a href="#cartera">Carteras y POT</a><a href="#competencia">Estudio de competencia</a><a href="#perfil">Dónde hacer un edificio</a><a href="#lote">Analizar un lote</a>
   <a href="#dueno">Llegar al dueño</a><a href="#mercado">Mercado y proyectos</a><a href="#datos">Sobre los datos</a>
   <a href="#flujos">Flujos encadenados</a><a href="#limites">Límites</a>
 </div></nav>
@@ -103,8 +103,42 @@
     <div class="caso"><h3>Varios lotes desde Google Earth (KMZ)</h3><p>Adjunta el KMZ o KML: cada punto es un lote y cada polígono suma los predios que cubre (englobe).</p>
       <div class="prompt">Te adjunto el KMZ con los lotes que estamos evaluando: dame la norma y las unidades estimadas de cada uno en una tabla.</div>
       <div class="etiquetas"><span class="etq">consulta_norma_lotes</span></div></div>
+    <div class="caso"><h3>Ficha normativa en PDF</h3><p>PDF fechado con semáforo, norma 2014 y proyecto 2026, cabida, cesiones, usos, valor residual y fuentes.</p>
+      <div class="prompt">Dame la ficha normativa en PDF del lote 15090030008.</div>
+      <div class="etiquetas"><span class="etq">ficha_normativa_pdf</span></div></div>
+    <div class="caso"><h3>Cabida en tres escenarios</h3><p>Conservador (POT 2014), base (proyecto 2026) y máximo con derechos: pisos, sótanos, parqueaderos, m² vendibles y unidades.</p>
+      <div class="prompt">¿Cuántos apartamentos de 60 m² caben en el lote con matrícula 001-728976 y cuántos pisos serían?</div>
+      <div class="etiquetas"><span class="etq">cabida_lote</span></div></div>
+    <div class="caso"><h3>Usos permitidos</h3><p>Si cabe una clínica, un hotel, un restaurante o rentas cortas, según el área de mixtura.</p>
+      <div class="prompt">¿En el lote 15090030008 puedo hacer un hotel o una clínica?</div>
+      <div class="etiquetas"><span class="etq">usos_permitidos</span></div></div>
+    <div class="caso"><h3>Valor residual</h3><p>Lo máximo que se puede pagar por el lote para que el proyecto dé margen, frente al precio pedido.</p>
+      <div class="prompt">Me piden $30.000 millones por el lote 15090030008, ¿cuánto vale realmente por lo que se puede hacer?</div>
+      <div class="etiquetas"><span class="etq">valor_residual</span></div></div>
     <div class="caso"><h3>Englobe</h3><p>Cuánto se puede construir si se unen varios predios.</p>
       <div class="prompt">Si englobo los lotes 05001:15090030007 y 05001:15090030008, ¿cuánta área construible y cuántas viviendas salen?</div></div>
+  </div>
+</section>
+
+<section id="cartera">
+  <div class="encabezado"><div class="num">◆</div><h2>Carteras, comparación, zonas y POT nuevo</h2></div>
+  <p class="bajada">Para evaluar muchos lotes a la vez, compararlos y encontrar las oportunidades que crea el POT 2026.</p>
+  <div class="grilla">
+    <div class="caso"><h3>Cartera de hasta 250 lotes</h3><p>KMZ de Google Earth o lista: semáforo, unidades, cambio POT, cesiones y valor residual de cada lote, con ranking y Excel.</p>
+      <div class="prompt">Te adjunto el KMZ con los lotes que estamos evaluando: analiza la cartera, ordénalos y dame el Excel.</div>
+      <div class="etiquetas"><span class="etq">analizar_cartera</span></div></div>
+    <div class="caso"><h3>Comparar lotes</h3><p>De 2 a 5 lotes lado a lado y cuál conviene.</p>
+      <div class="prompt">Compara los lotes 15090030008, 15090030007 y 07030020175.</div>
+      <div class="etiquetas"><span class="etq">comparar_lotes</span></div></div>
+    <div class="caso"><h3>Analizar una zona</h3><p>Norma 2014 y 2026, lotes con potencial, competencia de Galería y mercado de un polígono.</p>
+      <div class="prompt">Analiza la zona entre la Avenida Guayabal, la Calle 10 Sur, la Autopista y la Calle 2 Sur.</div>
+      <div class="etiquetas"><span class="etq">analizar_zona</span></div></div>
+    <div class="caso"><h3>Quién gana con el POT 2026</h3><p>Barrios, polígonos y lotes que más suben (o bajan) su aprovechamiento.</p>
+      <div class="prompt">¿En qué barrios de Medellín sube más el índice de construcción con el POT nuevo? Dame los 10 lotes que más ganan.</div>
+      <div class="etiquetas"><span class="etq">cambio_pot</span></div></div>
+    <div class="caso"><h3>Novedades normativas</h3><p>Documentos nuevos del POT, decretos y cartografía que publica la Alcaldía (monitor diario).</p>
+      <div class="prompt">¿Qué documentos normativos publicó la Alcaldía este mes?</div>
+      <div class="etiquetas"><span class="etq">novedades_normativas</span></div></div>
   </div>
 </section>
 
