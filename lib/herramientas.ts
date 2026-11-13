@@ -64,7 +64,7 @@ export async function compararLotes(lotes: RefLote[], opts: { area_unidad_m2?: n
     out.push({ nombre: l.nombre ?? p.id, encontrado: true, ...resumen(p, a), detalle: { semaforo: a.semaforo.items, cabida: a.cabida.escenarios, usos_nivel: a.usos.nivel_mixtura } });
   }
   const ok = out.filter((x: any) => x.encontrado) as any[];
-  const mejor = (k: (x: any) => number | null) => ok.slice().sort((a, b) => (k(b) ?? -1) - (k(a) ?? -1))[0]?.nombre ?? null;
+  const mejor = (k: (x: any) => number | null) => ok.slice().sort((a, b) => (k(b) ?? -1e9) - (k(a) ?? -1e9))[0]?.nombre ?? null;
   return { lotes: out, destacados: { mas_unidades: mejor((x) => x.unidades.base), zona_que_vende_mas_rapido: mejor((x) => (x.meses_inventario_zona == null ? null : -x.meses_inventario_zona)), mayor_area_util: mejor((x) => x.area_util_m2) }, aviso_legal: AVISO_LEGAL };
 }
 
