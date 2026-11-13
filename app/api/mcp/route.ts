@@ -59,12 +59,14 @@ const seguro = <A,>(fn: (a: A) => Promise<unknown>) => async (a: A) => {
 const LECTURA = { readOnlyHint: true, openWorldHint: false } as const;
 const ESCRITURA = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 const INSTRUCCIONES = `Inteligencia de suelo para 17 municipios del Valle de Aburrá y el Oriente antioqueño: catastro, norma del POT, mercado (Fynder), proyectos nuevos (Zonario y Galería Inmobiliaria) y señales de venta de los folios.
+Foco: la decisión sobre un lote (qué se puede hacer, qué lo restringe y cómo se vende la vivienda nueva en su zona). No se ofrecen modelos financieros, planos ni 3D.
 Flujos recomendados:
-0. "¿Qué se puede hacer en este lote?" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf; detalles puntuales → cabida_lote, usos_permitidos, valor_residual. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250; conserva carpetas y notas de Google Earth y devuelve un KMZ con el análisis). Ver el edificio posible en 3D o llevarlo a Google Earth → volumen_3d. Pendiente, desnivel, relación con la vía y altura de los vecinos → topografia_lote. Cómo se ve el lote desde la calle → fachada_street_view. Anteproyecto esquemático con planos (DXF, PDF, 3D y Excel): torres, apartamentos distribuidos, punto fijo, primer piso y sótanos → cabida_arquitectonica. ¿Cuánto puedo pagar por el lote? / ¿Da a este precio? (flujo, TIR, utilidad, sensibilidades) → prefactibilidad_financiera. ¿Qué mezcla de apartamentos deja más? → mezcla_optima. Lotes que el equipo negocia, ofertas y acciones vencidas → negociaciones. Cartera que se actualiza sola en Google Earth Pro → analizar_cartera (cartera_viva_google_earth_pro). Una zona → analizar_zona. POT nuevo → cambio_pot y novedades_normativas.
-1. "¿Dónde puedo hacer este edificio?" → oportunidades_por_perfil (perfil de producto sobre todo un municipio) → ficha_predio de los mejores → contacto_predio.
-2. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
-3. "¿Este lote da?" → ficha_predio → prefactibilidad_lote (con el precio pedido por el lote).
-4. Mercado de una zona → mercado_zona, buscar_proyectos, ficha_proyecto, constructora.
+0. "¿Qué se puede hacer en este lote?" o "dame la ficha" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf. Trae semáforo, área neta, cabida, usos, restricciones (amenazas, quebradas y retiros, suelo de protección, plan parcial, árboles patrimoniales), topografía, inventario de vivienda nueva a 2 km y áreas que no cuentan en el índice. ficha_predio da lo mismo más licencias, mercado de Fynder y proyectos cerca. Detalles puntuales → cabida_lote, usos_permitidos, topografia_lote.
+1. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250). Una zona dibujada → analizar_zona.
+2. Buscar lotes → buscar_lotes (filtros de área, tratamiento, amenaza, % en retiro hídrico, quebrada que cruza, árboles patrimoniales y plan parcial) u oportunidades_por_perfil (producto definido sobre todo un municipio) → consulta_norma de los mejores → contacto_predio.
+3. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
+4. Mercado de una zona → mercado_zona, buscar_proyectos, ficha_proyecto, constructora. Lotes que el equipo negocia → negociaciones. POT nuevo → cambio_pot y novedades_normativas.
+Riesgo y agua: el retiro hídrico es oficial del POT en Medellín y La Estrella; en los demás municipios es una faja de referencia de 30 m a cauces naturales (dilo). Avenidas torrenciales solo están cargadas en 2 municipios y Copacabana y Girardota no tienen capa de amenaza: si el lote está ahí, adviértelo. Los estudios de riesgo de detalle no son públicos.
 Norma de Medellín: viene del POT de 2014 (Acuerdo 48); el Concejo aprobó su revisión el 5 de noviembre de 2026 y los valores pueden cambiar cuando entre en vigencia: menciónalo cuando des índices, densidades o unidades de Medellín. Las respuestas traen 'pot_2026_preliminar' con la norma del proyecto de acuerdo (v3, julio de 2026): preséntala como preliminar y compárala con la de 2014.
 Reglas: usa cobertura para saber qué tan completo es un municipio (Itagüí, La Estrella, Caldas y Copacabana tienen norma de un POT derogado; el Oriente no tiene norma de tratamiento). Las unidades y el área construible son inferencias sobre la norma, no cabidas. Expresa el dinero en millones de pesos. Nunca entregues nombres, teléfonos ni correos de personas naturales: para contactar dueños usa solo la ruta legal de contacto_predio. Los datos de Galería Inmobiliaria son confidenciales y de uso interno del cliente.`;
 const MUNICIPIOS = "Medellín, Envigado, Sabaneta, Itagüí, La Estrella, Caldas, Bello, Copacabana, Girardota, Barbosa, Rionegro, El Retiro, La Ceja, Guarne, Marinilla, El Carmen de Viboral, La Unión";
@@ -76,8 +78,13 @@ const predio = {
   lat: z.number().optional(), lon: z.number().optional(),
 };
 
+// Fuera del foco (decisión sobre el lote): finanzas, planos y 3D. El código sigue, pero el MCP no las ofrece.
+const OCULTAS = new Set(["valor_residual", "prefactibilidad_lote", "prefactibilidad_financiera", "mezcla_optima", "cabida_arquitectonica", "volumen_3d", "fachada_street_view"]);
+
 const mcp = createMcpHandler(
   (server) => {
+    const registrar = server.registerTool.bind(server) as any;
+    (server as any).registerTool = (nombre: string, ...resto: any[]) => (OCULTAS.has(nombre) ? undefined : registrar(nombre, ...resto));
     server.registerTool("cobertura", {
       annotations: LECTURA,
       title: "Cobertura por municipio",
@@ -88,14 +95,23 @@ const mcp = createMcpHandler(
     server.registerTool("ficha_predio", {
       annotations: LECTURA,
       title: "Ficha de predio",
-      description: "Ficha completa de un predio: catastro, construcciones, norma del POT (con advertencia si la capa pública es de un POT derogado), amenazas y protección, valor del suelo, licencias, potencial constructivo (inferencia), mercado a 1,5 km (oferta, demanda, ritmo), proyectos nuevos y lotes en venta cerca, y prefactibilidad rápida con lote máximo pagable.",
+      description: "Ficha completa de un predio: catastro, construcciones, norma del POT (con advertencia si la capa pública es de un POT derogado), semáforo, área neta y cabida, restricciones (amenazas por tipo y grado, suelo de protección, quebradas y % del lote en retiro hídrico, plan parcial, árboles patrimoniales), valor del suelo de referencia, licencias, inventario de vivienda nueva a 2 km (Galería y Fynder), áreas que no cuentan en el índice, mercado de Fynder a 1,5 km (oferta, compradores, ritmo), proyectos nuevos y lotes en venta cerca.",
       inputSchema: z.object(predio).refine((v) => v.id || v.cbml || v.clave || (v.lat !== undefined && v.lon !== undefined), "Da un id, cbml, clave+municipio o lat/lon"),
-    }, seguro(async (a: any) => fichaPredio(a)));
+    }, seguro(async (a: any) => {
+      const f: any = await fichaPredio(a);
+      if (!f.encontrado) return f;
+      const p = await encontrarPredio({ id: f.id });
+      const an: any = p ? await analizarLote(p, {}) : null;
+      if (!an) return f;
+      return { ...f, semaforo: an.semaforo, area_util: an.area_util, cabida: an.cabida,
+        restricciones: { ...f.restricciones, amenaza_alta_en_lote: an.area_util?.amenaza_alta, ...an.restricciones },
+        inventario_zona: an.inventario_zona, areas_fuera_del_indice: an.computo_indice, aviso_legal: an.aviso_legal };
+    }));
 
     server.registerTool("buscar_lotes", {
       annotations: LECTURA,
       title: "Buscar lotes",
-      description: "Busca predios por municipio, barrio, área, tratamiento y área construible restante. Por defecto solo los marcados con potencial preliminar (inferencia) y sin amenaza alta.",
+      description: "Busca predios por municipio, barrio, área, tratamiento y área construible restante, y filtra por restricciones físicas: % del lote en retiro hídrico, quebrada que lo cruza, árboles patrimoniales y plan parcial. Por defecto solo los marcados con potencial preliminar (inferencia) y sin amenaza alta. Cada lote trae pct_en_retiro_hidrico, cauce_cruza, arboles_patrimoniales y plan_parcial.",
       inputSchema: z.object({
         municipio: z.string().optional(), barrio: z.string().optional(),
         area_min: z.number().min(0).optional(), area_max: z.number().min(0).optional(),
@@ -103,6 +119,10 @@ const mcp = createMcpHandler(
         solo_potencial: z.boolean().optional(), incluir_amenaza_alta: z.boolean().optional(),
         gana_pot_2026: z.boolean().optional().describe("Solo lotes de Medellín cuyo índice de construcción sube con el proyecto POT 2026"),
         max_construcciones: z.number().int().min(0).optional().describe("Excluir lotes con más construcciones (muchos dueños)"),
+        max_pct_retiro: z.number().min(0).max(100).optional().describe("Máximo % del lote en retiro hídrico (0 = ninguno)"),
+        excluir_cauce: z.boolean().optional().describe("Excluir lotes que cruza una quebrada natural (no canalizada)"),
+        excluir_arboles_patrimoniales: z.boolean().optional().describe("Excluir lotes con árboles patrimoniales dentro (censo solo en Medellín)"),
+        excluir_plan_parcial: z.boolean().optional().describe("Excluir lotes dentro de un plan parcial"),
         orden: z.enum(["construible_restante", "area", "valor_suelo"]).optional(), limite: z.number().int().min(1).max(50).optional(),
       }),
     }, seguro(async (a: any) => buscarLotes(a)));
@@ -234,7 +254,7 @@ const mcp = createMcpHandler(
     server.registerTool("consulta_norma", {
       annotations: LECTURA,
       title: "Consulta de norma de un lote",
-      description: "Qué se puede hacer en un lote (la consulta principal): semáforo de afectaciones, área útil, cabida en tres escenarios (pisos, sótanos, parqueaderos, m² vendibles, unidades), cesiones urbanísticas, usos permitidos, valor residual del suelo y enlace a la ficha normativa en PDF; además tratamiento, uso del suelo, altura, índice de construcción (base y con derechos), densidad, área construible, viviendas y unidades estimadas, construcción actual, amenazas y protección, valor del suelo de referencia y las matrículas y direcciones del predio. Se busca por CBML, id de predio, matrícula inmobiliaria (Medellín), dirección de Medellín o coordenada (p. ej. la de Google Maps). En Medellín incluye al lado la norma del proyecto de revisión del POT 2026 (v3, julio de 2026) y la comparación con la de 2014 (índice, densidad, área construible y viviendas). Incluye el aviso de vigencia del POT.",
+      description: "Qué se puede hacer en un lote (la consulta principal): semáforo de afectaciones, área útil, cabida en tres escenarios (pisos, sótanos, parqueaderos, m² vendibles, unidades), cesiones urbanísticas, usos permitidos, restricciones (amenazas, quebradas y retiros, plan parcial, árboles patrimoniales), topografía, inventario de vivienda nueva a 2 km, áreas que no cuentan en el índice y enlace a la ficha normativa en PDF; además tratamiento, uso del suelo, altura, índice de construcción (base y con derechos), densidad, área construible, viviendas y unidades estimadas, construcción actual, amenazas y protección, valor del suelo de referencia y las matrículas y direcciones del predio. Se busca por CBML, id de predio, matrícula inmobiliaria (Medellín), dirección de Medellín o coordenada (p. ej. la de Google Maps). En Medellín incluye al lado la norma del proyecto de revisión del POT 2026 (v3, julio de 2026) y la comparación con la de 2014 (índice, densidad, área construible y viviendas). Incluye el aviso de vigencia del POT.",
       inputSchema: z.object({
         cbml: z.string().optional(), id: z.string().optional(),
         matricula: z.string().optional().describe("Matrícula inmobiliaria, con o sin oficina (p. ej. '001-728976' o '728976')"),
@@ -242,7 +262,6 @@ const mcp = createMcpHandler(
         lat: z.number().optional(), lon: z.number().optional(),
         area_unidad_m2: z.number().min(20).max(300).optional().describe("Área por unidad para estimar unidades (defecto 65)"),
         tipo_vivienda: z.enum(["VIS", "NO VIS"]).optional(), actividad: z.string().optional().describe("Actividad a verificar en usos, p. ej. 'clínica', 'restaurante', 'hotel'"),
-        costo_lote: z.number().optional().describe("Precio pedido por el lote en COP, para el valor residual"),
       }),
     }, seguro(async (a: any) => {
       const { c, p } = await loteDe(a);
@@ -274,7 +293,7 @@ const mcp = createMcpHandler(
     server.registerTool("ficha_normativa_pdf", {
       annotations: LECTURA,
       title: "Ficha normativa en PDF",
-      description: "Genera la ficha normativa descargable (PDF fechado, con fuentes y aviso legal) de un lote: identificación, semáforo, norma POT 2014 y proyecto 2026, cabida, área útil, cesiones, usos y valor residual. Devuelve el enlace (se abre con el correo y clave del usuario) y un resumen.",
+      description: "Genera la ficha normativa descargable (PDF fechado, con fuentes y aviso legal) de un lote: identificación, semáforo, norma POT 2014 y proyecto 2026, cabida, área útil, cesiones, restricciones, inventario de vivienda nueva en la zona y usos. Devuelve el enlace (se abre con el correo y clave del usuario) y un resumen.",
       inputSchema: z.object({ ...LOTE, area_unidad_m2: z.number().optional(), actividad: z.string().optional() }),
     }, seguro(async (a: any) => {
       const { c, p } = await loteDe(a);
@@ -458,16 +477,16 @@ const mcp = createMcpHandler(
     server.registerTool("comparar_lotes", {
       annotations: LECTURA,
       title: "Comparar lotes",
-      description: "Compara de 2 a 5 lotes lado a lado: área útil, semáforo y alertas, unidades en tres escenarios, pisos, cambio con el POT 2026, cesiones y valor residual; dice cuál tiene más unidades, mayor valor residual y mayor área útil.",
+      description: "Compara de 2 a 5 lotes lado a lado: área útil, semáforo y alertas, unidades en tres escenarios y aprovechando las áreas fuera del índice, pisos, % en retiro hídrico, quebrada que cruza, plan parcial, árboles patrimoniales, meses de inventario de vivienda nueva en la zona, cambio con el POT 2026 y cesiones; dice cuál tiene más unidades, mayor área útil y la zona que vende más rápido.",
       inputSchema: z.object({ lotes: z.array(z.object({ nombre: z.string().optional(), ...LOTE })).min(2).max(5), area_unidad_m2: z.number().optional(), tipo_vivienda: z.enum(["VIS", "NO VIS"]).optional() }),
     }, seguro(async (a: any) => compararLotes(a.lotes, a)));
 
     server.registerTool("analizar_cartera", {
       annotations: ESCRITURA,
       title: "Analizar cartera de lotes (hasta 250)",
-      description: "Analiza una cartera de lotes de una vez: pasa el texto de un KML (si el usuario adjunta un KMZ, descomprímelo y pasa doc.kml) o una lista de lotes por CBML, matrícula, dirección o coordenada. Para cada uno: semáforo, área útil, unidades en tres escenarios, cambio POT 2026, cesiones y (hasta 40 lotes) valor residual; los ordena con un puntaje, resume verdes/amarillos/rojos y entrega un Excel, un KMZ para Google Earth (conserva carpetas y notas, volúmenes 3D, recorrido para comité) y un vínculo de red de 'cartera viva' para Google Earth Pro que se actualiza solo cada 24 h.",
+      description: "Analiza una cartera de lotes de una vez: pasa el texto de un KML (si el usuario adjunta un KMZ, descomprímelo y pasa doc.kml) o una lista de lotes por CBML, matrícula, dirección o coordenada. Para cada uno: semáforo, área útil, unidades en tres escenarios, cambio POT 2026, cesiones, restricciones y meses de inventario de la zona; los ordena con un puntaje, resume verdes/amarillos/rojos y entrega un Excel, un KMZ para Google Earth (conserva carpetas y notas, recorrido para comité) y un vínculo de red de 'cartera viva' para Google Earth Pro que se actualiza solo cada 24 h.",
       inputSchema: z.object({ nombre: z.string().optional(), kml: z.string().optional(), lotes: z.array(z.object({ nombre: z.string().optional(), ...LOTE })).optional(),
-        area_unidad_m2: z.number().optional(), tipo_vivienda: z.enum(["VIS", "NO VIS"]).optional(), con_valor_residual: z.boolean().optional() }),
+        area_unidad_m2: z.number().optional(), tipo_vivienda: z.enum(["VIS", "NO VIS"]).optional() }),
     }, seguro(async (a: any) => {
       const r: any = await analizarCartera(a);
       const t = await firmar({ typ: "earth", est: r.id }, 365 * 24 * 3600);

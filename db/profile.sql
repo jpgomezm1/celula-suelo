@@ -46,7 +46,7 @@ v AS (
 a AS (
   SELECT p.id,
          array_agg(DISTINCT coalesce(z.attrs->>'tipo', 'amenaza') || ':' || coalesce(z.attrs->>'grado', 's/d')) AS amenazas,
-         bool_or(z.attrs->>'grado' IN ('Alta', 'No mitigable')) AS amenaza_alta
+         bool_or(z.attrs->>'grado' IN ('Alta', 'Muy Alta', 'No mitigable')) AS amenaza_alta
   FROM p JOIN zoning_layer z ON z.capa = 'amenaza' AND z.municipio_dane = p.municipio_dane AND ST_Intersects(z.geom, p.geom)
   GROUP BY p.id
 ),

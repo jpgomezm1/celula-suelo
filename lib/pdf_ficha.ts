@@ -148,6 +148,24 @@ export async function fichaPdf(c: any, a: any, extra: { topografia?: any; entorn
     if (tp?.disponible) parrafo(`Fuente: ${tp.fuente.nombre} (${tp.fuente.resolucion_m} m). ${tp.fuente.advertencia ?? ""} ${tp.aviso}`, 7, f, C.gris);
   }
 
+  // Inventario de vivienda nueva en la zona
+  const inv = (a as any).inventario_zona;
+  if (inv) {
+    seccion(`Inventario de vivienda nueva a ${inv.radio_m / 1000} km`);
+    parrafo(inv.semaforo.lectura, 8.5);
+    const ic = inv.inventario_cerrado;
+    if (ic?.fynder_avisos_nuevos) parrafo(`Fynder: ${ic.fynder_avisos_nuevos} avisos de apartamentos nuevos ya entregados en la zona, publicados hace ${ic.fynder_dias_publicado_mediana} días (mediana).`, 7.5);
+    parrafo(`${inv.nota} Fuente: ${inv.fuente}`, 7, f, C.gris);
+  }
+
+  // Áreas que no cuentan en el índice
+  const ci = (a as any).computo_indice;
+  if (ci?.aplica) {
+    seccion("Áreas que no cuentan en el índice");
+    parrafo(ci.lectura, 8.5);
+    parrafo(`${ci.fuente}. ${ci.supuestos}`, 7, f, C.gris);
+  }
+
   // Usos
   seccion(`Usos del suelo · ${a.usos.area_de_actividad}`);
   if (a.usos.usos) {

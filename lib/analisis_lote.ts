@@ -18,13 +18,13 @@ const r0 = (v: number | null) => (v === null || !Number.isFinite(v) ? null : Mat
 export async function afectaciones(p: any) {
   const rows = await sql`
     WITH l AS (SELECT geom FROM parcel WHERE id = ${p.id})
-    SELECT z.capa, COALESCE(z.attrs->>'categoria', z.attrs->>'tipo', z.subtipo) AS tipo, z.attrs->>'grado_amenaza' AS grado,
+    SELECT z.capa, COALESCE(z.attrs->>'categoria', z.attrs->>'tipo', z.subtipo) AS tipo, COALESCE(z.attrs->>'grado_amenaza', z.attrs->>'grado') AS grado,
            sum(ST_Area(ST_Intersection(z.geom, l.geom)::geography)) AS m2
     FROM l JOIN zoning_sub z ON z.municipio_dane = ${p.municipio_dane} AND z.capa IN ('proteccion', 'amenaza') AND ST_Intersects(z.geom, l.geom)
     GROUP BY 1, 2, 3`;
   const area = n(p.area_lote) ?? 0;
   const proteccion = rows.filter((r: any) => r.capa === "proteccion").map((r: any) => ({ tipo: r.tipo, m2: r0(Number(r.m2)), pct: area ? Math.round((Number(r.m2) / area) * 1000) / 10 : null }));
-  const amenazaAlta = rows.filter((r: any) => r.capa === "amenaza" && /alta/i.test(r.grado ?? "")).map((r: any) => ({ tipo: String(r.tipo).replace(/_/g, " "), grado: r.grado, m2: r0(Number(r.m2)) }));
+  const amenazaAlta = rows.filter((r: any) => r.capa === "amenaza" && /alta|no mitigable/i.test(r.grado ?? "")).map((r: any) => ({ tipo: String(r.tipo).replace(/_/g, " "), grado: r.grado, m2: r0(Number(r.m2)) }));
   const m2Prot = Math.min(area, proteccion.reduce((a, x) => a + (x.m2 ?? 0), 0));
   const m2Alta = Math.min(area, amenazaAlta.reduce((a, x) => a + (x.m2 ?? 0), 0));
   const descuento = Math.min(area, m2Prot + m2Alta);
@@ -37,9 +37,11 @@ export function semaforo(p: any, af: any, rs?: any) {
   const items: { categoria: string; luz: Luz; lectura: string }[] = [];
   const am: string[] = p.amenazas ?? [];
   const grados = am.map((a) => a.split(":")[1] ?? "");
-  items.push(af.amenaza_alta.length || p.amenaza_alta
-    ? { categoria: "Amenaza y riesgo", luz: "rojo", lectura: `Amenaza alta: ${af.amenaza_alta.map((x: any) => x.tipo).join(", ") || "según capa del POT"}. Requiere estudio de riesgo de detalle.` }
-    : grados.some((g) => /media/i.test(g)) ? { categoria: "Amenaza y riesgo", luz: "amarillo", lectura: `Amenaza media (${am.join(", ")}): pedir estudio geotécnico.` }
+  const fmtAm = (xs: string[]) => xs.map((a) => a.replace(/_/g, " ").replace(":", ": ")).join(", ");
+  items.push(af.amenaza_alta.length || p.amenaza_alta || grados.some((g) => /alta|no mitigable/i.test(g))
+    ? { categoria: "Amenaza y riesgo", luz: "rojo", lectura: `Amenaza alta: ${af.amenaza_alta.map((x: any) => `${x.tipo} (${String(x.grado).toLowerCase()}, ${x.m2} m²)`).join(", ") || fmtAm(am.filter((a) => /alta|no mitigable/i.test(a))) || "según capa del POT"}. Esa área no se construye y requiere estudio de riesgo de detalle.` }
+    : grados.some((g) => /condici/i.test(g)) ? { categoria: "Amenaza y riesgo", luz: "amarillo", lectura: `Zona con condición de riesgo (${fmtAm(am)}): antes de licenciar se exige estudio de riesgo de detalle.` }
+    : grados.some((g) => /media/i.test(g)) ? { categoria: "Amenaza y riesgo", luz: "amarillo", lectura: `Amenaza media (${fmtAm(am)}): pedir estudio geotécnico.` }
     : { categoria: "Amenaza y riesgo", luz: "verde", lectura: am.length ? `Amenaza baja o muy baja (${am.map((a) => a.replace(/_/g, " ")).join(", ")}).` : "Sin amenazas cruzadas." });
   const pctProt = af.area_lote_m2 ? ((af.proteccion.reduce((a: number, x: any) => a + (x.m2 ?? 0), 0)) / af.area_lote_m2) * 100 : 0;
   items.push(pctProt > 30 ? { categoria: "Protección ambiental y retiros", luz: "rojo", lectura: `${Math.round(pctProt)} % del lote en suelo de protección (${af.proteccion.map((x: any) => x.tipo).join(", ")}).` }

@@ -154,7 +154,6 @@ export async function fichaPredio(f: FichaInput) {
     },
     proyectos_nuevos_1500m: proyectos,
     lotes_en_venta_2km: lotesVenta,
-    prefactibilidad_rapida: prefactibilidadRapida(p, mercado),
     procedencia: {
       catastro: Object.values(src).find((s) => s.fuente.includes("predios") || s.fuente === "geomed_lotes") ? "Catastro municipal (GeoMedellín / IDEM / GeoAntioquia / Cornare)" : null,
       norma: p.norma_fuente === "servicio" ? "Servicio público de tratamientos del municipio" : p.norma_acuerdo ?? null,
