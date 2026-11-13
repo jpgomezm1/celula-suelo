@@ -1,11 +1,14 @@
 // Restricciones que "matan" un lote y no salen de los índices del POT: red hídrica (cauces naturales y canalizados),
 // retiros hídricos oficiales, planes parciales y otros instrumentos de planificación complementaria, y árboles
-// (patrimoniales y censo urbano). Uso: npm run restricciones [-- cauces|retiros|planes|arboles]
+// (patrimoniales y censo urbano). Uso: npm run restricciones [-- cauces|retiros|cauces_municipales|torrencial|planes|arboles]
 import { sql } from "../lib/db";
 import { queryAll, type Feature } from "./arcgis";
 
 const G = "https://www.medellin.gov.co/servidormapas/rest/services";
 const I = "https://portalidem.metropol.gov.co/server/rest/services";
+// Servidores propios de los municipios (POT vigentes): Itagüí (Acuerdo 09 de 2023) y Sabaneta (Secretaría de Planeación, ArcGIS Online)
+const IT = "https://arcgis.itagui.gov.co/waserver/rest/services/Formulacion";
+const SA = "https://services7.arcgis.com/OsNfmcCXlLRPMVA8/ArcGIS/rest/services";
 const VALLE = { xmin: -75.72, ymin: 6.0, xmax: -75.4, ymax: 6.45 };
 const DANE: Record<string, string> = { "001": "05001", "079": "05079", "088": "05088", "129": "05129", "212": "05212", "266": "05266", "308": "05308", "360": "05360", "380": "05380", "631": "05631" };
 const s = (v: unknown) => (v == null || String(v).trim() === "" ? null : String(v).trim());
@@ -44,7 +47,7 @@ async function insertar(tabla: "hidro_cauce" | "hidro_retiro" | "instrumento_pla
 async function todo(url: string, opts = {}): Promise<Feature[]> { const out: Feature[] = []; for await (const p of queryAll(url, { outFields: "*", ...opts })) out.push(...p); return out; }
 
 async function cauces() {
-  await sql`DELETE FROM hidro_cauce`;
+  await sql`DELETE FROM hidro_cauce WHERE fuente NOT IN ('sabaneta_drenajes', 'itagui_hidrografia')`;
   // 1) Red hídrica oficial del POT 48 de Medellín (cauces con nombre y jerarquía)
   const pot = await todo(`${G}/ordenamiento_ter/VM_04_Estructura_Ecologica_Principal/MapServer/4`);
   await insertar("hidro_cauce", pot.map((f) => ({ fuente: "geomed_red_hidrica_pot48", ref: s(f.properties.t_id), nombre: s(f.properties.nombre), jerarquia: s(f.properties.jerarquia), canalizado: null, geom: f.geometry ? JSON.stringify(f.geometry) : null })), "linea");
@@ -71,7 +74,58 @@ async function retiros() {
   // Copia los de Medellín para consultar todo en una tabla
   await sql`INSERT INTO hidro_retiro (fuente, municipio_dane, nombre, faja_m, geom)
     SELECT 'geomed_retiros_hidricos', '05001', NULL, NULLIF(attrs->>'faja_m', '')::numeric, geom FROM zoning_layer WHERE subtipo = 'retiro_hidrico'`;
-  console.log(`retiros: La Estrella ${le.length} + Medellín (zoning_layer)`);
+  // Envigado: la capa de protección del POT (IDEM) describe cada polígono; se toman los de retiro a corrientes, nacimientos y humedales
+  const [{ n: env }] = await sql`WITH x AS (INSERT INTO hidro_retiro (fuente, municipio_dane, nombre, faja_m, geom)
+    SELECT 'idem_envigado_retiros', '05266', z.attrs->'src'->>'descripcion', NULL, z.geom FROM zoning_layer z
+    WHERE z.municipio_dane = '05266' AND z.capa = 'proteccion' AND z.attrs->'src'->>'descripcion' ~* 'retiro a (corrientes|nacimientos|humedales)' RETURNING 1) SELECT count(*)::int n FROM x`;
+  // Bello: zonas de retiro a corrientes naturales y corredor ribereño del suelo de protección del POT (IDEM)
+  const [{ n: bel }] = await sql`WITH x AS (INSERT INTO hidro_retiro (fuente, municipio_dane, nombre, faja_m, geom)
+    SELECT 'idem_bello_retiros', '05088', z.attrs->>'categoria', NULL, z.geom FROM zoning_layer z
+    WHERE z.municipio_dane = '05088' AND z.capa = 'proteccion' AND z.attrs->>'categoria' ~ '^(ZRNPA|ZCR):' RETURNING 1) SELECT count(*)::int n FROM x`;
+  // Itagüí: retiros a corrientes de agua y a humedales del POT 2023 (Acuerdo 09 de 2023, servidor de la Alcaldía)
+  const it: Feature[] = [];
+  for (const c of [5, 1, 2]) it.push(...(await todo(`${IT}/03_FG_Suelo_Proteccion/MapServer/${c}`)));
+  await insertar("hidro_retiro", it.map((f) => ({ fuente: "itagui_pot2023_retiros", municipio_dane: "05360", nombre: s(f.properties.tipo ?? f.properties.elemento), faja_m: null, geom: f.geometry ? JSON.stringify(f.geometry) : null })), "poligono");
+  // Sabaneta: retiros a quebradas (10, 30 y 60 m) de la Secretaría de Planeación
+  const sa = await todo(`${SA}/Retiro_de_Quebradas/FeatureServer/0`);
+  await insertar("hidro_retiro", sa.map((f) => ({ fuente: "sabaneta_retiros_quebradas", municipio_dane: "05631", nombre: s(f.properties.Clasi) ? `Retiro a quebrada (${s(f.properties.Clasi)})` : "Retiro a quebrada", faja_m: null, geom: f.geometry ? JSON.stringify(f.geometry) : null })), "poligono");
+  console.log(`retiros: La Estrella ${le.length}, Envigado ${env}, Bello ${bel}, Itagüí ${it.length}, Sabaneta ${sa.length} + Medellín (zoning_layer)`);
+}
+
+/** Cauces oficiales municipales (nombres y trazado) que complementan OpenStreetMap. Se pueden recargar sin tocar los demás. */
+async function caucesMunicipales() {
+  await sql`DELETE FROM hidro_cauce WHERE fuente IN ('sabaneta_drenajes', 'itagui_hidrografia')`;
+  const sa = await todo(`${SA}/Drenajes/FeatureServer/0`);
+  await insertar("hidro_cauce", sa.map((f) => ({ fuente: "sabaneta_drenajes", ref: s(f.properties.OBJECTID), nombre: s(f.properties.NOMBRE) ?? s(f.properties.ETIQUETA), jerarquia: s(f.properties.TIPO), canalizado: null, geom: f.geometry ? JSON.stringify(f.geometry) : null })), "linea");
+  const it = await todo(`${IT}/00_Cartografia_Base/MapServer/7`);
+  const nom = (p: any) => s(p.NOMBRE ?? p.nombre ?? p.NMG ?? p.nmg);
+  await insertar("hidro_cauce", it.map((f) => ({ fuente: "itagui_hidrografia", ref: null, nombre: nom(f.properties), jerarquia: null, canalizado: null, geom: f.geometry ? JSON.stringify(f.geometry) : null })), "linea");
+  console.log(`cauces municipales: Sabaneta ${sa.length}, Itagüí ${it.length}`);
+}
+
+/** Amenaza por avenida torrencial de los POT municipales (Itagüí 2023 y Sabaneta), a la capa de amenazas. */
+async function torrencial() {
+  const capas: [string, string, string, (p: any) => string | null][] = [
+    [`${IT}/ConsultaPOT_RIESGOS_A2023/MapServer/26`, "itagui_pot2023_avenida_torrencial", "05360", (p) => (/alta/i.test(p.amenaza) ? "Alta" : /media/i.test(p.amenaza) ? "Media" : /baja/i.test(p.amenaza) ? "Baja" : s(p.amenaza))],
+    [`${IT}/ConsultaPOT_RIESGOS_A2023/MapServer/17`, "itagui_pot2023_condicion_torrencial", "05360", () => "Condición de riesgo"],
+    [`${SA}/AmenazaAvTorrencial/FeatureServer/0`, "sabaneta_avenida_torrencial", "05631", (p) => s(p.Amenaza)],
+  ];
+  for (const [url, fuente, dane, grado] of capas) {
+    const fs = await todo(url);
+    const filas = fs.filter((f) => f.geometry).map((f) => ({ attrs: { src: f.properties, tipo: "avenidas_torrenciales", grado: grado(f.properties) }, geom: JSON.stringify(f.geometry) }));
+    await sql`DELETE FROM zoning_sub WHERE fuente = ${fuente}`;
+    await sql`DELETE FROM zoning_layer WHERE fuente = ${fuente}`;
+    const [snap] = await sql`INSERT INTO source_snapshot (fuente, nombre, url, tipo_dato, licencia, fetched_at, esperado, registros)
+      VALUES (${fuente}, ${`Amenaza por avenida torrencial · ${dane === "05360" ? "POT Itagüí 2023" : "Sabaneta"}`}, ${url}, 'oficial', 'Servicio público del municipio; sin licencia de reutilización declarada', now(), ${fs.length}, ${filas.length}) RETURNING id`;
+    for (let i = 0; i < filas.length; i += 100) {
+      await sql`WITH n AS (INSERT INTO zoning_layer (fuente, municipio_dane, capa, subtipo, attrs, geom, snapshot_id)
+          SELECT ${fuente}, ${dane}, 'amenaza', 'avenidas_torrenciales', x->'attrs', ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(x->>'geom'), 4326)), 3)), ${snap.id}
+          FROM jsonb_array_elements(${JSON.stringify(filas.slice(i, i + 100))}::jsonb) x RETURNING id, fuente, municipio_dane, capa, subtipo, attrs, geom)
+        INSERT INTO zoning_sub (zoning_id, fuente, municipio_dane, capa, subtipo, attrs, area_orig, geom)
+        SELECT id, fuente, municipio_dane, capa, subtipo, attrs, ST_Area(geom), ST_Subdivide(geom, 128) FROM n`;
+    }
+    console.log(`avenida torrencial ${fuente}: ${filas.length}`);
+  }
 }
 
 async function planes() {
@@ -123,6 +177,8 @@ const que = process.argv[2];
 await esquema();
 if (!que || que === "cauces") await cauces();
 if (!que || que === "retiros") await retiros();
+if (!que || que === "cauces_municipales") await caucesMunicipales();
+if (!que || que === "torrencial") await torrencial();
 if (!que || que === "planes") await planes();
 if (!que || que === "arboles") await arboles();
 console.log(JSON.stringify(await sql`SELECT 'cauces' t, count(*)::int n FROM hidro_cauce UNION ALL SELECT 'retiros', count(*)::int FROM hidro_retiro UNION ALL SELECT 'planes', count(*)::int FROM instrumento_plan UNION ALL SELECT 'arboles', count(*)::int FROM arbol`));

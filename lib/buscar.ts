@@ -16,8 +16,9 @@ async function restriccionesEnLote(ids: string[]) {
     SELECT l.id,
       EXISTS (SELECT 1 FROM hidro_cauce c WHERE NOT coalesce(c.canalizado, false) AND c.geom && l.geom AND ST_Intersects(c.geom, l.geom)) AS cauce_cruza,
       coalesce((SELECT ST_Area(ST_Intersection(ST_Union(ST_Transform(r.geom, 9377)), l.g)) FROM hidro_retiro r WHERE r.geom && l.geom AND ST_Intersects(r.geom, l.geom)), 0) AS m2_oficial,
-      CASE WHEN l.municipio_dane IN ('05001', '05380') THEN 0 ELSE coalesce((SELECT ST_Area(ST_Intersection(ST_Union(ST_Buffer(ST_Transform(c.geom, 9377), 30)), l.g))
-        FROM hidro_cauce c WHERE NOT coalesce(c.canalizado, false) AND c.geom && ST_Expand(l.geom, 0.0004) AND ST_DWithin(c.geom::geography, l.geom::geography, 30)), 0) END AS m2_faja,
+      CASE WHEN l.municipio_dane = '05001' THEN 0 ELSE coalesce((SELECT ST_Area(ST_Intersection(ST_Union(ST_Buffer(ST_Transform(c.geom, 9377), 30)), l.g))
+        FROM hidro_cauce c WHERE NOT coalesce(c.canalizado, false) AND c.geom && ST_Expand(l.geom, 0.0004) AND ST_DWithin(c.geom::geography, l.geom::geography, 30)
+          AND NOT EXISTS (SELECT 1 FROM hidro_retiro r WHERE r.geom && ST_Expand(c.geom, 0.0001) AND ST_DWithin(r.geom::geography, c.geom::geography, 5))), 0) END AS m2_faja,
       (SELECT count(*) FROM arbol a WHERE a.patrimonial AND a.geom && l.geom AND ST_Intersects(a.geom, l.geom))::int AS patrimoniales,
       (SELECT string_agg(DISTINCT coalesce(CASE WHEN coalesce(p.nombre, '') ~* '^ *(planes? parcial(es)?)? *$' THEN NULL ELSE p.nombre END, p.codigo, 'plan parcial'), ', ') FROM instrumento_plan p
         WHERE p.geom && l.geom AND ST_Intersects(p.geom, l.geom) AND (p.instrumento || ' ' || coalesce(p.nombre, '')) ~* 'parcial'
@@ -25,7 +26,7 @@ async function restriccionesEnLote(ids: string[]) {
       l.a
     FROM l`;
   return new Map(rows.map((r: any) => {
-    const m2 = Math.max(Number(r.m2_oficial) || 0, Number(r.m2_faja) || 0);
+    const m2 = Math.min(Number(r.a), (Number(r.m2_oficial) || 0) + (Number(r.m2_faja) || 0));
     return [r.id, { pct_en_retiro_hidrico: Math.round((m2 / Number(r.a)) * 1000) / 10, cauce_cruza: r.cauce_cruza, arboles_patrimoniales: r.patrimoniales, plan_parcial: r.plan_parcial }];
   }));
 }
@@ -74,7 +75,7 @@ export async function buscarLotes(f: BuscarInput) {
     ...(filtraFisico ? { revisados: rows.length, descartados_por_restricciones: rows.length - pasan.length } : {}),
     lotes,
     nota: "potencial_preliminar, área construible y viviendas máximas son inferencias propias (orientativas). En municipios con POT derogado en la fuente o sin capa de tratamientos no se marca potencial. " +
-      "Retiro hídrico: oficial del POT en Medellín y La Estrella; en los demás, faja de referencia de 30 m a cauces naturales. Árboles patrimoniales: solo hay censo en Medellín. Para el detalle de un lote usa consulta_norma.",
+      "Retiro hídrico: oficial del POT en Medellín, Envigado, Sabaneta, Itagüí, Bello y La Estrella; en los demás municipios, y en los cauces sin retiro oficial, faja de referencia de 30 m a cauces naturales. Árboles patrimoniales: solo hay censo en Medellín. Para el detalle de un lote usa consulta_norma.",
   };
 }
 
