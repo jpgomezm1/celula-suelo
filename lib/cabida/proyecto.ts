@@ -9,7 +9,8 @@ import { analizarLote } from "../analisis_lote";
 import { marcoLote, edificable, rect, rectDentro, solapa, caja, area, r2, type Pt, type MarcoLote } from "./lote";
 import { plantaTorre, type PlantaTorre } from "./torre";
 import { plantaSotano, type PlantaSotano } from "./sotano";
-import { MEZCLA_DEFECTO, PLANTILLAS, type Mezcla } from "./tipologias";
+import { MEZCLA_DEFECTO, PLANTILLAS, instanciar, type Mezcla } from "./tipologias";
+import { revisarPlantilla } from "./validar";
 import { normaVolumetrica, puntoFijo, parqueaderos, rampa, obligaciones, type NormaVol } from "./norma";
 
 export type OpcionesProyecto = {
@@ -187,7 +188,26 @@ export async function anteproyecto(id: string, o: OpcionesProyecto = {}) {
   }).filter((x) => x.unidades > 0);
   porTipologia.forEach((x) => (x.pct = Math.round((x.unidades / Math.max(unidades, 1)) * 100)));
 
+  // Revisión arquitectónica: cada tipología con su frente y crujía reales; y recorrido de evacuación más largo
+  // (de la puerta de un apartamento a la puerta de la escalera, por el pasillo), a verificar con la NSR-10, Título K.
+  const vistos = new Map<string, number>();
+  for (const t of torres) for (const a of t.planta.aptos) { const xs = a.poly.map((q) => q[0]); vistos.set(`${a.tipologia}:${r2(Math.max(...xs) - Math.min(...xs))}`, 1); }
+  const problemas = [...vistos.keys()].flatMap((k) => { const [tp, w] = k.split(":"); return PLANTILLAS[tp] ? revisarPlantilla(instanciar(PLANTILLAS[tp], Number(w), F)) : []; });
+  const recorrido = Math.max(0, ...torres.map((t) => {
+    const n = caja(t.planta.nucleo.poly), xEsc = n.x0 + 1.5;
+    return Math.max(...t.planta.puertas.filter((d) => d.tipo === "entrada").map((d) => Math.abs(d.x - xEsc) + t.planta.pasillo / 2));
+  }));
+  const revision = {
+    ok: problemas.length === 0, problemas,
+    reglas: ["Todos los recintos se alcanzan desde la entrada", "Ninguna alcoba ni baño social obliga a cruzar otra alcoba", "Alcobas y sala con fachada y ventana ≥ 1,0 m",
+      "Áreas y lados mínimos (alcoba principal 9 m² / 2,7 m; alcoba 7 m² / 2,4 m; baño 2,4 m² / 1,2 m; cocina 4,5 m²)", "Puertas: entrada ≥ 0,90 m, alcobas ≥ 0,80 m, baños ≥ 0,70 m",
+      "Escalera con puertas cortafuego en el sentido de la evacuación; lobby con acceso desde la vía"],
+    recorrido_max_a_escalera_m: r2(recorrido),
+    nota: `Recorrido más largo de una puerta de apartamento a la escalera: ${r2(recorrido)} m por el pasillo. Verificar distancias de evacuación y pasillos sin salida con la NSR-10, Título K, y el número de escaleras según la altura y la ocupación.`,
+  };
+
   const resumen = {
+    revision_arquitectonica: revision,
     escenario: esc.escenario, torres: torres.length, pisos_totales: pisos, pisos_plataforma: pp, altura_m: altura, aptos_por_piso: aptosPorPiso, unidades,
     unidades_norma: esc.unidades, por_tipologia: porTipologia,
     area_construida_sobre_rasante_m2: Math.round(construidaSobre), area_construible_norma_m2: Math.round(Number(esc.area_construible_m2)),

@@ -26,6 +26,7 @@ export const CAPAS: Record<string, { aci: number; rgb: [number, number, number];
   "A-LOTE": { aci: 2, rgb: [0.85, 0.6, 0.0], mm: 0.5 }, "A-RETIRO": { aci: 8, rgb: [0.5, 0.5, 0.5], mm: 0.18 }, "A-PARQUEO": { aci: 3, rgb: [0.25, 0.55, 0.29], mm: 0.13 },
   "A-RAMPA": { aci: 6, rgb: [0.76, 0.09, 0.36], mm: 0.25 }, "A-DEPOSITO": { aci: 4, rgb: [0.4, 0.4, 0.6], mm: 0.13 }, "A-TECNICO": { aci: 1, rgb: [0.7, 0.3, 0.2], mm: 0.18 },
   "A-CORTE": { aci: 7, rgb: [0.1, 0.1, 0.1], mm: 0.5 }, "A-FACHADA": { aci: 7, rgb: [0.15, 0.15, 0.15], mm: 0.25 }, "A-TERRENO": { aci: 32, rgb: [0.55, 0.4, 0.25], mm: 0.35 },
+  "A-SENDERO": { aci: 41, rgb: [0.62, 0.55, 0.42], mm: 0.18 }, "A-ACCESO": { aci: 1, rgb: [0.42, 0.3, 0.9], mm: 0.35 },
   "A-PLANCHA": { aci: 7, rgb: [0, 0, 0], mm: 0.5 }, "A-ROTULO": { aci: 7, rgb: [0.03, 0.02, 0.1], mm: 0.25 }, "A-TABLA": { aci: 7, rgb: [0.2, 0.2, 0.2], mm: 0.13 },
 };
 

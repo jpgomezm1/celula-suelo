@@ -11,7 +11,8 @@ export type PuertaT = { x: number; y: number; ancho: number; rot: number; espejo
 export type VentanaT = { a: P2; b: P2; tipo: string };
 export type MuebleT = { bloque: string; x: number; y: number; rot: number };
 export type AptoT = { id: string; tipologia: string; nombre: string; alcobas: number; banos: number; area_privada: number; poly: Poly; lado: "sur" | "norte" };
-export type NucleoT = { poly: Poly; escaleras: Poly[]; vestibulos: Poly[]; ascensores: Poly[]; shut: Poly; ductos: Poly[]; hall: Poly; n_escaleras: number; n_ascensores: number };
+export type NucleoT = { poly: Poly; escaleras: Poly[]; vestibulos: Poly[]; ascensores: Poly[]; shut: Poly; ductos: Poly[]; hall: Poly; n_escaleras: number; n_ascensores: number;
+  cuartos?: { nombre: string; poly: Poly }[]; puertas_ascensor?: [P2, P2][] };
 export type PlantaTorre = { L: number; D: number; F: number; pasillo: number; aptos: AptoT[]; espacios: EspacioT[]; muros: MuroT[]; puertas: PuertaT[]; ventanas: VentanaT[];
   muebles: MuebleT[]; nucleo: NucleoT; circulacion: Poly[] };
 
@@ -122,7 +123,8 @@ export function plantaTorre(p: ParamTorre, prefijo = "A"): PlantaTorre | null {
         const ancho = rr(v.b - v.a);
         const [hx, hy] = v.eje === "y" ? T([v.a, v.en]) : T([v.en, v.a]);
         // Dirección de giro en coordenadas del apartamento: hacia +y (o +x); se transforma con el lado y el espejo.
-        const dirApto: P2 = v.eje === "y" ? [0, 1] : [1, 0];
+        const sg = v.abre ?? 1;
+        const dirApto: P2 = v.eje === "y" ? [0, sg] : [sg, 0];
         const dir: P2 = [espejo ? -dirApto[0] : dirApto[0], lado === "sur" ? -dirApto[1] : dirApto[1]];
         const largoApto: P2 = v.eje === "y" ? [1, 0] : [0, 1];
         const largo: P2 = [espejo ? -largoApto[0] : largoApto[0], lado === "sur" ? -largoApto[1] : largoApto[1]];
@@ -139,20 +141,71 @@ export function plantaTorre(p: ParamTorre, prefijo = "A"): PlantaTorre | null {
   colocar(alas.surI, "sur", c0, true); colocar(alas.surD, "sur", c1, false);
   colocar(alas.norI, "norte", c0, true); colocar(alas.norD, "norte", c1, false);
 
-  // Punto fijo: escaleras en el lado sur, ascensores + shut de basuras + ductos en el lado norte, hall sobre el pasillo.
-  const escaleras: Poly[] = [], ascensores: Poly[] = [], ductos: Poly[] = [];
-  const vestibulos: Poly[] = [];
-  const v = p.vestibulo ? 1.6 : 0; // escalera a prueba de humo: vestíbulo previo entre el hall y la escalera
+  // Punto fijo (núcleo entre c0 y c1):
+  //  · Lado sur: escaleras encerradas (muros cortafuego) con vestíbulo previo si es a prueba de humo. Puertas
+  //    cortafuego de 1,0 m que abren en el sentido de la evacuación: hall → vestíbulo → escalera.
+  //    El sobrante del lado sur es cuarto técnico (tableros, telecomunicaciones) con puerta al hall.
+  //  · Lado norte: ascensores con su puerta (0,9 m) al hall; junto a ellos el cuarto de shut y aseo (puerta 0,8 m)
+  //    que da paso al cuarto técnico de ductos detrás de los ascensores.
+  const escaleras: Poly[] = [], ascensores: Poly[] = [], ductos: Poly[] = [], vestibulos: Poly[] = [];
+  const cuartos: { nombre: string; poly: Poly }[] = [];
+  const puertasAsc: [P2, P2][] = [];
+  const v = p.vestibulo ? 1.6 : 0;
+  const tm0 = p.esp_medianero, nucleoMuro = (x0: number, y0: number, x1: number, y1: number) => out.muros.push({ tipo: "nucleo", poly: rectP(x0, y0, x1, y1) });
+  const muroConVanos = (eje: "x" | "y", en: number, d0: number, d1: number, vanos: [number, number][]) => {
+    let d = d0;
+    for (const [a, b] of vanos.sort((u, w) => u[0] - w[0])) { if (a - d > 0.05) (eje === "y" ? nucleoMuro(d, en - tm0 / 2, a, en + tm0 / 2) : nucleoMuro(en - tm0 / 2, d, en + tm0 / 2, a)); d = Math.max(d, b); }
+    if (d1 - d > 0.05) (eje === "y" ? nucleoMuro(d, en - tm0 / 2, d1, en + tm0 / 2) : nucleoMuro(en - tm0 / 2, d, en + tm0 / 2, d1));
+  };
+  const puerta = (x: number, y: number, ancho: number, rot: number, espejo: boolean, tipo: string) => out.puertas.push({ x: rr(x), y: rr(y), ancho, rot, espejo, tipo });
+  // --- Lado sur: escaleras ---
+  const vanosHallSur: [number, number][] = [];
+  const ye0 = Math.max(0, F - v - 5.8);
   for (let i = 0; i < p.n_escaleras; i++) {
-    escaleras.push(rectP(c0 + i * 3.0 + 0.1, Math.max(0.1, F - v - 5.8), c0 + i * 3.0 + 2.9, F - v));
-    if (v) vestibulos.push(rectP(c0 + i * 3.0 + 0.1, F - v, c0 + i * 3.0 + 2.9, F));
+    const xe0 = c0 + i * 3.0, xe1 = xe0 + 3.0, xm = (xe0 + xe1) / 2;
+    escaleras.push(rectP(xe0 + 0.1, Math.max(0.1, ye0), xe1 - 0.1, F - v));
+    vanosHallSur.push([xm - 0.5, xm + 0.5]);
+    puerta(xm - 0.5, F, 1.0, 0, true, "cortafuego");                       // hall → vestíbulo/escalera (abre hacia la escalera)
+    if (v) {
+      vestibulos.push(rectP(xe0 + 0.1, F - v, xe1 - 0.1, F));
+      muroConVanos("y", F - v, xe0, xe1, [[xm - 0.5, xm + 0.5]]);
+      puerta(xm - 0.5, F - v, 1.0, 0, true, "cortafuego");                 // vestíbulo → escalera
+    }
+    if (ye0 > 0.15) nucleoMuro(xe0, ye0 - tm0 / 2, xe1, ye0 + tm0 / 2);
+    if (i > 0) nucleoMuro(xe0 - tm0 / 2, ye0, xe0 + tm0 / 2, F);
   }
-  for (let i = 0; i < p.n_ascensores; i++) ascensores.push(rectP(c0 + i * 2.25 + 0.1, F + pas, c0 + i * 2.25 + 2.15, F + pas + 2.3));
-  const xs = c0 + p.n_ascensores * 2.25 + 0.1;
-  const shut = rectP(xs, F + pas, xs + 1.2, F + pas + 1.2);
-  ductos.push(rectP(xs, F + pas + 1.3, xs + 1.2, F + pas + 2.3));
+  const xr = c0 + p.n_escaleras * 3.0;
+  if (c1 - xr > 1.0) {
+    nucleoMuro(xr - tm0 / 2, 0, xr + tm0 / 2, F);
+    cuartos.push({ nombre: "Cuarto técnico", poly: rectP(xr, 0, c1, F) });
+    const xp = xr + Math.min(0.3, (c1 - xr - 0.8) / 2);
+    vanosHallSur.push([xp, xp + 0.8]); puerta(xp, F, 0.8, 0, true, "servicio");
+  } else if (c1 - xr > 0.05) cuartos.push({ nombre: "Ducto", poly: rectP(xr, 0, c1, F) });
+  muroConVanos("y", F, c0, c1, vanosHallSur);
+  // --- Lado norte: ascensores, shut y aseo, ductos ---
+  const yN = F + pas, prof = Math.min(2.3, D - yN);
+  const vanosHallNorte: [number, number][] = [];
+  for (let i = 0; i < p.n_ascensores; i++) {
+    const xa0 = c0 + i * 2.25, xa1 = xa0 + 2.25, xm = (xa0 + xa1) / 2;
+    ascensores.push(rectP(xa0 + 0.1, yN + 0.1, xa1 - 0.1, yN + prof));
+    vanosHallNorte.push([xm - 0.45, xm + 0.45]); puertasAsc.push([[rr(xm - 0.45), rr(yN + 0.08)], [rr(xm + 0.45), rr(yN + 0.08)]]);
+    if (i > 0) nucleoMuro(xa0 - tm0 / 2, yN, xa0 + tm0 / 2, yN + prof);
+  }
+  const xs = c0 + p.n_ascensores * 2.25;
+  const conTecnico = p.n_ascensores > 0 && D - (yN + prof) > 1.2;
+  if (p.n_ascensores > 0) { nucleoMuro(c0, yN + prof - tm0 / 2, xs, yN + prof + tm0 / 2); muroConVanos("x", xs, yN, D, conTecnico ? [[yN + prof + 0.3, yN + prof + 1.1]] : []); }
+  const shut = rectP(c1 - 1.25, D - 1.25, c1 - 0.05, D - 0.05);
+  ductos.push(rectP(c1 - 1.25, D - 2.35, c1 - 0.05, D - 1.35));
+  cuartos.push({ nombre: "Shut y aseo", poly: rectP(xs, yN, c1, D) });
+  const xq = xs + Math.min(0.2, Math.max(0, (c1 - xs - 0.8) / 2));
+  vanosHallNorte.push([xq, xq + 0.8]); puerta(xq, yN, 0.8, 0, false, "servicio");
+  if (conTecnico) {
+    cuartos.push({ nombre: "Cuarto técnico", poly: rectP(c0, yN + prof, xs, D) });
+    puerta(xs, yN + prof + 0.3, 0.8, 90, false, "servicio"); // del cuarto de shut y aseo al cuarto técnico de ductos
+  }
+  muroConVanos("y", yN, c0, c1, vanosHallNorte);
   const hall = rectP(c0, F, c1, F + pas);
-  out.nucleo = { poly: rectP(c0, 0, c1, D), escaleras, vestibulos, ascensores, shut, ductos, hall, n_escaleras: p.n_escaleras, n_ascensores: p.n_ascensores };
+  out.nucleo = { poly: rectP(c0, 0, c1, D), escaleras, vestibulos, ascensores, shut, ductos, hall, n_escaleras: p.n_escaleras, n_ascensores: p.n_ascensores, cuartos, puertas_ascensor: puertasAsc };
   // Pasillos (alas) y espacios sobrantes del núcleo como área común
   out.circulacion.push(rectP(0, F, c0, F + pas), rectP(c1, F, L, F + pas), hall);
   // Muros perimetrales: fachadas (con vanos de ventana), pasillos (con puertas de entrada), medianeros entre apartamentos y núcleo.

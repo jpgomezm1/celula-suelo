@@ -53,22 +53,28 @@ function cota(a: P, b: P, off: number, esc: number, texto?: string): Op[] {
 const centro = (pts: P[]): P => [pts.reduce((s, q) => s + q[0], 0) / pts.length, pts.reduce((s, q) => s + q[1], 0) / pts.length];
 
 /** Dibuja la planta de una torre transformada al marco del lote. */
-function dibujarTorre(pl: PlantaTorre, T: Xf, rotBloque: number, esc: number, o: { detalle: boolean; convertidos?: Record<string, string>; adaptables?: string[]; textos?: boolean }): Op[] {
+function dibujarTorre(pl: PlantaTorre, T: Xf, rotBloque: number, esc: number, o: { detalle: boolean; convertidos?: Record<string, string>; adaptables?: string[]; textos?: boolean; lobbies?: string[] }): Op[] {
   const ops: Op[] = [];
+  // Lobbies (primer piso): abiertos al hall del piso y con puerta doble de 1,8 m a la fachada (acceso desde la calle).
+  const lobbies = pl.aptos.filter((a) => o.lobbies?.includes(a.id)).map((a) => { const xs = a.poly.map((q) => q[0]); const x0 = Math.min(...xs), x1 = Math.max(...xs); return { x0, x1, xm: (x0 + x1) / 2, lado: a.lado }; });
+  const accesoEn = (lado: "sur" | "norte") => lobbies.filter((l) => l.lado === lado).map((l) => [l.xm - 0.9, l.xm + 0.9] as [number, number]);
   const tp = (pts: P[]) => pts.map(T);
   // Espacios convertidos (lobby, salón social): se dibujan como un solo recinto, sin muros internos, puertas ni muebles.
   const cajasConv = pl.aptos.filter((a) => o.convertidos?.[a.id]).map((a) => { const xs = a.poly.map((q) => q[0]), ys = a.poly.map((q) => q[1]); return [Math.min(...xs) + 0.2, Math.min(...ys) + 0.2, Math.max(...xs) - 0.2, Math.max(...ys) - 0.2]; });
   const enConv = (q: P) => cajasConv.some(([x0, y0, x1, y1]) => q[0] > x0 && q[0] < x1 && q[1] > y0 && q[1] < y1);
+  // Puertas interiores del apartamento convertido: se quitan todas, también las que quedan pegadas a sus muros.
+  const enConvPuerta = (q: P) => cajasConv.some(([x0, y0, x1, y1]) => q[0] > x0 - 0.25 && q[0] < x1 + 0.25 && q[1] > y0 - 0.15 && q[1] < y1 + 0.15);
   for (const c of pl.circulacion) ops.push({ t: "relleno", pts: tp(c), capa: "A-CIRCULACION" });
   // Muros (las fachadas se cortan en las ventanas)
   const ventanas = pl.ventanas;
   for (const m of pl.muros) {
     if (m.tipo === "interior" && enConv(centro(m.poly))) continue;
+    if (m.tipo === "pasillo" && lobbies.some((l) => { const c = centro(m.poly); return c[0] > l.x0 + 0.3 && c[0] < l.x1 - 0.3 && Math.abs(c[1] - (l.lado === "sur" ? pl.F : pl.F + pl.pasillo)) < 0.2; })) continue;
     let piezas: P[][] = [m.poly];
     if (m.tipo === "fachada") {
       const ys = m.poly.map((q) => q[1]), y0 = Math.min(...ys), y1 = Math.max(...ys);
       if (y1 - y0 < 0.5) {
-        const lado = ventanas.filter((v) => Math.abs(v.a[1] - (y0 < 0 ? 0 : pl.D)) < 0.05).map((v) => [Math.min(v.a[0], v.b[0]), Math.max(v.a[0], v.b[0])] as [number, number]).sort((a, b) => a[0] - b[0]);
+        const lado = [...ventanas.filter((v) => Math.abs(v.a[1] - (y0 < 0 ? 0 : pl.D)) < 0.05).map((v) => [Math.min(v.a[0], v.b[0]), Math.max(v.a[0], v.b[0])] as [number, number]), ...accesoEn(y0 < 0 ? "sur" : "norte")].sort((a, b) => a[0] - b[0]);
         const x0 = Math.min(...m.poly.map((q) => q[0])), x1 = Math.max(...m.poly.map((q) => q[0]));
         piezas = []; let x = x0;
         for (const [a, b] of lado) { if (a - x > 0.02) piezas.push([[x, y0], [a, y0], [a, y1], [x, y1]]); x = Math.max(x, b); }
@@ -80,11 +86,18 @@ function dibujarTorre(pl: PlantaTorre, T: Xf, rotBloque: number, esc: number, o:
       ops.push({ t: "poli", pts: tp(pz), capa: m.tipo === "interior" ? "A-MURO-INT" : "A-MURO" });
     }
   }
+  for (const l of lobbies) {
+    const y = l.lado === "sur" ? 0 : pl.D, s = l.lado === "sur" ? 1 : -1; // hojas que abren hacia afuera (evacuación)
+    ops.push({ t: "bloque", nombre: "PUERTA", p: T([l.xm - 0.9, y]), rot: rotBloque, sx: 0.9, sy: -0.9 * s, capa: "A-PUERTA" });
+    ops.push({ t: "bloque", nombre: "PUERTA", p: T([l.xm + 0.9, y]), rot: 180 + rotBloque, sx: 0.9, sy: 0.9 * s, capa: "A-PUERTA" });
+    if (o.textos !== false) ops.push({ t: "texto", p: T([l.xm, l.lado === "sur" ? -2.2 : pl.D + 2.2]), alto: mmM(2.4, esc), txt: "ACCESO", capa: "A-ACCESO", alin: "centro", negrita: true });
+  }
   for (const v of ventanas) {
+    if (lobbies.some((l) => Math.abs(v.a[1] - (l.lado === "sur" ? 0 : pl.D)) < 0.05 && Math.max(v.a[0], v.b[0]) > l.xm - 0.9 && Math.min(v.a[0], v.b[0]) < l.xm + 0.9)) continue;
     const d = v.a[1] < pl.D / 2 ? -1 : 1, t = 0.15;
     for (const off of [0, t / 2, t]) ops.push({ t: "linea", a: T([v.a[0], v.a[1] + d * off]), b: T([v.b[0], v.b[1] + d * off]), capa: "A-VENTANA" });
   }
-  for (const pu of pl.puertas) if (pu.tipo === "entrada" || !enConv([pu.x, pu.y])) ops.push({ t: "bloque", nombre: "PUERTA", p: T([pu.x, pu.y]), rot: pu.rot + rotBloque, sx: pu.ancho, sy: pu.espejo ? -pu.ancho : pu.ancho, capa: "A-PUERTA" });
+  for (const pu of pl.puertas) if (!(pu.tipo === "entrada" && lobbies.some((l) => pu.x > l.x0 - 0.05 && pu.x < l.x1 + 0.05 && Math.abs(pu.y - (l.lado === "sur" ? pl.F : pl.F + pl.pasillo)) < 0.05)) && (pu.tipo === "entrada" || !["puerta", "paso"].includes(pu.tipo) || !enConvPuerta([pu.x, pu.y]))) ops.push({ t: "bloque", nombre: "PUERTA", p: T([pu.x, pu.y]), rot: pu.rot + rotBloque, sx: pu.ancho, sy: pu.espejo ? -pu.ancho : pu.ancho, capa: "A-PUERTA" });
   // Núcleo
   const n = pl.nucleo;
   for (const e of n.escaleras) {
@@ -97,6 +110,9 @@ function dibujarTorre(pl: PlantaTorre, T: Xf, rotBloque: number, esc: number, o:
   }
   for (const v of n.vestibulos ?? []) { ops.push({ t: "poli", pts: tp(v), capa: "A-ESCALERA" }); if (o.textos !== false) ops.push({ t: "texto", p: T(centro(v)), alto: mmM(1.5, esc), txt: "Vestíbulo", capa: "A-ESPACIO", alin: "centro" }); }
   for (const a of n.ascensores) { const q = tp(a); ops.push({ t: "poli", pts: q, capa: "A-ASCENSOR" }, { t: "linea", a: q[0], b: q[2], capa: "A-ASCENSOR" }, { t: "linea", a: q[1], b: q[3], capa: "A-ASCENSOR" }); }
+  for (const [a, b] of n.puertas_ascensor ?? []) ops.push({ t: "linea", a: T(a), b: T(b), capa: "A-ASCENSOR" }, { t: "linea", a: T([a[0], a[1] + 0.1]), b: T([b[0], b[1] + 0.1]), capa: "A-ASCENSOR" });
+  if (o.textos !== false) for (const c of n.cuartos ?? []) { const cc = c.nombre === "Shut y aseo" ? [centro(c.poly)[0], Math.min(...c.poly.map((q) => q[1])) + 0.9] as P : centro(c.poly); ops.push({ t: "texto", p: T(cc), alto: mmM(1.4, esc), txt: c.nombre, capa: "A-ESPACIO", alin: "centro" }); }
+  if (o.textos !== false && n.ascensores.length) ops.push({ t: "texto", p: T([centro(n.ascensores[0])[0], centro(n.ascensores[0])[1]]), alto: mmM(1.3, esc), txt: "Asc.", capa: "A-ESPACIO", alin: "centro" });
   ops.push({ t: "relleno", pts: tp(n.shut), capa: "A-DUCTO" }); for (const d of n.ductos) ops.push({ t: "poli", pts: tp(d), capa: "A-DUCTO" });
   if (o.textos !== false && Math.abs(n.shut[2][0] - n.shut[0][0]) > 0.1) ops.push({ t: "texto", p: T(centro(n.shut)), alto: mmM(1.4, esc), txt: "Shut", capa: "A-TEXTO", alin: "centro" });
   // Espacios, muebles y rótulos de apartamentos
@@ -123,7 +139,7 @@ function dibujarTorre(pl: PlantaTorre, T: Xf, rotBloque: number, esc: number, o:
       continue;
     }
     if (o.textos === false) continue;
-    const q = T([centro(a.poly)[0], a.lado === "sur" ? 0.9 : pl.D - 0.9]);
+    const q = o.detalle ? T([centro(a.poly)[0], a.lado === "sur" ? pl.F + 0.35 : pl.F + pl.pasillo - 0.55]) : T([centro(a.poly)[0], a.lado === "sur" ? 0.9 : pl.D - 0.9]);
     ops.push({ t: "texto", p: q, alto: mmM(o.detalle ? 2.2 : 2.6, esc), txt: `${a.id} · ${a.nombre}${o.adaptables?.includes(a.id) ? " · adaptable" : ""}`, capa: "A-APTO", alin: "centro", negrita: true });
     if (!o.detalle) ops.push({ t: "texto", p: [q[0], q[1] - mmM(3.2, esc)], alto: mmM(2, esc), txt: `${f1(a.area_privada)} m²`, capa: "A-APTO", alin: "centro" });
   }
@@ -131,6 +147,69 @@ function dibujarTorre(pl: PlantaTorre, T: Xf, rotBloque: number, esc: number, o:
 }
 
 const transfTorre = (t: any): { T: Xf; rot: number } => ({ T: aLote(t), rot: t.rotada ? 90 : 0 });
+
+/** Cota y del frente del lote (lado de la vía, y mínima) en la abscisa x. */
+function yFrente(lote: P[], x: number) {
+  let y = Infinity;
+  for (let i = 0, j = lote.length - 1; i < lote.length; j = i++) {
+    const [ax, ay] = lote[j], [bx, by] = lote[i];
+    if ((x - ax) * (x - bx) <= 0 && Math.abs(bx - ax) > 1e-6) y = Math.min(y, ay + ((x - ax) * (by - ay)) / (bx - ax));
+  }
+  return Number.isFinite(y) ? y : Math.min(...lote.map((q) => q[1]));
+}
+
+/** Accesos del conjunto: sendero peatonal de 1,5 m desde la vía hasta la puerta de cada lobby (rodeando las torres)
+ *  y acceso vehicular a la rampa de sótanos. */
+function accesosSitio(m: Proyecto, esc: number): Op[] {
+  const ops: Op[] = [];
+  const torres = m.torres as any[];
+  const lote = m.marco.lote as P[];
+  const cajas = torres.map((t) => { const T = aLote(t); const h = [T([0, 0]), T([t.planta.L, 0]), T([t.planta.L, t.planta.D]), T([0, t.planta.D])]; const xs = h.map((q) => q[0]), ys = h.map((q) => q[1]); return { id: t.id, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }; });
+  const banda = (a: P, b: P, w = 1.5) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy); if (L < 0.05) return;
+    const nx = (-dy / L) * (w / 2), ny = (dx / L) * (w / 2);
+    const pts: P[] = [[a[0] + nx, a[1] + ny], [b[0] + nx, b[1] + ny], [b[0] - nx, b[1] - ny], [a[0] - nx, a[1] - ny]];
+    ops.push({ t: "relleno", pts, capa: "A-CIRCULACION" }, { t: "linea", a: pts[0], b: pts[1], capa: "A-SENDERO" }, { t: "linea", a: pts[3], b: pts[2], capa: "A-SENDERO" });
+  };
+  let nAcceso = 0;
+  for (const pp of m.primer_piso as any[]) {
+    if (!pp.lobby) continue;
+    const t = torres.find((x) => x.id === pp.torre); const a = t.planta.aptos.find((x: any) => x.id === pp.lobby); if (!a) continue;
+    const T = aLote(t), xm = a.poly.reduce((s2: number, q: P) => s2 + q[0], 0) / a.poly.length;
+    const yFach = a.lado === "sur" ? 0 : t.planta.D, sal = a.lado === "sur" ? -1 : 1;
+    const ruta: P[] = [T([xm, yFach]), T([xm, yFach + sal * 3])];
+    // Bajar hacia la vía; si una torre se interpone, rodearla por el lado más corto
+    for (let k = 0; k < 6; k++) {
+      const cur = ruta[ruta.length - 1];
+      const bloquea = cajas.filter((c) => cur[0] > c.x0 - 0.8 && cur[0] < c.x1 + 0.8 && c.y1 < cur[1] - 0.1 && !(cur[1] <= c.y1 + 0.01 && cur[1] >= c.y0)).sort((u, w) => w.y1 - u.y1)[0];
+      if (!bloquea) break;
+      const yPaso = bloquea.y1 + 2.0;
+      const izq = bloquea.x0 - 2.0, der = bloquea.x1 + 2.0;
+      const xd = Math.abs(cur[0] - izq) <= Math.abs(der - cur[0]) ? izq : der;
+      if (cur[1] > yPaso) ruta.push([cur[0], yPaso]);
+      ruta.push([xd, Math.min(cur[1], yPaso)]);
+    }
+    const fin = ruta[ruta.length - 1];
+    ruta.push([fin[0], yFrente(lote, fin[0])]);
+    for (let i = 1; i < ruta.length; i++) banda(ruta[i - 1], ruta[i]);
+    nAcceso++;
+    const pf = ruta[ruta.length - 1];
+    ops.push({ t: "texto", p: [pf[0], pf[1] - mmM(4, esc)], alto: mmM(2.2, esc), txt: `ACCESO PEATONAL · TORRE ${t.id}`, capa: "A-ACCESO", alin: "centro", negrita: true });
+    ops.push({ t: "linea", a: [pf[0], pf[1] - mmM(2.5, esc)], b: [pf[0], pf[1] + 1.5], capa: "A-ACCESO" }, { t: "linea", a: [pf[0] - 0.5, pf[1] + 0.8], b: [pf[0], pf[1] + 1.5], capa: "A-ACCESO" }, { t: "linea", a: [pf[0] + 0.5, pf[1] + 0.8], b: [pf[0], pf[1] + 1.5], capa: "A-ACCESO" });
+  }
+  // Acceso vehicular: rampa del sótano 1 y su conexión con la vía
+  const rampa = (m.sotanos as any[])?.[0]?.rampa as P[] | undefined;
+  if (rampa?.length) {
+    const xs = rampa.map((q) => q[0]), ys = rampa.map((q) => q[1]);
+    const xc = (Math.min(...xs) + Math.max(...xs)) / 2, y0 = Math.min(...ys), ancho = Math.max(...xs) - Math.min(...xs);
+    ops.push({ t: "poli", pts: rampa, capa: "A-RAMPA" });
+    const yv = yFrente(lote, xc);
+    if (y0 - yv > 0.3) { const w = ancho; const pts: P[] = [[xc - w / 2, yv], [xc + w / 2, yv], [xc + w / 2, y0], [xc - w / 2, y0]]; ops.push({ t: "relleno", pts, capa: "A-CIRCULACION" }, { t: "poli", pts, capa: "A-RAMPA" }); }
+    ops.push({ t: "texto", p: [xc, yv - mmM(4, esc)], alto: mmM(2.2, esc), txt: "ACCESO VEHICULAR · RAMPA A SÓTANOS", capa: "A-RAMPA", alin: "centro", negrita: true });
+    ops.push({ t: "texto", p: [xc + ancho / 2 + mmM(2, esc), (y0 + Math.max(...ys)) / 2], alto: mmM(1.8, esc), txt: `Rampa ${Math.round((m.resumen.rampa?.pendiente ?? 0.18) * 100)} % ↓`, capa: "A-RAMPA", rot: 90 });
+  }
+  return ops;
+}
 
 /** Contexto común: lote, área edificable y vía. */
 function contexto(m: Proyecto, esc: number, conRetiros = true): Op[] {
@@ -225,6 +304,7 @@ export function planchas(m: Proyecto): Plancha[] {
       ops.push(...cota(h[0], h[1], -mmM(4, e), e), ...cota(h[1], h[2], -mmM(4, e), e));
     }
     if (m.sotano_poligono?.length) ops.push({ t: "poli", pts: m.sotano_poligono, capa: "A-RETIRO" });
+    ops.push(...accesosSitio(m, e));
     // Cotas del lote (caja envolvente)
     const xs = m.marco.lote.map((q: P) => q[0]), ys = m.marco.lote.map((q: P) => q[1]);
     ops.push(...cota([Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.min(...ys)], -mmM(14, e), e), ...cota([Math.max(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)], -mmM(10, e), e));
@@ -254,7 +334,9 @@ export function planchas(m: Proyecto): Plancha[] {
   // 3. Primer piso
   if (m.resumen.pisos_plataforma === 0) lista.push({ t: "Planta primer piso", s: "Lobby, portería y cuarto de basuras por torre;\nequipamiento comunitario y viviendas adaptables", f: (e) => {
     const ops = contexto(m, e);
-    for (const t of torres) { const { T, rot } = transfTorre(t); ops.push(...dibujarTorre(t.planta, T, rot, e, { detalle: false, convertidos: conv, adaptables: adapt })); }
+    ops.push(...accesosSitio(m, e));
+    const lobbies = (m.primer_piso as any[]).map((x) => x.lobby).filter(Boolean);
+    for (const t of torres) { const { T, rot } = transfTorre(t); ops.push(...dibujarTorre(t.planta, T, rot, e, { detalle: false, convertidos: conv, adaptables: adapt, lobbies })); }
     return ops;
   } });
 
@@ -297,10 +379,12 @@ export function planchas(m: Proyecto): Plancha[] {
         const parcial: PlantaTorre = { ...solo, aptos: [a0], espacios: solo.espacios.filter((s) => s.apto === a0.id), muebles: solo.muebles.filter((mu) => mu.x >= x0 && mu.x <= x0 + W && mu.y > solo.F),
           puertas: solo.puertas.filter((d) => d.x >= x0 - 0.01 && d.x <= x0 + W + 0.01 && d.y >= solo.F + solo.pasillo - 0.01),
           ventanas: solo.ventanas.filter((v) => v.a[1] > solo.F && Math.min(v.a[0], v.b[0]) >= x0 - 0.01 && Math.max(v.a[0], v.b[0]) <= x0 + W + 0.01),
-          muros: solo.muros.filter((mu) => { const c = centro(mu.poly); return c[1] >= solo.F + solo.pasillo - 0.2; })
+          muros: [...solo.muros.filter((mu) => { const c = centro(mu.poly); return mu.tipo !== "nucleo" && c[1] >= solo.F + solo.pasillo - 0.2; }),
+            { tipo: "medianero" as const, poly: [[x0 - 0.075, solo.F + solo.pasillo], [x0 + 0.075, solo.F + solo.pasillo], [x0 + 0.075, solo.D], [x0 - 0.075, solo.D]] as P[] },
+            { tipo: "medianero" as const, poly: [[x0 + W - 0.075, solo.F + solo.pasillo], [x0 + W + 0.075, solo.F + solo.pasillo], [x0 + W + 0.075, solo.D], [x0 + W - 0.075, solo.D]] as P[] }]
             .map((mu) => ({ ...mu, poly: mu.poly.map(([px, py]) => [Math.min(x0 + W + 0.075, Math.max(x0 - 0.075, px)), py] as P) }))
             .filter((mu) => Math.abs(mu.poly[1][0] - mu.poly[0][0]) + Math.abs(mu.poly[2][0] - mu.poly[1][0]) > 0.05),
-          circulacion: [], nucleo: { ...solo.nucleo, escaleras: [], vestibulos: [], ascensores: [], ductos: [], shut: [[0, 0], [0, 0], [0, 0], [0, 0]] } };
+          circulacion: [], nucleo: { ...solo.nucleo, escaleras: [], vestibulos: [], ascensores: [], ductos: [], cuartos: [], puertas_ascensor: [], shut: [[0, 0], [0, 0], [0, 0], [0, 0]] } };
         sub.push(...dibujarTorre(parcial, T, 0, e, { detalle: true }).filter(filtro));
         sub.push(...cota([x, -0.3], [x + W, -0.3], -mmM(6, e), e), ...cota([x + W + 0.3, 0], [x + W + 0.3, ap.F], -mmM(6, e), e));
         sub.push({ t: "texto", p: [x + W / 2, ap.F + mmM(14, e)], alto: mmM(4, e), txt: `${PLANTILLAS[k].nombre.toUpperCase()} · ${f1(W * ap.F)} m²`, capa: "A-TEXTO", alin: "centro", negrita: true });
@@ -373,6 +457,13 @@ export function planchas(m: Proyecto): Plancha[] {
     for (const s of m.resumen.punto_fijo.notas) for (const parte of s.match(/.{1,95}(\s|$)/g) ?? [s]) t(parte.trim(), false, 2.2);
     yy -= mmM(3, e); t("PARQUEADEROS Y RAMPA", true, 3);
     for (const s of [m.resumen.parqueaderos_nota, m.resumen.rampa.nota]) for (const parte of s.match(/.{1,95}(\s|$)/g) ?? [s]) t(parte.trim(), false, 2.2);
+    const rv = m.resumen.revision_arquitectonica;
+    if (rv) {
+      yy -= mmM(3, e); t(`REVISIÓN ARQUITECTÓNICA AUTOMÁTICA · ${rv.ok ? "SIN OBSERVACIONES" : `${rv.problemas.length} OBSERVACIONES`}`, true, 3);
+      for (const s of rv.reglas) t(`${rv.ok ? "✓" : "·"} ${s}`, false, 2.2);
+      for (const pb of rv.problemas.slice(0, 6)) t(`✗ ${pb.tipologia}: ${pb.detalle}`, false, 2.2);
+      for (const parte of rv.nota.match(/.{1,95}(\s|$)/g) ?? [rv.nota]) t(parte.trim(), false, 2.2);
+    }
     yy -= mmM(3, e); t("AVISO", true, 3);
     for (const parte of m.aviso.match(/.{1,95}(\s|$)/g) ?? [m.aviso]) t(parte.trim(), false, 2.2);
     return ops;

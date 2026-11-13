@@ -25,9 +25,14 @@ export function plantaSotano(nivel: number, S: Pt[], nucleos: Pt[][], p: ParamSo
   const [cw, cd] = p.celda;
   const largoRampa = r2(p.largo_rampa);
   // Espina: calle principal paralela a Y, cerca del extremo izquierdo, que arranca en la rampa.
-  const xs = b.x0 + 0.5;
-  const rampa = rect(xs, b.y0, xs + p.ancho_rampa, b.y0 + largoRampa);
-  const espina = rect(xs, b.y0, xs + p.calle, b.y1);
+  // La rampa (y el arranque de la espina) debe quedar completa dentro del sótano: con lotes irregulares no basta la
+  // caja envolvente. Se busca la primera posición, desde la esquina del frente, donde cabe entera.
+  let xs = b.x0 + 0.5, yr = b.y0;
+  buscar: for (let x = b.x0 + 0.5; x < b.x0 + (b.x1 - b.x0) * 0.6; x += 0.5)
+    for (let y = b.y0; y < b.y0 + 8; y += 0.25)
+      if (rectDentro(rect(x, y, x + Math.max(p.ancho_rampa, p.calle), y + largoRampa), S)) { xs = x; yr = y; break buscar; }
+  const rampa = rect(xs, yr, xs + p.ancho_rampa, yr + largoRampa);
+  const espina = rect(xs, yr, xs + p.calle, b.y1);
   const libres = nucleos.map((n) => { const c = caja(n); return rect(c.x0 - 0.6, c.y0 - 0.6, c.x1 + 0.6, c.y1 + 0.6); });
   const out: PlantaSotano = { nivel, poligono: S, rampa, espina, calles: [], puestos: [], depositos: [], tecnicos: [], nucleos };
   // Cuartos técnicos (solo sótano 1): franja frente a la rampa, del lado de la espina.
@@ -36,7 +41,7 @@ export function plantaSotano(nivel: number, S: Pt[], nucleos: Pt[][], p: ParamSo
     let x = xs + p.calle + 0.3;
     for (const t of programaTecnico(p.unidades)) {
       const largo = r2(t.area / 5);
-      const r = rect(x, b.y0 + 0.3, x + largo, b.y0 + 5.3);
+      const r = rect(x, yr + 0.3, x + largo, yr + 5.3);
       if (rectDentro(r, S)) { out.tecnicos.push({ nombre: t.nombre, poly: r, area: r2(largo * 5) }); tecnicosZona.push(r); x += largo + 0.2; }
     }
   }
