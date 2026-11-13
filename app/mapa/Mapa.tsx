@@ -22,7 +22,7 @@ const C = { oscuro: "#1a1a1f", lila: "#a28df5", morado: "#6c4de7", gris: "#8a8a9
 type Seccion = "inicio" | "lote" | "oportunidades" | "estudio" | "cartera" | "comparar" | "zona" | "pot" | "adn" | "negociaciones";
 const SECCIONES: [Seccion, string, string][] = [
   ["inicio", "⌂", "Inicio"], ["lote", "⌖", "Un lote"], ["pot", "◆", "POT 2026"], ["oportunidades", "★", "Dónde construir"],
-  ["estudio", "◎", "Competencia"], ["comparar", "⇄", "Comparar"], ["cartera", "▤", "Cartera"], ["negociaciones", "◷", "Negociaciones"], ["zona", "⬠", "Zona"], ["adn", "⚙", "Mi constructora"],
+  ["estudio", "◎", "Competencia"], ["comparar", "⇄", "Comparar"], ["cartera", "▤", "Cartera"], ["negociaciones", "◷", "Negociaciones"], ["zona", "⬠", "Zona"],
 ];
 type ModoCapa = "potencial" | "cambio" | "ninguno";
 

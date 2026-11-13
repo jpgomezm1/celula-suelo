@@ -111,13 +111,11 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, goo
         <div className="nota">{a.cabida.supuestos.area_unidad_m2} m²/unidad · 80 % vendible · IO {a.cabida.supuestos.indice_ocupacion} · {a.cabida.nota}</div>
       </Seccion>
 
-      <PanelFachada id={f.predio} />
+      {a.inventario_zona && <InventarioZona inv={a.inventario_zona} />}
 
-      <Panel3D id={f.predio} ver3D={ver3D} google3D={google3D} />
+      {a.computo_indice && <AreaFueraIndice c={a.computo_indice} />}
 
       <PanelTopografia id={f.predio} />
-
-      <PanelCabida id={f.predio} anteMapa={anteMapa} />
 
       <Seccion titulo="Norma: POT 2014 y proyecto POT 2026">
         <div className="etiquetas">
@@ -167,7 +165,7 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, goo
         <div className="nota"><span className="uso si mini">permitido</span> <span className="uso talvez mini">condicionado</span> <span className="uso no mini">no permitido</span> · {a.usos.nota}</div>
       </Seccion>
 
-      {a.valor_residual && (
+      {false && a.valor_residual && (
         <Seccion titulo="Valor residual rápido (indicativo)">
           {a.valor_residual.disponible === false ? <div className="sub">{a.valor_residual.motivo}</div> : (
             <>
@@ -218,6 +216,56 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, goo
       {f.aviso_pot && <div className="alerta">{f.aviso_pot}</div>}
       <div className="nota legal">{a.aviso_legal}</div>
     </>
+  );
+}
+
+/* ───────────── Áreas que no cuentan en el índice ───────────── */
+function AreaFueraIndice({ c }: { c: any }) {
+  return (
+    <Seccion titulo="Áreas que no cuentan en el índice" abierta={false} extra={c.aplica && c.unidades_aprovechando != null ? <span className="etiqueta lima">{c.unidades_aprovechando > c.unidades_conservadoras ? `+${c.unidades_aprovechando - c.unidades_conservadoras} und` : "densidad limita"}</span> : undefined}>
+      {c.aplica ? (
+        <>
+          <div className="cifras">
+            <Cifra v={m2(c.area_que_computa_m2)} k="área que computa (índice)" />
+            <Cifra v={m2(c.area_construida_sobre_rasante_m2)} k="construida sobre rasante" />
+            <Cifra v={m2(c.area_vendible_conservadora_m2)} k="vendible conservadora (80 %)" />
+            <Cifra v={m2(c.area_vendible_aprovechando_m2)} k="vendible aprovechando la norma" />
+          </div>
+          <div className="sub"><b>{c.lectura}</b></div>
+          <ul className="lista">{c.palancas.map((x: any) => <li key={x.palanca}><span className="n">{x.palanca}{x.m2 ? ` · ${m2(x.m2)}` : ""}</span><span className="sub">{x.efecto}</span><span className="nota">{x.cita}</span></li>)}</ul>
+          <div className="nota">{c.fuente}. {c.supuestos}</div>
+        </>
+      ) : <div className="sub">{c.lectura} {c.fuente}</div>}
+    </Seccion>
+  );
+}
+
+/* ───────────── Inventario de vivienda nueva en la zona ───────────── */
+function InventarioZona({ inv }: { inv: any }) {
+  const ic = inv.inventario_cerrado;
+  const ET: Record<string, string> = { sobre_planos: "Sobre planos", construccion: "En construcción", mixto: "Etapas mixtas", terminado: "Terminado", parado: "Desistido o paralizado" };
+  return (
+    <Seccion titulo={`Inventario de vivienda nueva a ${inv.radio_m / 1000} km`} extra={<span className={`etiqueta ${inv.semaforo.luz === "verde" ? "lima" : inv.semaforo.luz === "rojo" ? "riesgo" : "aviso"}`}>{inv.meses_inventario != null ? `${num(inv.meses_inventario, 1)} meses` : inv.semaforo.luz === "gris" ? "sin muestra" : "sin ventas"}</span>}>
+      <div className="cifras">
+        <Cifra v={num(inv.disponibles)} k={`disponibles en ${inv.proyectos} proyectos`} />
+        <Cifra v={num(inv.ventas_mes, 1)} k="ventas por mes" />
+        <Cifra v={num(inv.meses_inventario, 1)} k="meses para venderlo" />
+        <Cifra v={num(ic.unidades)} k={`terminado sin vender${ic.unidades ? ` (${num(ic.meses, 1)} meses)` : ""}${ic.en_proyectos_con_etapa_terminada ? ` · +${num(ic.en_proyectos_con_etapa_terminada)} en etapas mixtas` : ""}`} />
+      </div>
+      <div className="sub">{inv.semaforo.lectura}</div>
+      <table className="tabla">
+        <thead><tr><th>Etapa</th><th>Proy.</th><th>Disp.</th><th>Ventas/mes</th><th>Meses</th></tr></thead>
+        <tbody>{Object.entries(inv.por_etapa).map(([k, g]: any) => <tr key={k}><td>{ET[k] ?? k}</td><td>{g.proyectos}</td><td>{num(g.disponibles)}</td><td>{num(g.ventas_mes, 1)}</td><td>{g.meses_inventario == null ? "sin ventas" : num(g.meses_inventario, 1)}</td></tr>)}</tbody>
+      </table>
+      {ic.detalle?.length > 0 && (
+        <>
+          <h4>Proyectos con etapas terminadas y unidades por vender</h4>
+          <ul className="lista">{ic.detalle.map((x: any) => <li key={x.proyecto}><span className="n">{x.proyecto}</span><span className="sub">{x.constructora} · {num(x.disponibles)} disp. · {x.ventas_mes ? `${num(x.ventas_mes, 1)}/mes · ${num(x.meses, 1)} meses` : "sin ventas en el semestre"} · {num(x.distancia_m)} m{x.solo_terminado ? "" : " · tiene otras etapas"}</span></li>)}</ul>
+        </>
+      )}
+      {ic.fynder_avisos_nuevos > 0 && <div className="nota">Fynder: {ic.fynder_avisos_nuevos} avisos de apartamentos nuevos ya entregados en la zona, publicados hace {ic.fynder_dias_publicado_mediana} días (mediana) → ≈{ic.fynder_meses_venta_estimados} meses de venta.</div>}
+      <div className="nota">{inv.nota} Corte {String(inv.fecha_corte ?? "").slice(0, 7)}. Datos de Galería: confidenciales.</div>
+    </Seccion>
   );
 }
 
@@ -662,7 +710,7 @@ export function PanelComparar({ ids, quitar, abrir }: { ids: string[]; quitar: (
         {[
           ["Elige un lote", "Haz clic en un predio del mapa y, en la ventana que aparece, pulsa “+ Comparar”.", ids.length >= 1],
           ["Agrega otro lote", "Repite con un segundo lote (puedes llevar hasta 5). Los verás en la bandeja de abajo del mapa.", ids.length >= 2],
-          ["Mira la comparación", "Aparece aquí sola: unidades, semáforo, cambio POT 2026, cesiones y valor residual.", false],
+          ["Mira la comparación", "Aparece aquí sola: unidades, semáforo, restricciones, cambio POT 2026 e inventario de la zona.", false],
         ].map(([t, d, hecho], i) => (
           <div key={i} className={`paso ${hecho ? "hecho" : ""}`}>
             <span className="numero">{hecho ? "✓" : i + 1}</span>
@@ -695,8 +743,13 @@ export function PanelComparar({ ids, quitar, abrir }: { ids: string[]; quitar: (
               {fila("Pisos (base)", (l) => num(l.pisos_base))}
               {fila("Cambio POT 2026", (l) => <Cambio v={l.cambio_pot_2026} />)}
               {fila("Cesión de suelo", (l) => m2(l.cesion_espacio_publico_m2))}
-              {fila("Valor residual $/m²", (l) => millones(l.valor_residual_m2))}
-              {fila("Referencia $/m²", (l) => millones(l.valor_suelo_referencia_m2))}
+              {fila("Unidades sacando áreas fuera del índice", (l) => num(l.unidades_aprovechando_indice))}
+              {fila("En retiro hídrico", (l) => (l.pct_en_retiro_hidrico ? `${num(l.pct_en_retiro_hidrico, 1)} %${l.cauce_cruza ? " · cauce cruza" : ""}` : l.cauce_cruza ? "cauce cruza" : "—"))}
+              {fila("Plan parcial", (l) => l.plan_parcial ?? "—")}
+              {fila("Árboles patrimoniales", (l) => num(l.arboles_patrimoniales))}
+              {fila("Meses de inventario (2 km)", (l) => <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>{l.luz_inventario && <Luz luz={l.luz_inventario} />}{l.meses_inventario_zona ?? "—"}</span>)}
+              {fila("Terminado sin vender (2 km)", (l) => num(l.inventario_cerrado_zona))}
+              {fila("Alertas", (l) => <div className="nota">{(l.alertas ?? []).slice(0, 4).map((x: string) => <div key={x}>• {x}</div>)}</div>)}
             </tbody>
           </table>
         </div>
@@ -704,7 +757,7 @@ export function PanelComparar({ ids, quitar, abrir }: { ids: string[]; quitar: (
       {r?.destacados && (
         <div className="tarjeta">
           <h4>Destacados</h4>
-          <div className="sub">Más unidades: <b>{r.destacados.mas_unidades}</b> · Mayor valor residual: <b>{r.destacados.mayor_valor_residual_m2}</b> · Mayor área útil: <b>{r.destacados.mayor_area_util}</b></div>
+          <div className="sub">Más unidades: <b>{r.destacados.mas_unidades}</b> · Zona que vende más rápido: <b>{r.destacados.zona_que_vende_mas_rapido ?? "—"}</b> · Mayor área útil: <b>{r.destacados.mayor_area_util}</b></div>
         </div>
       )}
     </>
@@ -780,11 +833,11 @@ export function PanelCartera({ pintar, abrir }: { pintar: (l: any[]) => void; ab
           </div>
           <div className="tarjeta" style={{ overflowX: "auto" }}>
             <table className="tabla">
-              <thead><tr><th>#  Lote</th><th>Pts</th><th>Und base</th><th>POT 2026</th><th>$/m² resid.</th></tr></thead>
+              <thead><tr><th>#  Lote</th><th>Pts</th><th>Und base</th><th>POT 2026</th><th>Meses inv.</th></tr></thead>
               <tbody>{r.ranking.map((f: any, i: number) => (
                 <tr key={f.predio + i} className="clicable" onClick={() => abrir(f.predio)}>
-                  <td><span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><Luz luz={f.semaforo} />{i + 1}. {f.nombre}</span><div className="nota">{f.carpeta ? `${f.carpeta} · ` : ""}{f.barrio} · {m2(f.englobe?.area_lotes_m2 ?? f.area_lote_m2)}{f.englobe ? ` · englobe de ${f.englobe.predios} predios` : ""}</div>{f.notas && <div className="nota" style={{ fontStyle: "italic" }}>“{f.notas}”</div>}</td>
-                  <td>{f.puntaje}</td><td>{num(f.unidades.base)}</td><td><Cambio v={f.cambio_pot_2026} /></td><td>{millones(f.valor_residual_m2)}</td>
+                  <td><span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><Luz luz={f.semaforo} />{i + 1}. {f.nombre}</span><div className="nota">{f.carpeta ? `${f.carpeta} · ` : ""}{f.barrio} · {m2(f.englobe?.area_lotes_m2 ?? f.area_lote_m2)}{f.englobe ? ` · englobe de ${f.englobe.predios} predios` : ""}</div>{f.notas && <div className="nota" style={{ fontStyle: "italic" }}>“{f.notas}”</div>}{f.alertas?.length > 0 && <div className="nota" style={{ color: f.semaforo === "rojo" ? "#c0392b" : undefined }}>{f.alertas[0]}</div>}</td>
+                  <td>{f.puntaje}</td><td>{num(f.unidades.base)}</td><td><Cambio v={f.cambio_pot_2026} /></td><td><span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>{f.luz_inventario && <Luz luz={f.luz_inventario} />}{f.meses_inventario_zona ?? "—"}</span></td>
                 </tr>
               ))}</tbody>
             </table>

@@ -6,6 +6,8 @@ import { bloque2026, normas2026 } from "./norma2026";
 import { mercadoZona } from "./mercado";
 import { prefactibilidadRapida } from "./ficha";
 import { restriccionesLote } from "./restricciones";
+import { inventarioLote } from "./inventario";
+import { computoIndice } from "./computo_indice";
 
 export const AVISO_LEGAL = "Análisis automático sobre información pública (catastro, POT y capas oficiales). Es orientativo: no reemplaza el concepto de norma, la consulta a la curaduría ni el estudio de títulos.";
 
@@ -148,8 +150,8 @@ export function usosPermitidos(p: any, actividad?: string) {
 }
 
 /** Análisis completo de un predio de parcel_profile. */
-export async function analizarLote(p: any, opts: { area_unidad_m2?: number; tipo_vivienda?: "VIS" | "NO VIS"; actividad?: string; costo_lote?: number; con_mercado?: boolean } = {}) {
-  const [af, n26, rs] = await Promise.all([afectaciones(p), normas2026([p.codigo_tratamiento]), restriccionesLote(p.id).catch(() => null)]);
+export async function analizarLote(p: any, opts: { area_unidad_m2?: number; tipo_vivienda?: "VIS" | "NO VIS"; actividad?: string; costo_lote?: number; con_mercado?: boolean; con_inventario?: boolean } = {}) {
+  const [af, n26, rs, inv] = await Promise.all([afectaciones(p), normas2026([p.codigo_tratamiento]), restriccionesLote(p.id).catch(() => null), opts.con_inventario === false ? null : inventarioLote(p.id).catch(() => null)]);
   // Fuera de Medellín los retiros hídricos no vienen en la capa de protección: se descuentan aquí (oficial o faja de referencia).
   if (rs?.hidrico && p.municipio_dane !== "05001" && (rs.hidrico.area_en_retiro_m2 ?? 0) > 0) {
     const extra = Math.min(Number(rs.hidrico.area_en_retiro_m2) || 0, Math.max(0, af.area_util_m2 ?? 0));
@@ -161,7 +163,7 @@ export async function analizarLote(p: any, opts: { area_unidad_m2?: number; tipo
   const esBase = cab.escenarios[1] as any;
   const ces = cesiones(p, esBase?.unidades ?? null, af.area_util_m2 ?? 0);
   let valor: any = null;
-  if (opts.con_mercado !== false && p.lat && p.lon) {
+  if (opts.con_mercado === true && p.lat && p.lon) { // residual financiero: solo bajo pedido
     const mercado = await mercadoZona({ lat: Number(p.lat), lon: Number(p.lon), radio_m: 1500 });
     const pf: any = prefactibilidadRapida(p, mercado, { costo_lote: opts.costo_lote, area_unidad: opts.area_unidad_m2 });
     if (pf.disponible) {
@@ -171,5 +173,5 @@ export async function analizarLote(p: any, opts: { area_unidad_m2?: number; tipo
         nota: "Valor residual = lo máximo que se puede pagar por el lote para que el proyecto dé margen, con precios y costos de la zona (modelo de prefactibilidad)." };
     } else valor = { disponible: false, motivo: pf.motivo };
   }
-  return { area_util: af, semaforo: semaforo(p, af, rs), restricciones: rs ? { ...rs, hidrico: { ...rs.hidrico, geometria_9377: undefined } } : null, cabida: cab, cesiones: ces, usos: usosPermitidos(p, opts.actividad), valor_residual: valor, pot_2026_preliminar: b26, aviso_legal: AVISO_LEGAL };
+  return { area_util: af, semaforo: semaforo(p, af, rs), restricciones: rs ? { ...rs, hidrico: { ...rs.hidrico, geometria_9377: undefined } } : null, cabida: cab, computo_indice: computoIndice(p, esBase, af.area_util_m2 ?? 0, n(p.area_lote) ?? 0, opts.area_unidad_m2 ?? cab.supuestos.area_unidad_m2), inventario_zona: inv, cesiones: ces, usos: usosPermitidos(p, opts.actividad), valor_residual: valor, pot_2026_preliminar: b26, aviso_legal: AVISO_LEGAL };
 }

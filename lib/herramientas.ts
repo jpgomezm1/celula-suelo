@@ -40,6 +40,14 @@ const resumen = (p: any, a: any) => {
     pisos_base: esc[1]?.pisos_sobre_rasante ?? null, area_construible_base_m2: esc[1]?.area_construible_m2 ?? null,
     cambio_pot_2026: a.pot_2026_preliminar?.disponible ? a.pot_2026_preliminar.frente_a_2014.area_construible_m2.cambio : null,
     cesion_espacio_publico_m2: a.cesiones.espacio_publico_suelo_m2,
+    unidades_aprovechando_indice: a.computo_indice?.unidades_aprovechando ?? null,
+    pct_en_retiro_hidrico: a.restricciones?.hidrico?.pct_lote ?? null,
+    cauce_cruza: !!a.restricciones?.hidrico?.cauces?.some((c: any) => c.cruza_el_lote),
+    plan_parcial: a.restricciones?.planificacion?.instrumentos?.[0]?.nombre ?? null,
+    arboles_patrimoniales: a.restricciones?.arbolado?.patrimoniales_dentro ?? null,
+    meses_inventario_zona: a.inventario_zona?.meses_inventario ?? null,
+    inventario_cerrado_zona: a.inventario_zona?.inventario_cerrado?.unidades ?? null,
+    luz_inventario: a.inventario_zona?.semaforo?.luz ?? null,
     valor_residual_m2: a.valor_residual?.valor_residual_m2 ?? null, valor_suelo_referencia_m2: n(p.valor_suelo_m2) ? Math.round(n(p.valor_suelo_m2)!) : null,
     lat: Number(p.lat), lon: Number(p.lon),
   };
@@ -57,7 +65,7 @@ export async function compararLotes(lotes: RefLote[], opts: { area_unidad_m2?: n
   }
   const ok = out.filter((x: any) => x.encontrado) as any[];
   const mejor = (k: (x: any) => number | null) => ok.slice().sort((a, b) => (k(b) ?? -1) - (k(a) ?? -1))[0]?.nombre ?? null;
-  return { lotes: out, destacados: { mas_unidades: mejor((x) => x.unidades.base), mayor_valor_residual_m2: mejor((x) => x.valor_residual_m2), mayor_area_util: mejor((x) => x.area_util_m2) }, aviso_legal: AVISO_LEGAL };
+  return { lotes: out, destacados: { mas_unidades: mejor((x) => x.unidades.base), zona_que_vende_mas_rapido: mejor((x) => (x.meses_inventario_zona == null ? null : -x.meses_inventario_zona)), mayor_area_util: mejor((x) => x.area_util_m2) }, aviso_legal: AVISO_LEGAL };
 }
 
 /** Cartera de lotes (hasta 250): KML/KMZ o lista. Norma, cabida, semáforo, cesiones y ranking; guarda el resultado y entrega Excel. */
@@ -70,7 +78,7 @@ export async function analizarCartera(entrada: { nombre?: string; kml?: string; 
   });
   if (!refs.length) return { error: "No encontré lotes en la entrada." };
   if (refs.length > 250) return { error: "Máximo 250 lotes por cartera." };
-  const conValor = entrada.con_valor_residual ?? refs.length <= 40;
+  const conValor = entrada.con_valor_residual === true;
   const filas: any[] = [];
   for (const r of refs) {
     // Polígono dibujado en Google Earth: se analiza el predio principal (el que contiene el centro) y se suma el englobe.
@@ -92,8 +100,8 @@ export async function analizarCartera(entrada: { nombre?: string; kml?: string; 
   for (const f of ok) {
     const castigo = f.semaforo === "rojo" ? 35 : f.semaforo === "amarillo" ? 10 : 0;
     const gana = f.cambio_pot_2026 && f.cambio_pot_2026.startsWith("+") && f.cambio_pot_2026 !== "+0 %" ? 5 : 0;
-    const valor = f.valor_residual_m2 && f.valor_suelo_referencia_m2 ? Math.min(20, Math.max(0, ((f.valor_residual_m2 / f.valor_suelo_referencia_m2) - 1) * 10)) : 0;
-    f.puntaje = Math.round(Math.max(0, 60 * Math.sqrt((f.unidades.base ?? 0) / maxU) + valor + gana + 15 - castigo));
+    const ritmo = f.luz_inventario === "verde" ? 20 : f.luz_inventario === "amarillo" ? 10 : f.luz_inventario === "rojo" ? 0 : 5;
+    f.puntaje = Math.round(Math.max(0, 60 * Math.sqrt((f.unidades.base ?? 0) / maxU) + ritmo + gana + 15 - castigo));
   }
   ok.sort((a, b) => b.puntaje - a.puntaje);
   const resultado = {
@@ -101,7 +109,7 @@ export async function analizarCartera(entrada: { nombre?: string; kml?: string; 
     resumen: { lotes: refs.length, encontrados: ok.length, verdes: ok.filter((f) => f.semaforo === "verde").length, amarillos: ok.filter((f) => f.semaforo === "amarillo").length,
       rojos: ok.filter((f) => f.semaforo === "rojo").length, unidades_base_total: ok.reduce((a, f) => a + (f.unidades.base ?? 0), 0) },
     ranking: ok, no_encontrados: filas.filter((f) => !f.encontrado).map((f) => f.nombre),
-    metodo: "Puntaje 0–100: unidades posibles con la norma base (60) + valor residual frente al valor de referencia del suelo (hasta 20) + 15 base + 5 si el proyecto de POT 2026 sube el aprovechamiento − 10 (amarillo) o − 35 (rojo) del semáforo.",
+    metodo: "Puntaje 0–100: unidades posibles con la norma base (60) + ritmo de venta de la vivienda nueva a 2 km según Galería (20 si se vende en 18 meses o menos, 10 entre 18 y 36, 0 más de 36, 5 sin muestra) + 15 base + 5 si el proyecto de POT 2026 sube el aprovechamiento − 10 (amarillo) o − 35 (rojo) del semáforo.",
     aviso_legal: AVISO_LEGAL,
   };
   // Cartera viva: se reescribe el mismo estudio (mismo enlace) en lugar de crear uno nuevo.

@@ -254,7 +254,7 @@ const mcp = createMcpHandler(
       const topografia = topo?.disponible ? { clase: topo.clase, pendiente_pct: topo.pendiente_pct, desnivel_m: topo.desnivel_m, cae_hacia: topo.cae_hacia, via: topo.via?.lectura ?? null,
         sotanos: topo.sotanos, fuente: topo.fuente.nombre, detalle: "topografia_lote" } : topo ? { disponible: false, motivo: topo.motivo } : null;
       const entorno = ent ? { pisos_mediana_150m: ent.pisos_mediana, pisos_max_150m: ent.pisos_max, fuente: "catastro" } : null;
-      return { ...c, semaforo: an.semaforo, area_util: an.area_util, cabida: an.cabida, cesiones: an.cesiones, usos: an.usos, valor_residual: an.valor_residual,
+      return { ...c, semaforo: an.semaforo, area_util: an.area_util, cabida: an.cabida, cesiones: an.cesiones, usos: an.usos, inventario_zona: an.inventario_zona, areas_fuera_del_indice: an.computo_indice, restricciones: an.restricciones,
         topografia, entorno_alturas: entorno,
         ficha_pdf: urlFicha(c), kmz_google_earth: `${URL_BASE()}/api/kmz?id=${encodeURIComponent(c.predio)}`, aviso_legal: an.aviso_legal };
     }));
@@ -317,7 +317,7 @@ const mcp = createMcpHandler(
     }, seguro(async (a: any) => {
       const { c, p } = await loteDe(a);
       if (!p) return c;
-      const an = await analizarLote(p, { costo_lote: a.costo_lote, area_unidad_m2: a.area_unidad_m2 });
+      const an = await analizarLote(p, { costo_lote: a.costo_lote, area_unidad_m2: a.area_unidad_m2, con_mercado: true });
       return { predio: c.predio, barrio: c.barrio, area_lote_m2: c.area_lote_m2, ...an.valor_residual, precio_pedido: a.costo_lote ?? null };
     }));
 
