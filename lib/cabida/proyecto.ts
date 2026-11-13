@@ -11,6 +11,8 @@ import { plantaTorre, type PlantaTorre } from "./torre";
 import { plantaSotano, type PlantaSotano } from "./sotano";
 import { MEZCLA_DEFECTO, PLANTILLAS, instanciar, type Mezcla } from "./tipologias";
 import { revisarPlantilla } from "./validar";
+import { restriccionesLote } from "../restricciones";
+import { aLocal } from "./lote";
 import { normaVolumetrica, puntoFijo, parqueaderos, rampa, obligaciones, type NormaVol } from "./norma";
 
 export type OpcionesProyecto = {
@@ -45,8 +47,20 @@ export async function anteproyecto(id: string, o: OpcionesProyecto = {}) {
   const esc = (an.cabida.escenarios as any[]).find((e) => (clave === "conservador" ? /conservador/i : clave === "maximo" ? /m[aá]ximo/i : /^base/i).test(e.escenario))
     ?? (an.cabida.escenarios as any[]).find((e) => e.disponible);
   if (!esc?.disponible) return { encontrado: true as const, disponible: false as const, mensaje: "La norma de este predio no permite calcular una cabida." };
-  const marco = await memo(`marco:${id}`, () => marcoLote(id));
-  if (!marco) return { encontrado: true as const, disponible: false as const, mensaje: "Sin geometría del lote." };
+  const marco0 = await memo(`marco:${id}`, () => marcoLote(id));
+  if (!marco0) return { encontrado: true as const, disponible: false as const, mensaje: "Sin geometría del lote." };
+  // Retiro hídrico (oficial o faja de referencia) en el marco local: se descuenta del área edificable y del sótano.
+  const restr: any = await memo(`restr:${id}`, () => restriccionesLote(id)).catch(() => null);
+  const gx = restr?.hidrico?.geometria_9377, loc = aLocal(marco0);
+  const retiroLocal: Pt[][] = !gx ? [] : (gx.type === "MultiPolygon" ? gx.coordinates.map((c: any) => c[0]) : gx.type === "Polygon" ? [gx.coordinates[0]] : []).map((ring: number[][]) => ring.slice(0, -1).map((q) => loc(q as Pt)));
+  // Suelo de protección y amenaza alta que cruzan el lote: tampoco se construyen (igual que en el área útil del análisis)
+  const [prot] = await memo(`prot:${id}`, () => sql`WITH l AS (SELECT geom, ST_Transform(geom, 9377) g FROM parcel WHERE id = ${id})
+    SELECT ST_AsGeoJSON(ST_Intersection(ST_Union(ST_Transform(z.geom, 9377)), l.g), 2)::json geom FROM l
+    JOIN zoning_sub z ON z.municipio_dane = ${p.municipio_dane} AND ST_Intersects(z.geom, l.geom)
+      AND (z.capa = 'proteccion' OR (z.capa = 'amenaza' AND (z.attrs->>'grado_amenaza') ILIKE '%alta%')) GROUP BY l.g`);
+  const pg = prot?.geom;
+  const protLocal: Pt[][] = !pg ? [] : (pg.type === "MultiPolygon" ? pg.coordinates.map((c: any) => c[0]) : pg.type === "Polygon" ? [pg.coordinates[0]] : pg.type === "GeometryCollection" ? pg.geometries.filter((g: any) => g.type === "Polygon").map((g: any) => g.coordinates[0]) : []).map((ring: number[][]) => ring.slice(0, -1).map((q) => loc(q as Pt)));
+  const marco = { ...marco0, retiro_hidrico: retiroLocal, proteccion: protLocal };
 
   const mezcla = o.mezcla?.length ? o.mezcla : MEZCLA_DEFECTO;
   const F = o.crujia_m ?? 7.6, pas = o.pasillo_m ?? 1.6;
@@ -86,7 +100,7 @@ export async function anteproyecto(id: string, o: OpcionesProyecto = {}) {
     if (nuevo === pisos) break;
     pisos = nuevo;
   }
-  if (!res || !res.torres.length) return { encontrado: true as const, disponible: false as const, mensaje: `Con la norma volumétrica (retiro lateral ${norma.lateral} m, frontal ${norma.frontal} m, entre torres ${norma.entre_torres} m) no cabe una torre de ${r2(2 * F + pas)} m de profundidad.` };
+  if (!res || !res.torres.length) return { encontrado: true as const, disponible: false as const, mensaje: `Con la norma volumétrica (retiro lateral ${norma.lateral} m, frontal ${norma.frontal} m, entre torres ${norma.entre_torres} m) no cabe una torre de ${r2(2 * F + pas)} m de profundidad${retiroLocal.length || protLocal.length ? `, después de descontar ${[retiroLocal.length ? "el retiro hídrico" : "", protLocal.length ? "el suelo de protección o de amenaza alta" : ""].filter(Boolean).join(" y ")}` : ""}.` };
 
   // Punto fijo definitivo según pisos y unidades por torre, y nueva planta con ese núcleo.
   const pisosTorre = Math.max(1, pisos - pp);
@@ -231,7 +245,8 @@ export async function anteproyecto(id: string, o: OpcionesProyecto = {}) {
 async function implantar(m: MarcoLote, n: NormaVol, o: { F: number; pas: number; largo_max: number; max_torres: number; mezcla: Mezcla; pf: { escaleras: number; ascensores: number; vestibulo: boolean } }) {
   // Torre normal (eje largo en X): sus culatas cerradas miran a los linderos laterales y las fachadas abiertas al frente y al fondo.
   // Torre girada: las fachadas abiertas miran a los linderos laterales. Se calcula un área edificable para cada caso.
-  const ed = (a: number, b: number, c: number) => memo(`edif:${JSON.stringify(m.lote[0])}:${m.lote.length}:${a}:${b}:${c}`, () => edificable(m.lote, a, b, c));
+  const ex: Pt[][] = [...((m as any).retiro_hidrico ?? []), ...((m as any).proteccion ?? [])];
+  const ed = (a: number, b: number, c: number) => memo(`edif:${JSON.stringify(m.lote[0])}:${m.lote.length}:${a}:${b}:${c}:${ex.length}:${ex[0]?.[0]?.join(",") ?? ""}`, () => edificable(m.lote, a, b, c, ex));
   const { edificable: E, sotano } = await ed(Math.min(n.cabecera, n.lateral), n.frontal, n.fondo);
   const { edificable: Eg } = await ed(n.lateral, n.frontal, n.fondo);
   const torres: Torre[] = [];
@@ -240,10 +255,14 @@ async function implantar(m: MarcoLote, n: NormaVol, o: { F: number; pas: number;
   // Separación según qué caras se enfrentan: larga-larga (abiertas) 12 m, culata-culata 3 m, mixta 6 m.
   const sepOk = (a: Torre, r: Pt[], rotada: boolean) => {
     const A = caja(a.huella), B = caja(r);
-    const dx = Math.max(0, Math.max(A.x0, B.x0) - Math.min(A.x1, B.x1)), dy = Math.max(0, Math.max(A.y0, B.y0) - Math.min(A.y1, B.y1));
+    const gx = Math.max(A.x0, B.x0) - Math.min(A.x1, B.x1), gy = Math.max(A.y0, B.y0) - Math.min(A.y1, B.y1);
+    if (gx < -0.01 && gy < -0.01) return false; // se traslapan: nunca, aunque la norma permita culatas pegadas (separación 0)
+    const dx = Math.max(0, gx), dy = Math.max(0, gy);
     const sepX = !a.rotada && !rotada ? n.entre_cabeceras : a.rotada && rotada ? n.entre_torres : n.entre_abierta_cerrada;
     const sepY = !a.rotada && !rotada ? n.entre_torres : a.rotada && rotada ? n.entre_cabeceras : n.entre_abierta_cerrada;
-    return dx >= sepX - 0.01 || dy >= sepY - 0.01;
+    if (gx < 0) return dy >= sepY - 0.01;   // una frente a la otra en Y (comparten franja en X)
+    if (gy < 0) return dx >= sepX - 0.01;   // una al lado de la otra en X
+    return dx >= sepX - 0.01 || dy >= sepY - 0.01; // en diagonal
   };
   for (let largo = o.largo_max; largo >= 14 && torres.length < o.max_torres; largo -= 3) {
     const planta = plantaTorre({ F: o.F, pasillo: o.pas, largo_max: largo, mezcla: o.mezcla, n_escaleras: o.pf.escaleras, n_ascensores: o.pf.ascensores, vestibulo: o.pf.vestibulo, esp_fachada: 0.15, esp_medianero: 0.15, esp_interior: 0.1 });

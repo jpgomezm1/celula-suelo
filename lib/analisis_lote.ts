@@ -5,6 +5,7 @@ import { sql } from "./db";
 import { bloque2026, normas2026 } from "./norma2026";
 import { mercadoZona } from "./mercado";
 import { prefactibilidadRapida } from "./ficha";
+import { restriccionesLote } from "./restricciones";
 
 export const AVISO_LEGAL = "Análisis automático sobre información pública (catastro, POT y capas oficiales). Es orientativo: no reemplaza el concepto de norma, la consulta a la curaduría ni el estudio de títulos.";
 
@@ -30,7 +31,7 @@ export async function afectaciones(p: any) {
 }
 
 type Luz = "verde" | "amarillo" | "rojo" | "gris";
-export function semaforo(p: any, af: any) {
+export function semaforo(p: any, af: any, rs?: any) {
   const items: { categoria: string; luz: Luz; lectura: string }[] = [];
   const am: string[] = p.amenazas ?? [];
   const grados = am.map((a) => a.split(":")[1] ?? "");
@@ -42,10 +43,12 @@ export function semaforo(p: any, af: any) {
   items.push(pctProt > 30 ? { categoria: "Protección ambiental y retiros", luz: "rojo", lectura: `${Math.round(pctProt)} % del lote en suelo de protección (${af.proteccion.map((x: any) => x.tipo).join(", ")}).` }
     : pctProt > 0.5 ? { categoria: "Protección ambiental y retiros", luz: "amarillo", lectura: `${Math.round(pctProt * 10) / 10} % del lote en protección (${af.proteccion.map((x: any) => x.tipo).join(", ")}): se descuenta del área útil.` }
     : { categoria: "Protección ambiental y retiros", luz: "verde", lectura: "Sin suelo de protección ni retiros a quebradas cruzados." });
+  if (rs?.hidrico) items.push({ categoria: "Quebradas y retiros hídricos", luz: rs.hidrico.luz, lectura: rs.hidrico.lectura });
   const t = `${p.tratamiento ?? ""} ${p.codigo_tratamiento ?? ""}`;
   items.push(/conservaci[oó]n|_C[0-9]?_|BIC/i.test(t) ? { categoria: "Patrimonio", luz: /patrimonial|BIC/i.test(t) ? "rojo" : "amarillo", lectura: `Tratamiento de ${p.tratamiento}: restricciones de intervención y altura.` }
     : { categoria: "Patrimonio", luz: "verde", lectura: "Sin tratamiento de conservación." });
-  items.push(/renovaci|desarrollo|_R_|_RE[DAV]_|_D_|_DE_/i.test(t) ? { categoria: "Planificación complementaria", luz: "amarillo", lectura: `${p.tratamiento}: requiere plan parcial (o unidad de actuación) antes de licenciar.` }
+  if (rs?.planificacion?.instrumentos?.length) items.push({ categoria: "Planificación complementaria", luz: rs.planificacion.luz, lectura: rs.planificacion.lectura });
+  else items.push(/renovaci|desarrollo|_R_|_RE[DAV]_|_D_|_DE_/i.test(t) ? { categoria: "Planificación complementaria", luz: "amarillo", lectura: `${p.tratamiento}: requiere plan parcial (o unidad de actuación) antes de licenciar.` }
     : /API|_API_/i.test(t) ? { categoria: "Planificación complementaria", luz: "rojo", lectura: "Área para la preservación de infraestructuras (API): no apta para vivienda privada." }
     : { categoria: "Planificación complementaria", luz: "verde", lectura: "Licencia directa (sin plan parcial previo)." });
   items.push(p.pot_servicio === "derogado" ? { categoria: "Norma", luz: "rojo", lectura: "La capa pública del municipio es de un POT derogado." }
@@ -55,6 +58,7 @@ export function semaforo(p: any, af: any) {
   items.push(nc > 15 ? { categoria: "Gestión del suelo", luz: "rojo", lectura: `${nc} construcciones: probablemente muchos propietarios; exige englobe y demoliciones.` }
     : nc > 3 ? { categoria: "Gestión del suelo", luz: "amarillo", lectura: `${nc} construcciones existentes (${r0(n(p.area_construida))} m²): considerar demolición y negociación.` }
     : { categoria: "Gestión del suelo", luz: "verde", lectura: nc ? `${nc} construcción(es) menor(es).` : "Lote sin construcciones registradas." });
+  if (rs?.arbolado) items.push({ categoria: "Árboles", luz: rs.arbolado.luz, lectura: rs.arbolado.lectura });
   items.push({ categoria: "Vías proyectadas", luz: "gris", lectura: "Sin dato: la capa de proyectos viales no está cargada; validar afectación vial en la curaduría." });
   const peor: Luz = items.some((i) => i.luz === "rojo") ? "rojo" : items.some((i) => i.luz === "amarillo") ? "amarillo" : "verde";
   return { general: peor, items };
@@ -145,7 +149,13 @@ export function usosPermitidos(p: any, actividad?: string) {
 
 /** Análisis completo de un predio de parcel_profile. */
 export async function analizarLote(p: any, opts: { area_unidad_m2?: number; tipo_vivienda?: "VIS" | "NO VIS"; actividad?: string; costo_lote?: number; con_mercado?: boolean } = {}) {
-  const [af, n26] = await Promise.all([afectaciones(p), normas2026([p.codigo_tratamiento])]);
+  const [af, n26, rs] = await Promise.all([afectaciones(p), normas2026([p.codigo_tratamiento]), restriccionesLote(p.id).catch(() => null)]);
+  // Fuera de Medellín los retiros hídricos no vienen en la capa de protección: se descuentan aquí (oficial o faja de referencia).
+  if (rs?.hidrico && p.municipio_dane !== "05001" && (rs.hidrico.area_en_retiro_m2 ?? 0) > 0) {
+    const extra = Math.min(Number(rs.hidrico.area_en_retiro_m2) || 0, Math.max(0, af.area_util_m2 ?? 0));
+    af.proteccion.push({ tipo: rs.hidrico.faja_referencia_m2 ? "Retiro hídrico (faja de referencia 30 m)" : "Retiro hídrico", m2: extra, pct: af.area_lote_m2 ? Math.round((extra / af.area_lote_m2) * 1000) / 10 : null });
+    af.area_afectada_m2 = (af.area_afectada_m2 ?? 0) + extra; af.area_util_m2 = Math.max(0, (af.area_util_m2 ?? 0) - extra);
+  }
   const b26 = bloque2026(p, n26.get(p.codigo_tratamiento), opts.area_unidad_m2 ?? 65);
   const cab = cabida(p, b26, { area_unidad_m2: opts.area_unidad_m2, area_util_m2: af.area_util_m2 ?? 0, tipo_vivienda: opts.tipo_vivienda });
   const esBase = cab.escenarios[1] as any;
@@ -161,5 +171,5 @@ export async function analizarLote(p: any, opts: { area_unidad_m2?: number; tipo
         nota: "Valor residual = lo máximo que se puede pagar por el lote para que el proyecto dé margen, con precios y costos de la zona (modelo de prefactibilidad)." };
     } else valor = { disponible: false, motivo: pf.motivo };
   }
-  return { area_util: af, semaforo: semaforo(p, af), cabida: cab, cesiones: ces, usos: usosPermitidos(p, opts.actividad), valor_residual: valor, pot_2026_preliminar: b26, aviso_legal: AVISO_LEGAL };
+  return { area_util: af, semaforo: semaforo(p, af, rs), restricciones: rs ? { ...rs, hidrico: { ...rs.hidrico, geometria_9377: undefined } } : null, cabida: cab, cesiones: ces, usos: usosPermitidos(p, opts.actividad), valor_residual: valor, pot_2026_preliminar: b26, aviso_legal: AVISO_LEGAL };
 }

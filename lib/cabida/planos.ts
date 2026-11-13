@@ -165,6 +165,9 @@ function accesosSitio(m: Proyecto, esc: number): Op[] {
   const torres = m.torres as any[];
   const lote = m.marco.lote as P[];
   const cajas = torres.map((t) => { const T = aLote(t); const h = [T([0, 0]), T([t.planta.L, 0]), T([t.planta.L, t.planta.D]), T([0, t.planta.D])]; const xs = h.map((q) => q[0]), ys = h.map((q) => q[1]); return { id: t.id, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }; });
+  // La rampa vehicular también es obstáculo para los senderos peatonales
+  const rp0 = (m.sotanos as any[])?.[0]?.rampa as P[] | undefined;
+  if (rp0?.length) { const xs = rp0.map((q) => q[0]), ys = rp0.map((q) => q[1]); cajas.push({ id: "rampa", x0: Math.min(...xs), x1: Math.max(...xs), y0: yFrente(lote, (Math.min(...xs) + Math.max(...xs)) / 2), y1: Math.max(...ys) }); }
   const banda = (a: P, b: P, w = 1.5) => {
     const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy); if (L < 0.05) return;
     const nx = (-dy / L) * (w / 2), ny = (dx / L) * (w / 2);
@@ -185,7 +188,11 @@ function accesosSitio(m: Proyecto, esc: number): Op[] {
       if (!bloquea) break;
       const yPaso = bloquea.y1 + 2.0;
       const izq = bloquea.x0 - 2.0, der = bloquea.x1 + 2.0;
-      const xd = Math.abs(cur[0] - izq) <= Math.abs(der - cur[0]) ? izq : der;
+      // Lado preferido: el que deja la bajada a la vía libre de otras torres y de la rampa, y queda dentro del lote
+      const xsL = lote.map((q) => q[0]);
+      const libre = (x: number) => x > Math.min(...xsL) + 1 && x < Math.max(...xsL) - 1 && !cajas.some((c) => c !== bloquea && x > c.x0 - 0.8 && x < c.x1 + 0.8 && c.y1 < yPaso && c.y1 > yFrente(lote, x));
+      const opciones = [izq, der].sort((u, w) => Math.abs(cur[0] - u) - Math.abs(cur[0] - w));
+      const xd = opciones.find(libre) ?? opciones[0];
       if (cur[1] > yPaso) ruta.push([cur[0], yPaso]);
       ruta.push([xd, Math.min(cur[1], yPaso)]);
     }
@@ -214,6 +221,22 @@ function accesosSitio(m: Proyecto, esc: number): Op[] {
 /** Contexto común: lote, área edificable y vía. */
 function contexto(m: Proyecto, esc: number, conRetiros = true): Op[] {
   const ops: Op[] = [{ t: "poli", pts: m.marco.lote, capa: "A-LOTE" }];
+  // Retiro hídrico (oficial o faja de referencia): no se construye ni en superficie ni en sótano
+  for (const r of (m.marco.retiro_hidrico ?? []) as P[][]) {
+    if (r.length < 3) continue;
+    ops.push({ t: "poli", pts: r, capa: "A-RETIRO-HIDRICO" });
+    const xs = r.map((q) => q[0]), ys = r.map((q) => q[1]);
+    for (let x = Math.min(...xs) - (Math.max(...ys) - Math.min(...ys)); x < Math.max(...xs); x += 2.5) {
+      // rayado a 45° recortado de forma simple al rectángulo envolvente (lectura gráfica, no geometría exacta)
+      const a: P = [x, Math.min(...ys)], b: P = [x + (Math.max(...ys) - Math.min(...ys)), Math.max(...ys)];
+      const dentro = (q: P) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if ((yi > q[1]) !== (yj > q[1]) && q[0] < ((xj - xi) * (q[1] - yi)) / (yj - yi) + xi) c = !c; } return c; };
+      const pts: P[] = []; for (let k = 0; k <= 40; k++) { const q: P = [a[0] + ((b[0] - a[0]) * k) / 40, a[1] + ((b[1] - a[1]) * k) / 40]; pts.push(q); }
+      let ini: P | null = null; for (const q of pts) { if (dentro(q)) { if (!ini) ini = q; } else if (ini) { ops.push({ t: "linea", a: ini, b: q, capa: "A-RETIRO-HIDRICO" }); ini = null; } }
+      if (ini) ops.push({ t: "linea", a: ini, b: pts[pts.length - 1], capa: "A-RETIRO-HIDRICO" });
+    }
+    const c = centro(r);
+    ops.push({ t: "texto", p: c, alto: mmM(2.4, esc), txt: "RETIRO HÍDRICO", capa: "A-RETIRO-HIDRICO", alin: "centro", negrita: true });
+  }
   if (conRetiros && m.edificable?.length) ops.push({ t: "poli", pts: m.edificable, capa: "A-RETIRO" });
   const xs = m.marco.lote.map((q: P) => q[0]), ys = m.marco.lote.map((q: P) => q[1]);
   ops.push({ t: "texto", p: [(Math.min(...xs) + Math.max(...xs)) / 2, Math.min(...ys) - mmM(8, esc)], alto: mmM(3, esc), txt: `VÍA${m.marco.via?.nombre ? ` · ${m.marco.via.nombre}` : ""} (frente del lote)`, capa: "A-TEXTO", alin: "centro", negrita: true });

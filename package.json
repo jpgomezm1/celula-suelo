@@ -28,7 +28,8 @@
     "usuarios": "node --env-file=.env.local --import tsx scripts/usuarios.ts",
     "osm:vias": "node --env-file=.env.local --import tsx ingest/osm_vias.ts",
     "osm:poi": "node --env-file=.env.local --import tsx ingest/osm_poi.ts",
-    "galeria": "node --env-file=.env.local --import tsx ingest/galeria.ts"
+    "galeria": "node --env-file=.env.local --import tsx ingest/galeria.ts",
+    "restricciones": "node --env-file=.env.local --import tsx ingest/restricciones.ts"
   },
   "keywords": [],
   "author": "",

@@ -64,14 +64,17 @@ export function aGlobal(m: { cx: number; cy: number; rot: number; reflejado: boo
 }
 
 /** Retiro hacia adentro con PostGIS (lateral en todo el borde y frontal adicional desde el frente). */
-export async function edificable(lote: Pt[], lateral: number, frontal: number, fondo?: number) {
+export async function edificable(lote: Pt[], lateral: number, frontal: number, fondo?: number, excluir: Pt[][] = []) {
   const ys = lote.map((q) => q[1]);
   const yMin = Math.min(...ys), yMax = Math.max(...ys);
   const wkt = `POLYGON((${[...lote, lote[0]].map((q) => q.join(" ")).join(",")}))`;
+  // Retiros hídricos (y otras exclusiones): no se construye en ellos ni en superficie ni en sótano.
+  const exWkt = excluir.filter((p) => p.length >= 3).map((p) => `POLYGON((${[...p, p[0]].map((q) => q.join(" ")).join(",")}))`);
+  const ex = exWkt.length ? `GEOMETRYCOLLECTION(${exWkt.join(",")})` : "GEOMETRYCOLLECTION EMPTY";
   const [r] = await sql`
-    WITH l AS (SELECT ST_GeomFromText(${wkt}) g)
-    SELECT ST_AsGeoJSON(ST_Intersection(ST_Buffer(g, ${-lateral}, 'join=mitre'), ST_MakeEnvelope(-1e6, ${yMin + frontal}, 1e6, ${fondo != null ? yMax - fondo : 1e6})), 2)::json AS e,
-           ST_AsGeoJSON(ST_Intersection(ST_Buffer(g, -0.5, 'join=mitre'), ST_MakeEnvelope(-1e6, ${yMin + frontal}, 1e6, 1e6)), 2)::json AS s FROM l`; // el sótano no ocupa el antejardín (Decreto 471, art. 207)
+    WITH l AS (SELECT ST_GeomFromText(${wkt}) g, ST_Buffer(ST_MakeValid(ST_GeomFromText(${ex})), 0) x)
+    SELECT ST_AsGeoJSON(ST_Difference(ST_Intersection(ST_Buffer(g, ${-lateral}, 'join=mitre'), ST_MakeEnvelope(-1e6, ${yMin + frontal}, 1e6, ${fondo != null ? yMax - fondo : 1e6})), x), 2)::json AS e,
+           ST_AsGeoJSON(ST_Difference(ST_Intersection(ST_Buffer(g, -0.5, 'join=mitre'), ST_MakeEnvelope(-1e6, ${yMin + frontal}, 1e6, 1e6)), x), 2)::json AS s FROM l`; // el sótano no ocupa el antejardín (Decreto 471, art. 207)
   const mayor = (gj: any): Pt[] => {
     if (!gj?.coordinates?.length) return [];
     const polys: Pt[][] = gj.type === "MultiPolygon" ? gj.coordinates.map((c: any) => c[0].slice(0, -1)) : gj.type === "Polygon" ? [gj.coordinates[0].slice(0, -1)] : [];
