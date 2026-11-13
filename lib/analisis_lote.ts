@@ -87,7 +87,8 @@ type Esc = { nombre: string; indice_construccion: number | null; densidad_viv_ha
 export function cabida(p: any, b26: any, opts: { area_unidad_m2?: number; area_util_m2: number; tipo_vivienda?: "VIS" | "NO VIS" }) {
   const au = opts.area_unidad_m2 ?? (opts.tipo_vivienda === "VIS" ? 50 : 65);
   const area = n(p.area_lote) ?? 0;
-  const util = opts.area_util_m2 || area;
+  // Los índices se aplican sobre el área neta: el lote menos protección, retiros hídricos y amenaza alta.
+  const util = Math.max(0, Math.min(area, opts.area_util_m2 ?? area));
   const usa26 = b26?.disponible;
   const ic14 = n(p.ic_max), d14 = n(p.densidad_max), icT14 = n(p.ic_total) ?? ic14;
   const ic26 = usa26 ? n(b26.norma.indice_construccion_residencial) : null;
@@ -109,8 +110,9 @@ export function cabida(p: any, b26: any, opts: { area_unidad_m2?: number; area_u
     supuestos: { area_unidad_m2: au, eficiencia_vendible: 0.8, indice_ocupacion: io, parqueaderos_por_vivienda: parqPorViv, visitantes_por_vivienda: 0.2, m2_por_parqueadero_en_sotano: 28 },
     escenarios: escenarios.map((e) => {
       if (!e.indice_construccion) return { escenario: e.nombre, disponible: false };
-      const construible = area * e.indice_construccion;
-      const porDensidad = e.densidad_viv_ha ? Math.floor((e.densidad_viv_ha * area) / 10000) : Infinity;
+      if (util < 100) return { escenario: e.nombre, disponible: false, motivo: `Área neta de ${r0(util)} m²: el lote queda casi todo en protección, retiro o amenaza alta.` };
+      const construible = util * e.indice_construccion;
+      const porDensidad = e.densidad_viv_ha ? Math.floor((e.densidad_viv_ha * util) / 10000) : Infinity;
       const unidades = Math.min(Math.floor((construible * 0.8) / au), porDensidad);
       const huella = util * io;
       let pisos = huella ? Math.ceil(construible / huella) : null;
@@ -173,5 +175,5 @@ export async function analizarLote(p: any, opts: { area_unidad_m2?: number; tipo
         nota: "Valor residual = lo máximo que se puede pagar por el lote para que el proyecto dé margen, con precios y costos de la zona (modelo de prefactibilidad)." };
     } else valor = { disponible: false, motivo: pf.motivo };
   }
-  return { area_util: af, semaforo: semaforo(p, af, rs), restricciones: rs ? { ...rs, hidrico: { ...rs.hidrico, geometria_9377: undefined } } : null, cabida: cab, computo_indice: computoIndice(p, esBase, af.area_util_m2 ?? 0, n(p.area_lote) ?? 0, opts.area_unidad_m2 ?? cab.supuestos.area_unidad_m2), inventario_zona: inv, cesiones: ces, usos: usosPermitidos(p, opts.actividad), valor_residual: valor, pot_2026_preliminar: b26, aviso_legal: AVISO_LEGAL };
+  return { area_util: af, semaforo: semaforo(p, af, rs), restricciones: rs ? { ...rs, hidrico: { ...rs.hidrico, geometria_9377: undefined } } : null, cabida: cab, computo_indice: computoIndice(p, esBase, af.area_util_m2 ?? 0, Math.min(n(p.area_lote) ?? 0, af.area_util_m2 ?? Infinity), opts.area_unidad_m2 ?? cab.supuestos.area_unidad_m2), inventario_zona: inv, cesiones: ces, usos: usosPermitidos(p, opts.actividad), valor_residual: valor, pot_2026_preliminar: b26, aviso_legal: AVISO_LEGAL };
 }

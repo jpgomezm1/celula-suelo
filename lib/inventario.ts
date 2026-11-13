@@ -72,7 +72,7 @@ export async function inventarioLote(id: string, opciones: { radio_m?: number; t
     radio_m: radio, tipo, estrato_zona: est,
     fecha_corte: filas.reduce((m: any, f) => (f.fecha_corte > (m ?? 0) ? f.fecha_corte : m), null),
     proyectos: vivos.length, disponibles: Math.round(disp), por_lanzar: Math.round(xl), ventas_mes: r1(ventas),
-    meses_inventario: mesesHoy, meses_inventario_con_por_lanzar: mesesTotal,
+    meses_inventario: suficiente ? mesesHoy : null, meses_inventario_con_por_lanzar: suficiente ? mesesTotal : null,
     por_etapa: grupos,
     inventario_cerrado: {
       unidades: Math.round(dispTerm), proyectos: term.length,

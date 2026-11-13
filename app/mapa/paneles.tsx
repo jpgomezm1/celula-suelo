@@ -104,7 +104,7 @@ export function PanelLote({ id, onComparar, onEstudio, enComparacion, ver3D, goo
                   <div className="linea"><span>IC · viv/ha</span><b>{num(e.indice_construccion, 1)} · {num(e.densidad_viv_ha)}</b></div>
                   <div className="nota">limita: {e.limita}</div>
                 </>
-              ) : <div className="nota">Sin norma</div>}
+              ) : <div className="nota">{e.motivo ?? "Sin norma"}</div>}
             </div>
           ))}
         </div>
