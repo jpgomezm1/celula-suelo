@@ -25,6 +25,7 @@ import { opcionesConPerfil } from "@/lib/constructora/sesion";
 import { topografiaLote } from "@/lib/topografia";
 import { entornoLote, lecturaEntorno } from "@/lib/entorno";
 import { fachadaLote } from "@/lib/fachada";
+import { crearReporte } from "@/lib/reporte_lote";
 import { firmar } from "@/lib/auth";
 
 const URL_BASE = () => process.env.PUBLIC_URL ?? "https://celula-suelo.vercel.app";
@@ -64,6 +65,7 @@ Flujos recomendados:
 0. "¿Qué se puede hacer en este lote?" o "dame la ficha" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf. Trae semáforo, área neta, cabida, usos, restricciones (amenazas, quebradas y retiros, suelo de protección, plan parcial, árboles patrimoniales), topografía, inventario de vivienda nueva a 2 km y áreas que no cuentan en el índice. ficha_predio da lo mismo más licencias, mercado de Fynder y proyectos cerca. Detalles puntuales → cabida_lote, usos_permitidos, topografia_lote.
 1. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250). Una zona dibujada → analizar_zona.
 2. Buscar lotes → buscar_lotes (filtros de área, tratamiento, amenaza, % en retiro hídrico, quebrada que cruza, árboles patrimoniales y plan parcial) u oportunidades_por_perfil (producto definido sobre todo un municipio) → consulta_norma de los mejores → contacto_predio.
+2b. "Hazme un reporte de este lote" o "revisa este avalúo" → investiga (consulta_norma, ficha_predio, topografia_lote, POT vigente) → reporte_lote con textos en lenguaje no técnico → comparte el enlace.
 3. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 4. Mercado de una zona → mercado_zona, buscar_proyectos, ficha_proyecto, constructora. Lotes que el equipo negocia → negociaciones. POT nuevo → cambio_pot y novedades_normativas.
 Riesgo y agua: el retiro hídrico es oficial del POT en Medellín, Envigado, Sabaneta, Itagüí, Bello y La Estrella; en los demás municipios, y en los cauces que no tienen retiro oficial, es una faja de referencia de 30 m a cauces naturales (dilo cuando aplique, el campo criterio lo indica). Avenida torrencial: cargada solo en Medellín, Itagüí y Sabaneta (en los demás, dilo si el lote está junto a una quebrada); Copacabana y Girardota no tienen capa de amenaza: si el lote está ahí, adviértelo. Los estudios de riesgo de detalle no son públicos.
@@ -220,10 +222,33 @@ const mcp = createMcpHandler(
       }),
     }, seguro(async (a: any) => crearEstudio(a)));
 
+    server.registerTool("reporte_lote", {
+      annotations: ESCRITURA,
+      title: "Reporte visual de lote",
+      description: "Arma un reporte visual (página con la marca irrelevant) de uno o varios lotes que se evalúan juntos: resumen en palabras simples, semáforo, mapa a escala con retiros, quebradas, amenaza alta y vecinos sin construir, norma, área útil, viviendas por escenario, perfil y pendiente del terreno, vivienda nueva en la zona y, si se pasa 'avaluo', la lectura del avalúo (precio frente a referencia y comparables, por m² útil y construible). Devuelve el enlace (se abre con el correo y clave del workspace) y un resumen automático. Flujo recomendado: investiga primero (consulta_norma, ficha_predio, POT vigente, avalúo), luego llama esta herramienta con 'textos' redactados en lenguaje NO técnico: resumen_simple [{icono, titulo, texto}], hallazgos [{titulo, texto, luz rojo|ambar|verde|gris}], observaciones_avaluo [{cifra, titulo, texto}], conclusion, verificar [texto], fuentes, titular y bajada. Si no los das, el reporte usa un resumen automático. Para cambiarlos después usa completar_estudio con el id. Nunca incluyas nombres, teléfonos ni correos de personas naturales.",
+      inputSchema: z.object({
+        nombre: z.string().optional(),
+        lotes: z.array(z.object({ nombre: z.string().optional(), ...LOTE })).min(1).max(6).describe("Predios que se evalúan juntos"),
+        area_unidad_m2: z.number().min(20).max(300).optional(),
+        avaluo: z.object({
+          valor_total: z.number().optional(), area_m2: z.number().optional(), precio_m2: z.number().optional(), fecha: z.string().optional(), vigencia_hasta: z.string().optional(),
+          norma_citada: z.string().optional(), pendiente_grados: z.number().optional(), metodo: z.string().optional(),
+          comparables: z.array(z.object({ nombre: z.string(), precio_m2: z.number(), nota: z.string().optional() })).optional(),
+        }).optional(),
+        textos: z.object({
+          titular: z.string().optional(), bajada: z.string().optional(), conclusion: z.string().optional(),
+          resumen_simple: z.array(z.object({ titulo: z.string(), texto: z.string(), icono: z.string().optional() })).optional(),
+          hallazgos: z.array(z.object({ titulo: z.string(), texto: z.string(), luz: z.enum(["rojo", "ambar", "verde", "gris"]).optional() })).optional(),
+          observaciones_avaluo: z.array(z.object({ cifra: z.string().optional(), titulo: z.string(), texto: z.string() })).optional(),
+          verificar: z.array(z.string()).optional(), fuentes: z.array(z.string()).optional(),
+        }).optional(),
+      }),
+    }, seguro(async (a: any) => crearReporte(a)));
+
     server.registerTool("completar_estudio", {
       annotations: ESCRITURA,
       title: "Completar estudio (textos)",
-      description: "Guarda los textos redactados de un estudio para que salgan en el Excel: objetivo, paso4 {zona, referencias, vias, transporte, comercio, valorizacion}, recomendacion_general, recomendaciones {'Tipo de producto', 'Tipologías', 'Zonas comunes', 'Enfoque comercial', 'Público objetivo', 'Diferencial recomendado', ...} y conclusion.",
+      description: "Guarda los textos redactados de un estudio o de un reporte de lote. Reporte de lote (id r_…): resumen_simple, hallazgos, observaciones_avaluo, conclusion, verificar, fuentes, titular, bajada. Estudio de competencia, para que salgan en el Excel: objetivo, paso4 {zona, referencias, vias, transporte, comercio, valorizacion}, recomendacion_general, recomendaciones {'Tipo de producto', 'Tipologías', 'Zonas comunes', 'Enfoque comercial', 'Público objetivo', 'Diferencial recomendado', ...} y conclusion.",
       inputSchema: z.object({ id: z.string(), textos: z.record(z.string(), z.any()) }),
     }, seguro(async ({ id, textos }: any) => completarEstudio(id, textos)));
 

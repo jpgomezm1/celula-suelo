@@ -42,6 +42,7 @@ export function semaforo(p: any, af: any, rs?: any) {
     ? { categoria: "Amenaza y riesgo", luz: "rojo", lectura: `Amenaza alta: ${af.amenaza_alta.map((x: any) => `${x.tipo} (${String(x.grado).toLowerCase()}, ${x.m2} m²)`).join(", ") || fmtAm(am.filter((a) => /alta|no mitigable/i.test(a))) || "según capa del POT"}. Esa área no se construye y requiere estudio de riesgo de detalle.` }
     : grados.some((g) => /condici/i.test(g)) ? { categoria: "Amenaza y riesgo", luz: "amarillo", lectura: `Zona con condición de riesgo (${fmtAm(am)}): antes de licenciar se exige estudio de riesgo de detalle.` }
     : grados.some((g) => /media/i.test(g)) ? { categoria: "Amenaza y riesgo", luz: "amarillo", lectura: `Amenaza media (${fmtAm(am)}): pedir estudio geotécnico.` }
+    : !am.length && ["05212", "05308"].includes(p.municipio_dane) ? { categoria: "Amenaza y riesgo", luz: "gris", lectura: "El municipio no publica su capa de amenazas: pedir el plano de amenazas y riesgo del POT antes de avanzar." }
     : { categoria: "Amenaza y riesgo", luz: "verde", lectura: am.length ? `Amenaza baja o muy baja (${am.map((a) => a.replace(/_/g, " ")).join(", ")}).` : "Sin amenazas cruzadas." });
   const pctProt = af.area_lote_m2 ? ((af.proteccion.reduce((a: number, x: any) => a + (x.m2 ?? 0), 0)) / af.area_lote_m2) * 100 : 0;
   items.push(pctProt > 30 ? { categoria: "Protección ambiental y retiros", luz: "rojo", lectura: `${Math.round(pctProt)} % del lote en suelo de protección (${af.proteccion.map((x: any) => x.tipo).join(", ")}).` }
