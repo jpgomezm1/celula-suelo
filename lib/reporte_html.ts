@@ -13,6 +13,25 @@ const PESO: Record<string, number> = { rojo: 3, ambar: 2, gris: 1, verde: 0 };
 const SIN_AMENAZA = new Set(["05212", "05308"]); // Copacabana y Girardota no publican capa de amenazas
 
 /* ───────────── Resumen automático en palabras simples ───────────── */
+// ---- Co-marca: colores y fuente del cliente sobre la plantilla ----
+const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const hex = (c: number[]) => "#" + c.map((x) => Math.round(Math.max(0, Math.min(255, x))).toString(16).padStart(2, "0")).join("");
+const mezcla = (a: string, b: string, t: number) => { const A = rgb(a), B = rgb(b); return hex(A.map((x, i) => x + (B[i] - x) * t)); };
+const luminancia = (h: string) => { const [r, g, b] = rgb(h).map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+function aplicarMarca(html: string, mk: any) {
+  if (!mk) return html;
+  const ac = mk.color_acento ?? MORADO, os = mk.color_oscuro ?? OSCURO, claro = luminancia(ac) > 0.35;
+  const pares: [string, string][] = [["#5e55fe", ac], ["#a59fff", mezcla(ac, "#ffffff", 0.35)], ["#eeecff", mezcla(ac, "#ffffff", 0.88)], ["#2d2599", mezcla(os, ac, 0.35)],
+    ["#7c74ff", mezcla(ac, os, 0.25)], ["#c4c0ff", mezcla(ac, "#ffffff", 0.6)], ["#4338ca", mezcla(os, "#ffffff", 0.3)], ["#1a1a1f", os], ["#d9d7ff", mezcla(ac, "#ffffff", 0.75)],
+    ["#e6e4ff", mezcla(ac, "#ffffff", 0.8)], ["#3b3670", os], ["#8c88ab", mezcla(os, "#ffffff", 0.55)], ["#cfcde0", mezcla(os, "#ffffff", 0.8)],
+    ["rgba(94,85,254", `rgba(${rgb(ac).join(",")}`], ["rgba(165,159,255", `rgba(${rgb(ac).join(",")}`], ["rgba(26,26,31", `rgba(${rgb(os).join(",")}`]];
+  for (const [a, b] of pares) html = html.split(a).join(b);
+  if (mk.fuente_titulos) html = html.split("Poppins:wght@400;500;600;700;800").join(`${mk.fuente_titulos.replace(/ /g, "+")}:wght@400;500;600;700;800`).split("Poppins").join(`'${mk.fuente_titulos}'`);
+  // Acento claro (dorado, amarillo): texto oscuro encima y títulos pequeños en el color oscuro de la marca.
+  const extra = claro ? `.eyebrow{color:${os}}.eyebrow::before{content:"";display:inline-block;width:22px;height:3px;background:${ac};vertical-align:middle;margin-right:8px;border-radius:2px}.kpi.alerta .num,.kpi.alerta .num small{color:${os}}.kpi.alerta p{color:${mezcla(os, "#ffffff", 0.15)}}.ob .num{color:${os}}` : "";
+  return html.replace("</style>", `${extra}.co{display:flex;align-items:center;gap:14px}.co .x{width:1px;height:30px;background:rgba(255,255,255,.25)}.co small{font-size:11.5px;color:rgba(255,255,255,.7);line-height:1.25}.co small b{color:#fff;font-weight:600}.top img.cli{height:44px}footer .pie{display:flex;align-items:center;gap:18px}footer img.cli{height:54px}footer img.irr{height:44px}</style>`);
+}
+
 export function resumenAutomatico(r: any): { titulo: string; texto: string; icono: string }[] {
   const L: any[] = r.lotes; const av = r.avaluo;
   const total = sum(L, (l) => l.area), util = sum(L, (l) => l.area_util?.area_util_m2 ?? l.area);
@@ -157,6 +176,11 @@ export function renderReporte(r: any, textos: Textos = {}) {
   const und = sum(cabs, (e) => e.unidades);
   const inv = L.map((l) => l.inventario).find((i: any) => i && i.proyectos >= 3);
   const fecha = new Date(r.generado).toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric", timeZone: "America/Bogota" });
+  const mk = r.marca ?? null, constructora = r.audiencia === "constructora", mer = r.mercado ?? null;
+  const e14 = (l: any) => l.cabida?.escenarios?.find((e: any) => /2014/.test(e.escenario) && e.disponible), e26 = (l: any) => l.cabida?.escenarios?.find((e: any) => /2026/.test(e.escenario) && !/derechos/i.test(e.escenario) && e.disponible);
+  const c14 = sum(L, (l) => e14(l)?.area_construible_m2 ?? 0), c26 = sum(L, (l) => e26(l)?.area_construible_m2 ?? 0);
+  const u14 = sum(L, (l) => e14(l)?.unidades ?? 0), u26 = sum(L, (l) => e26(l)?.unidades ?? 0);
+  const vRef = av?.valor_total ?? (ref ? ref * total : null), vRefTxt = av?.valor_total ? "el valor del avalúo" : "el valor de referencia del suelo";
 
   // Cifras de portada
   const kpis: string[] = [];
@@ -168,9 +192,18 @@ export function renderReporte(r: any, textos: Textos = {}) {
   else if (inv?.meses_inventario != null) kpis.push(`<div class="kpi"><div class="num">${num(inv.meses_inventario, 1)}</div><p>meses de inventario de vivienda nueva a ${inv.radio_m / 1000} km</p></div>`);
   else kpis.push(`<div class="kpi"><div class="num">${ref ? pesos(ref) : "—"}</div><p>valor de referencia del suelo por m² en la zona</p></div>`);
 
+  if (constructora) {
+    kpis.length = 0;
+    kpis.push(`<div class="kpi"><div class="num">${num(total)} <small>m²</small></div><p>${L.length > 1 ? `En ${L.length} predios` : "Lote según catastro"}${util < total ? ` · ${num(util)} m² útiles` : " · sin descuentos por protección"}</p></div>`);
+    if (c14) kpis.push(`<div class="kpi"><div class="num">${num(c14)} <small>m²</small></div><p>construibles con la norma vigente (POT 2014)${c26 ? ` · ${num(c26)} m² con el POT 2026` : ""}</p></div>`);
+    if (u14) kpis.push(`<div class="kpi ${u26 && u26 < u14 ? "alerta" : ""}"><div class="num">${num(u14)}${u26 && u26 !== u14 ? ` <small>→ ${num(u26)}</small>` : ""}</div><p>viviendas de ≈ ${num(L[0].cabida?.supuestos?.area_unidad_m2)} m²${u26 && u26 !== u14 ? " hoy → con el POT 2026" : ""}</p></div>`);
+    if (vRef && c14) kpis.push(`<div class="kpi"><div class="num">${pesos(Math.round(vRef / c14 / 1000) * 1000)}</div><p>de suelo por m² construible (${vRefTxt}${mer?.fynder?.precio_m2_nuevo ? `, ${num((vRef / c14 / mer.fynder.precio_m2_nuevo) * 100)} % del precio de venta nuevo` : ""})</p></div>`);
+    else if (mer?.fynder?.precio_m2_nuevo) kpis.push(`<div class="kpi"><div class="num">${pesos(mer.fynder.precio_m2_nuevo)}</div><p>precio por m² de vivienda nueva a 1,5 km</p></div>`);
+  }
+
   // Resumen en palabras simples
   const simple = (textos.resumen_simple?.length ? textos.resumen_simple.map((x) => ({ icono: x.icono ?? "•", ...x })) : resumenAutomatico(r));
-  const SIMPLE = `<div class="simple"><h2>En palabras simples</h2><p class="intro">Lo que encontramos, sin términos técnicos.</p><ol>${simple.map((x) => `<li><span class="ic">${esc(x.icono)}</span><div><b>${esc(x.titulo)}</b><p>${esc(x.texto)}</p></div></li>`).join("")}</ol>${textos.conclusion ? `<div class="cierre"><b>En resumen:</b> ${esc(textos.conclusion)}</div>` : ""}</div>`;
+  const SIMPLE = `<div class="simple"><h2>${constructora ? "Resumen ejecutivo" : "En palabras simples"}</h2><p class="intro">${constructora ? "Lo esencial del lote para el comité de tierras." : "Lo que encontramos, sin términos técnicos."}</p><ol>${simple.map((x) => `<li><span class="ic">${esc(x.icono)}</span><div><b>${esc(x.titulo)}</b><p>${esc(x.texto)}</p></div></li>`).join("")}</ol>${textos.conclusion ? `<div class="cierre"><b>En resumen:</b> ${esc(textos.conclusion)}</div>` : ""}</div>`;
 
   // Semáforo: peor luz por categoría entre los lotes, más los hallazgos redactados
   const porCat = new Map<string, { luz: string; lectura: string }>();
@@ -191,6 +224,30 @@ export function renderReporte(r: any, textos: Textos = {}) {
   // Norma
   const NORMA = `<table class="tabla"><tr><th>Lote</th><th>Tratamiento</th><th>Altura</th><th>Índice</th><th>Densidad</th><th>Ocupación</th></tr>${L.map((l) => `<tr><td>${esc(l.nombre)}</td><td>${esc(l.norma.tratamiento ?? "sin dato")}${l.norma.codigo ? ` <span class="nota">(${esc(l.norma.codigo)})</span>` : ""}</td><td>${l.norma.altura ? `${num(l.norma.altura)} pisos` : "—"}</td><td>${num(l.norma.ic, 2)}${l.norma.ic_derechos && l.norma.ic_derechos !== l.norma.ic ? ` · ${num(l.norma.ic_derechos, 2)} con derechos` : ""}</td><td>${l.norma.densidad ? `${num(l.norma.densidad)} viv/ha` : "—"}</td><td>${l.norma.io ? `${num(l.norma.io * (l.norma.io <= 1 ? 100 : 1))} %` : "—"}</td></tr>`).join("")}</table>
     ${[...new Set(L.map((l) => l.advertencia).filter(Boolean))].map((a) => `<div class="aviso rojo-s">⚠️ ${esc(a)}</div>`).join("")}${[...new Set(L.map((l) => l.aviso_pot).filter(Boolean))].map((a) => `<p class="nota">${esc(a)}</p>`).join("")}`;
+
+  // Norma vigente frente al POT 2026 (preliminar)
+  const p26 = L.find((l) => l.pot2026?.frente_a_2014);
+  const fila = (t: string, a: any, b: any, d = 0, suf = "") => `<tr><td>${t}</td><td>${a == null ? "—" : num(a, d) + suf}</td><td>${b == null ? "—" : num(b, d) + suf}</td><td>${a && b != null ? `${b - a > 0 ? "+" : ""}${num(((b - a) / a) * 100)} %` : "—"}</td></tr>`;
+  const NORMA26 = p26 && c14 ? `<table class="tabla"><tr><th></th><th>Hoy · POT 2014</th><th>POT 2026 (preliminar)</th><th>Cambio</th></tr>
+    ${fila("Índice de construcción", p26.pot2026.frente_a_2014.indice_construccion?.pot2014, p26.pot2026.frente_a_2014.indice_construccion?.pot2026, 2)}
+    ${fila("Densidad (viv/ha)", p26.pot2026.frente_a_2014.densidad_viv_ha?.pot2014, p26.pot2026.frente_a_2014.densidad_viv_ha?.pot2026)}
+    ${fila("Área construible", c14, c26 || null, 0, " m²")}
+    ${fila("Área vendible (80 %)", sum(L, (l) => e14(l)?.area_vendible_m2 ?? 0), sum(L, (l) => e26(l)?.area_vendible_m2 ?? 0) || null, 0, " m²")}
+    ${fila(`Viviendas de ≈ ${num(L[0].cabida?.supuestos?.area_unidad_m2)} m²`, u14, u26 || null)}</table>
+    <p class="nota">${esc(p26.pot2026.estado)} Código ${esc(p26.pot2026.codigo ?? "")}. Fuente: <a href="${esc(p26.pot2026.fuente)}">proyecto de acuerdo</a>.</p>` : "";
+
+  // Mercado de la zona (Fynder y proyectos anunciados): sin datos confidenciales
+  const f = mer?.fynder;
+  const PROY = (mer?.proyectos ?? []).length ? `<table class="tabla"><tr><th>Proyecto</th><th>Constructora</th><th>Desde</th><th>m² desde</th><th>Entrega</th><th>Distancia</th></tr>${mer.proyectos.map((q: any) => `<tr><td>${esc(q.nombre)}</td><td>${esc(q.constructora ?? "—")}</td><td>${q.precio_desde ? millones(q.precio_desde) : "—"}</td><td>${q.precio_m2_desde ? pesos(Math.round(q.precio_m2_desde / 1000) * 1000) : "—"}</td><td>${esc(q.entrega ?? "—")}</td><td>${num(q.distancia_m)} m</td></tr>`).join("")}</table>` : "";
+  const CIFRAS = f ? `<div class="cifras2"><div><b class="num">${f.precio_m2_nuevo ? pesos(Math.round(f.precio_m2_nuevo / 1000) * 1000) : "—"}</b><span>por m², apartamentos nuevos o sobre planos anunciados</span></div><div><b class="num">${f.precio_m2_usado ? pesos(Math.round(f.precio_m2_usado / 1000) * 1000) : "—"}</b><span>por m², apartamentos usados (${num(f.en_venta)} en venta)</span></div><div><b class="num">${num(f.compradores_90d)}</b><span>compradores buscando en la zona (90 días)${f.presupuesto_mediana ? `, presupuesto típico ${millones(f.presupuesto_mediana)}` : ""}</span></div><div><b class="num">${num(f.meses_venta, 1)}</b><span>meses para vender la oferta al ritmo actual (${num(f.ventas_mes, 1)} salen del mercado por mes)</span></div></div>
+    <p class="nota">Fynder: avisos y pedidos de compradores de los últimos 90 días a ${num(mer.radio_m / 1000, 1)} km. Precios de oferta, no de cierre.${f.baja_confianza ? " Muestra pequeña: lectura de baja confianza." : ""}</p>` : "";
+  const MERCADO = mer && (f || PROY) ? `${CIFRAS}${PROY ? `<h3 style="margin-top:14px">Proyectos nuevos a ${num(mer.radio_m / 1000, 1)} km</h3>${PROY}<p class="nota">Zonario (proyectos anunciados, precios publicados).</p>` : ""}` : "";
+  const INCID = constructora && vRef && c14 ? `<div class="datos">
+      <div class="dato"><span>${av?.valor_total ? "Valor del avalúo" : `Valor de referencia del suelo (${pesos(ref)}/m² × ${num(total)} m²)`}</span><b class="num grande">${millones(vRef)}</b></div>
+      <div class="dato"><span>Por m² construible, norma vigente (${num(c14)} m²)</span><b class="num grande">${pesos(Math.round(vRef / c14 / 1000) * 1000)}</b></div>
+      ${c26 ? `<div class="dato"><span>Por m² construible, POT 2026 (${num(c26)} m²)</span><b class="num grande">${pesos(Math.round(vRef / c26 / 1000) * 1000)}</b></div>` : ""}
+      ${f?.precio_m2_nuevo ? `<div class="dato"><span>Incidencia sobre el precio de venta nuevo</span><b class="num grande" style="color:${MORADO}">${num((vRef / c14 / f.precio_m2_nuevo) * 100)} %${c26 ? ` → ${num((vRef / c26 / f.precio_m2_nuevo) * 100)} %` : ""}</b></div>` : ""}
+    </div><p class="nota">${av?.valor_total ? "" : "El valor de referencia es el del suelo por zona (catastral o del Área Metropolitana), no el precio pedido por el lote. "}Incidencia = valor del suelo por m² construible ÷ precio por m² de vivienda nueva en la zona.</p>` : "";
 
   // Área útil
   const prot = new Map<string, number>(); let alta = 0;
@@ -241,27 +298,30 @@ export function renderReporte(r: any, textos: Textos = {}) {
   if (L.some((l) => SIN_AMENAZA.has(l.municipio_dane)) || sems.some((s) => s.cat === "Amenaza y riesgo" && s.luz !== "verde")) auto.push("<b>Estudio o plano de amenazas</b> del municipio para el lote.");
   if (L.some((l) => l.restricciones?.planificacion?.instrumentos?.length)) auto.push("<b>Plan parcial o instrumento</b> que cubre el lote: estado, cargas y obligaciones.");
   auto.push("<b>Certificados de tradición</b> recientes y <b>estudio de títulos</b>.", "<b>Afectaciones viales</b> en la curaduría (la capa de vías proyectadas no está cargada).");
-  const VER = (textos.verificar?.length ? textos.verificar.map(esc) : auto).map((x) => `<div class="paso">${x}</div>`).join("");
-  const FUENTES = [...(textos.fuentes ?? []), "Catastro y norma del municipio (GeoMedellín, Área Metropolitana, GeoAntioquia, Cornare)", "Red hídrica, retiros y amenazas de los POT; OpenStreetMap", "Modelo de terreno del Valle de Aburrá (AMVA) e IGAC", ...(inv ? ["Galería Inmobiliaria (confidencial) y Fynder"] : [])];
+  const conNegrita = (s: string) => esc(s).replace(/&lt;(\/?)b&gt;/g, "<$1b>"); // solo se permite <b>
+  const VER = (textos.verificar?.length ? textos.verificar.map(conNegrita) : auto).map((x) => `<div class="paso">${x}</div>`).join("");
+  const FUENTES = [...(textos.fuentes ?? []), "Catastro y norma del municipio (GeoMedellín, Área Metropolitana, GeoAntioquia, Cornare)", "Red hídrica, retiros y amenazas de los POT; OpenStreetMap", "Modelo de terreno del Valle de Aburrá (AMVA) e IGAC", ...(inv ? ["Galería Inmobiliaria (confidencial) y Fynder"] : []), ...(MERCADO && (constructora || !inv) ? ["Fynder (avisos y pedidos de compradores) y Zonario (proyectos anunciados)"] : []), ...(NORMA26 ? ["Proyecto de Acuerdo 104 de 2026, revisión del POT de Medellín (preliminar)"] : [])];
 
   const titular = textos.titular ?? (L.length > 1 ? `${L.length} lotes en ${mun}` : `${L[0].nombre}, ${mun}`);
   const bajada = textos.bajada ?? `${L[0].barrio ? `${L[0].barrio}, ` : ""}${mun}. Norma, restricciones, terreno${inv ? ", mercado de la zona" : ""}${av ? " y lectura del avalúo" : ""}, con datos públicos al ${fecha}.`;
 
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(r.nombre)} · Reporte de lote</title>
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(r.nombre)} · Reporte de lote</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><style>${CSS}</style></head><body>
-<section class="hero"><div class="wrap"><div class="top"><img src="/marca/irrelevant-blanco.png" alt="irrelevant"><span class="chip">Inteligencia de suelo · <b>Reporte de lote</b> · ${esc(fecha)}</span></div>
+<section class="hero"><div class="wrap"><div class="top">${mk ? `<div class="co">${mk.logo_oscuro || mk.logo ? `<img class="cli" src="${mk.logo_oscuro ?? mk.logo}" alt="${esc(mk.cliente)}">` : `<b style="font-size:22px">${esc(mk.cliente)}</b>`}<span class="x"></span><small>Preparado por<br><b>irrelevant · Inteligencia de suelo</b></small></div><span class="chip"><b>Reporte de lote</b> · ${esc(fecha)}</span>` : `<img src="/marca/irrelevant-blanco.png" alt="irrelevant"><span class="chip">Inteligencia de suelo · <b>Reporte de lote</b> · ${esc(fecha)}</span>`}</div>
 <h1>${esc(titular)}</h1><p class="lead">${esc(bajada)}</p><div class="kpis">${kpis.slice(0, 4).join("")}</div></div></section>
 <main class="wrap">${SIMPLE}
 <div class="bloque"><div class="eyebrow">01 · Semáforo</div><h2>Qué pesa y qué ayuda</h2><p class="sub">Rojo cambia la decisión; ámbar hay que verificarlo; gris no hay dato público.</p><div class="sems">${SEM}</div></div>
 <div class="bloque"><div class="eyebrow">02 · El lote en el mapa</div><h2>Dónde está y qué lo restringe</h2><p class="sub">Predios del catastro, suelo de protección, retiros, quebradas y amenaza alta, a escala real.</p><div class="grid2"><div class="card">${mapaSvg(m, L)}</div><div class="card"><h3>Identificación</h3>${ID}</div></div></div>
-<div class="bloque"><div class="eyebrow">03 · Norma</div><h2>Qué permite la norma</h2>${NORMA}</div>
+<div class="bloque"><div class="eyebrow">03 · Norma</div><h2>Qué permite la norma</h2>${NORMA}${NORMA26 ? `<h3 style="margin:22px 0 8px;font-size:18px">Hoy frente al POT 2026</h3>${NORMA26}` : ""}</div>
 <div class="bloque"><div class="eyebrow">04 · Área y cabida</div><h2>Cuánto se puede usar y cuánto cabe</h2><div class="card"><h3>Composición del área · ${num(total)} m²</h3>${barraApilada(partes)}<p class="nota">Área útil = lote menos suelo de protección, retiro de quebradas y amenaza alta. No descuenta aún vías proyectadas.</p></div>
 <div class="grid2b" style="margin-top:18px"><div class="card"><h3>Viviendas aproximadas por escenario</h3>${CABIDA}</div><div class="card"><h3>Áreas que no cuentan en el índice</h3>${CI || '<p class="nota">La regla de áreas fuera del índice solo está cargada para Medellín.</p>'}</div></div></div>
 ${topos.length ? `<div class="bloque"><div class="eyebrow">05 · Terreno</div><h2>Cómo es el terreno</h2><div class="grid2"><div class="card"><h3>Perfil en la dirección de la pendiente</h3>${perfilSvg(L)}</div><div class="card"><h3>Pendiente</h3>${PEND}</div></div></div>` : ""}
 ${INV ? `<div class="bloque"><div class="eyebrow">06 · Mercado</div><h2>Vivienda nueva en la zona</h2><div class="card">${INV}</div></div>` : ""}
+${MERCADO && (constructora || !INV) ? `<div class="bloque"><div class="eyebrow">${INV ? "07" : "06"} · Mercado y competencia</div><h2>${constructora ? "A cuánto se vende y quién compite" : "Mercado de la zona"}</h2>${INCID ? `<div class="grid2b"><div class="card"><h3>Lo que pesa el suelo</h3>${INCID}</div><div class="card"><h3>La zona en cifras</h3>${CIFRAS}</div></div>${PROY ? `<div class="card" style="margin-top:18px"><h3>Proyectos nuevos a ${num(mer.radio_m / 1000, 1)} km</h3>${PROY}<p class="nota">Zonario (proyectos anunciados, precios publicados). Precios de oferta, no de cierre.</p></div>` : ""}` : `<div class="card">${MERCADO}</div>`}</div>` : ""}
 ${AVALUO}
 <div class="bloque"><div class="eyebrow">Próximos pasos</div><h2>Qué verificar antes de decidir</h2><div class="pasos">${VER}</div></div>
-</main><footer><div class="wrap"><img src="/marca/irrelevant-negro.png" alt="irrelevant co."><p><b>Fuentes:</b> ${FUENTES.map(esc).join("; ")}.<br>Análisis previo con información pública. No reemplaza el concepto de norma del municipio, un estudio de títulos ni un avalúo. Uso interno.</p></div></footer></body></html>`;
+</main><footer><div class="wrap">${mk ? `<div class="pie">${mk.logo ? `<img class="cli" src="${mk.logo}" alt="${esc(mk.cliente)}">` : ""}<img class="irr" src="/marca/irrelevant-negro.png" alt="irrelevant co."></div>` : `<img src="/marca/irrelevant-negro.png" alt="irrelevant co.">`}<p><b>Fuentes:</b> ${FUENTES.map(esc).join("; ")}.<br>Análisis previo con información pública. No reemplaza el concepto de norma del municipio, un estudio de títulos ni un avalúo. ${mk ? `Preparado por irrelevant para ${esc(mk.cliente)}. Confidencial.` : "Uso interno."}</p></div></footer></body></html>`;
+  return aplicarMarca(html, mk);
 }
 
 const CSS = `:root{--morado:#5e55fe;--lila:#a59fff;--lila-f:#eeecff;--oscuro:#1a1a1f;--crema:#F4F3EE;--texto:#2a2a33;--gris:#6f6c80;--linea:#e7e5ef;--rojo:#e11d48;--rojo-f:#ffe4ea;--ambar:#d97706;--verde:#059669}
@@ -282,6 +342,7 @@ svg.barra{width:100%;height:auto;display:block;margin-top:8px}.leyenda{display:f
 .tabla{width:100%;border-collapse:separate;border-spacing:0;font-size:14px;overflow:hidden;border-radius:14px;border:1px solid var(--linea);background:#fff}.tabla th{background:var(--oscuro);color:#fff;text-align:left;padding:11px 14px;font:600 13px Poppins,sans-serif}.tabla td{padding:11px 14px;border-top:1px solid var(--linea);vertical-align:top}.tabla td:first-child{font-weight:600;color:var(--oscuro)}
 .pend{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;text-align:center;margin:18px 0 8px}.pend-v{font:800 24px Poppins,sans-serif;margin-top:-4px}.pend-s{font-size:12.5px;color:var(--gris);line-height:1.35}
 .sems{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.sem{background:#fff;border-radius:16px;padding:16px;border:1px solid var(--linea);border-top:5px solid var(--c)}.sem.rojo{--c:var(--rojo)}.sem.ambar{--c:var(--ambar)}.sem.verde{--c:var(--verde)}.sem.gris{--c:#9ca3af}.sem-h{display:flex;align-items:center;gap:8px;font:600 15px Poppins,sans-serif;color:var(--oscuro)}.sem-h i{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}.sem p{margin:8px 0 0;font-size:13.5px}
+.dato b.grande{white-space:nowrap}.cifras2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:6px}.cifras2 div{background:var(--lila-f);border-radius:14px;padding:14px}.cifras2 b{display:block;font-size:21px;color:var(--oscuro)}.cifras2 span{font-size:12.5px;color:var(--gris);line-height:1.35;display:block}
 .cifras4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}.cifras4 div{background:var(--lila-f);border-radius:14px;padding:14px}.cifras4 b{display:block;font-size:24px;color:var(--oscuro)}.cifras4 span{font-size:12.5px;color:var(--gris)}
 .obs{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:18px}.ob{background:#fff;border-radius:16px;padding:18px;border:1px solid var(--linea)}.ob .num{font-size:30px;font-weight:800;color:var(--morado);line-height:1}.ob h3{margin:8px 0 4px;font-size:15.5px;color:var(--oscuro)}.ob p{margin:0;font-size:13.8px}
 .pasos{counter-reset:p;display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.paso{background:#fff;border-radius:16px;padding:16px 16px 16px 58px;position:relative;border:1px solid var(--linea);font-size:14px}.paso::before{counter-increment:p;content:counter(p);position:absolute;left:16px;top:16px;width:28px;height:28px;border-radius:50%;background:var(--oscuro);color:#fff;display:grid;place-items:center;font:700 13px Poppins}.paso b{color:var(--oscuro)}

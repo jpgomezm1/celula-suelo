@@ -225,7 +225,7 @@ const mcp = createMcpHandler(
     server.registerTool("reporte_lote", {
       annotations: ESCRITURA,
       title: "Reporte visual de lote",
-      description: "Arma un reporte visual (página con la marca irrelevant) de uno o varios lotes que se evalúan juntos: resumen en palabras simples, semáforo, mapa a escala con retiros, quebradas, amenaza alta y vecinos sin construir, norma, área útil, viviendas por escenario, perfil y pendiente del terreno, vivienda nueva en la zona y, si se pasa 'avaluo', la lectura del avalúo (precio frente a referencia y comparables, por m² útil y construible). Devuelve el enlace (se abre con el correo y clave del workspace) y un resumen automático. Flujo recomendado: investiga primero (consulta_norma, ficha_predio, POT vigente, avalúo), luego llama esta herramienta con 'textos' redactados en lenguaje NO técnico: resumen_simple [{icono, titulo, texto}], hallazgos [{titulo, texto, luz rojo|ambar|verde|gris}], observaciones_avaluo [{cifra, titulo, texto}], conclusion, verificar [texto], fuentes, titular y bajada. Si no los das, el reporte usa un resumen automático. Para cambiarlos después usa completar_estudio con el id. Nunca incluyas nombres, teléfonos ni correos de personas naturales.",
+      description: "Arma un reporte visual (página con la marca irrelevant) de uno o varios lotes que se evalúan juntos: resumen en palabras simples, semáforo, mapa a escala con retiros, quebradas, amenaza alta y vecinos sin construir, norma, área útil, viviendas por escenario, perfil y pendiente del terreno, vivienda nueva en la zona y, si se pasa 'avaluo', la lectura del avalúo (precio frente a referencia y comparables, por m² útil y construible). Devuelve el enlace (se abre con el correo y clave del workspace) y un resumen automático. Flujo recomendado: investiga primero (consulta_norma, ficha_predio, POT vigente, avalúo), luego llama esta herramienta con 'textos' redactados en lenguaje NO técnico: resumen_simple [{icono, titulo, texto}], hallazgos [{titulo, texto, luz rojo|ambar|verde|gris}], observaciones_avaluo [{cifra, titulo, texto}], conclusion, verificar [texto], fuentes, titular y bajada. Si no los das, el reporte usa un resumen automático. Para cambiarlos después usa completar_estudio con el id. Para un cliente (p. ej. una constructora): audiencia 'constructora' (resumen ejecutivo, norma hoy frente al POT 2026, incidencia del suelo por m² construible, precios de la zona y proyectos que compiten) y 'marca' {cliente, logo_url, logo_fondo_oscuro_url, color_oscuro, color_acento, fuente_titulos} para ponerle su logo y colores; con marca de cliente los datos de Galería Inmobiliaria quedan por fuera (son confidenciales) salvo incluir_galeria. Nunca incluyas nombres, teléfonos ni correos de personas naturales.",
       inputSchema: z.object({
         nombre: z.string().optional(),
         lotes: z.array(z.object({ nombre: z.string().optional(), ...LOTE })).min(1).max(6).describe("Predios que se evalúan juntos"),
@@ -242,6 +242,15 @@ const mcp = createMcpHandler(
           observaciones_avaluo: z.array(z.object({ cifra: z.string().optional(), titulo: z.string(), texto: z.string() })).optional(),
           verificar: z.array(z.string()).optional(), fuentes: z.array(z.string()).optional(),
         }).optional(),
+        audiencia: z.enum(["general", "constructora"]).optional().describe("constructora: resumen ejecutivo, norma hoy vs. POT 2026, incidencia del suelo y competencia"),
+        marca: z.object({
+          cliente: z.string().describe("Nombre de la empresa para quien se prepara"),
+          logo_url: z.string().url().optional().describe("Logo para fondo claro (https, png/svg/jpg)"),
+          logo_fondo_oscuro_url: z.string().url().optional().describe("Logo para fondo oscuro (portada)"),
+          color_oscuro: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), color_acento: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+          fuente_titulos: z.string().optional().describe("Fuente de Google Fonts para títulos, p. ej. 'Public Sans'"),
+        }).optional(),
+        incluir_galeria: z.boolean().optional().describe("Solo si el cliente tiene derecho a ver datos de Galería Inmobiliaria"),
       }),
     }, seguro(async (a: any) => crearReporte(a)));
 
