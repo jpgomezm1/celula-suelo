@@ -197,6 +197,13 @@ export function renderReporte(r: any, textos: Textos = {}) {
   const c14 = sum(L, (l) => e14(l)?.area_construible_m2 ?? 0), c26 = sum(L, (l) => e26(l)?.area_construible_m2 ?? 0);
   const u14 = sum(L, (l) => e14(l)?.unidades ?? 0), u26 = sum(L, (l) => e26(l)?.unidades ?? 0);
   const vRef = av?.valor_total ?? (ref ? ref * total : null), vRefTxt = av?.valor_total ? "el valor del avalúo" : "el valor de referencia del suelo";
+  const v14 = sum(L, (l) => e14(l)?.area_vendible_m2 ?? 0), v26 = sum(L, (l) => e26(l)?.area_vendible_m2 ?? 0);
+  const pNuevo = mer?.fynder?.precio_m2_nuevo ?? null;
+  const pProy = (() => { const xs = (mer?.proyectos ?? []).map((q: any) => Number(q.precio_m2_desde)).filter((x: number) => x > 0).sort((a: number, b: number) => a - b); return xs.length >= 3 ? (xs[Math.floor((xs.length - 1) / 2)] + xs[Math.ceil((xs.length - 1) / 2)]) / 2 : null; })();
+  const incid = (vend: number, precio: number | null) => (vRef && vend && precio ? (vRef / (vend * precio)) * 100 : null);
+  const i14 = incid(v14, pNuevo), i26 = incid(v26, pNuevo), i14p = incid(v14, pProy);
+  const luzInc = (x: number | null) => (x == null ? "gris" : x > 20 ? "rojo" : x > 15 ? "ambar" : "verde");
+  const COL: Record<string, string> = { rojo: "#e11d48", ambar: "#d97706", verde: "#059669", gris: "#6f6c80" };
 
   // Cifras de portada
   const kpis: string[] = [];
@@ -213,7 +220,8 @@ export function renderReporte(r: any, textos: Textos = {}) {
     kpis.push(`<div class="kpi"><div class="num">${num(total)} <small>m²</small></div><p>${L.length > 1 ? `En ${L.length} predios` : "Lote según catastro"}${util < total ? ` · ${num(util)} m² útiles` : " · sin descuentos por protección"}</p></div>`);
     if (c14) kpis.push(`<div class="kpi"><div class="num">${num(c14)} <small>m²</small></div><p>construibles con la norma vigente (POT 2014)${c26 ? ` · ${num(c26)} m² con el POT 2026` : ""}</p></div>`);
     if (u14) kpis.push(`<div class="kpi ${u26 && u26 < u14 ? "alerta" : ""}"><div class="num">${num(u14)}${u26 && u26 !== u14 ? ` <small>→ ${num(u26)}</small>` : ""}</div><p>viviendas de ≈ ${num(L[0].cabida?.supuestos?.area_unidad_m2)} m²${u26 && u26 !== u14 ? " hoy → con el POT 2026" : ""}</p></div>`);
-    if (vRef && c14) kpis.push(`<div class="kpi"><div class="num">${pesos(Math.round(vRef / c14 / 1000) * 1000)}</div><p>de suelo por m² construible (${vRefTxt}${mer?.fynder?.precio_m2_nuevo ? `, ${num((vRef / c14 / mer.fynder.precio_m2_nuevo) * 100)} % del precio de venta nuevo` : ""})</p></div>`);
+    if (i14 != null) kpis.push(`<div class="kpi ${i14 > 20 ? "alerta" : ""}"><div class="num">${num(i14)} %${i26 != null ? ` <small>→ ${num(i26)} %</small>` : ""}</div><p>incidencia del suelo sobre las ventas (${vRefTxt})${i26 != null ? ", hoy → con el POT 2026" : ""}. Más de 20 % es difícil</p></div>`);
+    else if (vRef && c14) kpis.push(`<div class="kpi"><div class="num">${pesos(Math.round(vRef / c14 / 1000) * 1000)}</div><p>de suelo por m² construible (${vRefTxt})</p></div>`);
     else if (mer?.fynder?.precio_m2_nuevo) kpis.push(`<div class="kpi"><div class="num">${pesos(mer.fynder.precio_m2_nuevo)}</div><p>precio por m² de vivienda nueva a 1,5 km</p></div>`);
   }
 
@@ -262,8 +270,10 @@ export function renderReporte(r: any, textos: Textos = {}) {
       <div class="dato"><span>${av?.valor_total ? "Valor del avalúo" : `Valor de referencia del suelo (${pesos(ref)}/m² × ${num(total)} m²)`}</span><b class="num grande">${millones(vRef)}</b></div>
       <div class="dato"><span>Por m² construible, norma vigente (${num(c14)} m²)</span><b class="num grande">${pesos(Math.round(vRef / c14 / 1000) * 1000)}</b></div>
       ${c26 ? `<div class="dato"><span>Por m² construible, POT 2026 (${num(c26)} m²)</span><b class="num grande">${pesos(Math.round(vRef / c26 / 1000) * 1000)}</b></div>` : ""}
-      ${f?.precio_m2_nuevo ? `<div class="dato"><span>Incidencia sobre el precio de venta nuevo</span><b class="num grande" style="color:${MORADO}">${num((vRef / c14 / f.precio_m2_nuevo) * 100)} %${c26 ? ` → ${num((vRef / c26 / f.precio_m2_nuevo) * 100)} %` : ""}</b></div>` : ""}
-    </div><p class="nota">${av?.valor_total ? "" : "El valor de referencia es el del suelo por zona (catastral o del Área Metropolitana), no el precio pedido por el lote. "}Incidencia = valor del suelo por m² construible ÷ precio por m² de vivienda nueva en la zona.</p>` : "";
+      ${i14 != null ? `<div class="dato"><span>Incidencia sobre ventas, norma vigente (${num(v14)} m² vendibles a ${pesos(Math.round(pNuevo! / 1000) * 1000)}/m²)</span><b class="num grande" style="color:${COL[luzInc(i14)]}">${num(i14)} %</b></div>` : ""}
+      ${i14p != null ? `<div class="dato"><span>Con el precio de los proyectos vecinos (${pesos(Math.round(pProy! / 1000) * 1000)}/m², mediana)</span><b class="num grande" style="color:${COL[luzInc(i14p)]}">${num(i14p)} %</b></div>` : ""}
+      ${i26 != null ? `<div class="dato"><span>Incidencia con el POT 2026 (${num(v26)} m² vendibles)</span><b class="num grande" style="color:${COL[luzInc(i26)]}">${num(i26)} %</b></div>` : ""}
+    </div><p class="nota">${av?.valor_total ? "" : "El valor de referencia es el del suelo por zona (catastral o del Área Metropolitana), no el precio pedido por el lote: si el propietario pide más, la incidencia sube. "}Incidencia = valor del lote ÷ ventas del proyecto (área vendible × precio por m² de vivienda nueva). Referencia del sector: hasta 15 % sano, 15–20 % ajustado, más de 20 % difícil.</p>` : "";
 
   // Área útil
   const prot = new Map<string, number>(); let alta = 0;
