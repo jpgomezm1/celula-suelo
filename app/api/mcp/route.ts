@@ -26,6 +26,7 @@ import { topografiaLote } from "@/lib/topografia";
 import { entornoLote, lecturaEntorno } from "@/lib/entorno";
 import { fachadaLote } from "@/lib/fachada";
 import { crearReporte } from "@/lib/reporte_lote";
+import { sueloSismoLote } from "@/lib/suelo_sismo";
 import { firmar } from "@/lib/auth";
 
 const URL_BASE = () => process.env.PUBLIC_URL ?? "https://celula-suelo.vercel.app";
@@ -62,7 +63,7 @@ const ESCRITURA = { readOnlyHint: false, destructiveHint: false, idempotentHint:
 const INSTRUCCIONES = `Inteligencia de suelo para 17 municipios del Valle de Aburrá y el Oriente antioqueño: catastro, norma del POT, mercado (Fynder), proyectos nuevos (Zonario y Galería Inmobiliaria) y señales de venta de los folios.
 Foco: la decisión sobre un lote (qué se puede hacer, qué lo restringe y cómo se vende la vivienda nueva en su zona). No se ofrecen modelos financieros, planos ni 3D.
 Flujos recomendados:
-0. "¿Qué se puede hacer en este lote?" o "dame la ficha" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf. Trae semáforo, área neta, cabida, usos, restricciones (amenazas, quebradas y retiros, suelo de protección, plan parcial, árboles patrimoniales), topografía, inventario de vivienda nueva a 2 km y áreas que no cuentan en el índice. ficha_predio da lo mismo más licencias, mercado de Fynder y proyectos cerca. Detalles puntuales → cabida_lote, usos_permitidos, topografia_lote.
+0. "¿Qué se puede hacer en este lote?" o "dame la ficha" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf. Trae semáforo, área neta, cabida, usos, restricciones (amenazas, quebradas y retiros, suelo de protección, plan parcial, árboles patrimoniales), topografía, inventario de vivienda nueva a 2 km y áreas que no cuentan en el índice. ficha_predio da lo mismo más licencias, mercado de Fynder y proyectos cerca. Detalles puntuales → cabida_lote, usos_permitidos, topografia_lote, suelo_sismo (microzonificación sísmica, geología e inspecciones del DAGRD: clave para constructoras por cimentación y contenciones).
 1. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250). Una zona dibujada → analizar_zona.
 2. Buscar lotes → buscar_lotes (filtros de área, tratamiento, amenaza, % en retiro hídrico, quebrada que cruza, árboles patrimoniales y plan parcial) u oportunidades_por_perfil (producto definido sobre todo un municipio) → consulta_norma de los mejores → contacto_predio.
 2b. "Hazme un reporte de este lote" o "revisa este avalúo" → investiga (consulta_norma, ficha_predio, topografia_lote, POT vigente) → reporte_lote con textos en lenguaje no técnico → comparte el enlace.
@@ -372,6 +373,17 @@ const mcp = createMcpHandler(
       if (!p) return c;
       const an = await analizarLote(p, { costo_lote: a.costo_lote, area_unidad_m2: a.area_unidad_m2, con_mercado: true });
       return { predio: c.predio, barrio: c.barrio, area_lote_m2: c.area_lote_m2, ...an.valor_residual, precio_pedido: a.costo_lote ?? null };
+    }));
+
+    server.registerTool("suelo_sismo", {
+      annotations: LECTURA,
+      title: "Suelo y sismo de un lote",
+      description: "Lectura previa para cimentación y contenciones (solo Medellín): zona de la microzonificación sísmica con su espectro de diseño y de control de daños (aSmax, Fa, T0, Tc, α; franja de transición de 125 m), geología del lote, aceleración esperada, inspecciones técnicas del DAGRD alrededor (por tipo y año: una concentración por movimiento en masa indica ladera inestable), estudios de riesgo, obras de mitigación y monitoreo geotécnico cercanos, con un semáforo. Las zonas sísmicas están digitalizadas del mapa del POT (preliminar). No reemplaza el estudio geotécnico ni el análisis de respuesta de sitio de la NSR-10.",
+      inputSchema: z.object({ ...LOTE }),
+    }, seguro(async (a: any) => {
+      const { c, p } = await loteDe(a);
+      if (!p) return c;
+      return { predio: c.predio, barrio: c.barrio, area_lote_m2: c.area_lote_m2, ...(await sueloSismoLote(c.predio)) };
     }));
 
     server.registerTool("topografia_lote", {

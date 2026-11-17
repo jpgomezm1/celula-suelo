@@ -1,0 +1,296 @@
+{
+ "municipio_dane": "05001",
+ "fuente": "Microzonificación sísmica del área urbana de Medellín (Grupo de Sismología de Medellín: U. Nacional, EAFIT, Integral, Solingral, Inteinsa; contratos 3231 de 1995, C2112 de 1997 y CSA 121 de 1998). Documento de soporte del Departamento Administrativo de Planeación, mayo de 2011: microzonificación sustitutiva de las secciones A.2.4 y A.2.6 de la NSR-10.",
+ "url_descripcion": "https://www.medellin.gov.co/irj/go/km/docs/wpccontent/Sites/Subportal%20del%20Ciudadano/Plan%20de%20Desarrollo/Secciones/Informaci%C3%B3n%20General/Documentos/POT/Recomendaciones%20Microzonificaci%C3%B3n%20S%C3%ADsmica/Microzonificaci%C3%B3n%20s%C3%ADsmica%20del%20%C3%A1rea%20urbana%20de%20Medell%C3%ADn.pdf",
+ "url_mapa": "https://www.medellin.gov.co/es/wp-content/uploads/2023/02/Microzonificacion-Sismica-Zonas-Homogeneas.pdf",
+ "digitalizacion": "Polígonos extraídos del mapa vectorial del POT (MAGNA-SIRGAS origen Bogotá, EPSG:3116; ajuste a la cuadrícula de 1 km con error < 5 m). La zona 6 no tiene relleno en el mapa: se obtuvo como el suelo urbano que no ocupan las demás zonas. Digitalizada, pendiente de validar.",
+ "espectro": "Sa = aSmax·(1 + (Fa − 1)·T/T0) para T < T0; Sa = Fa·aSmax·I entre T0 y Tc; Sa = Samax·(Tc/T)^α para T > Tc (válido hasta 4 s). Diseño: 5 % de amortiguamiento; control de daños (servicio): 2 %.",
+ "notas": [
+  "En los límites entre zonas hay una franja de transición de 125 m en la que se usa la zona más exigente, salvo estudio geotécnico detallado.",
+  "Los espectros no son válidos en zonas inestables (amenaza alta por movimientos en masa).",
+  "En llenos artificiales de más de 5 m se exige un espectro de diseño específico.",
+  "Medellín sigue en zona de amenaza sísmica intermedia aunque aSmax supere 0,20 g; donde la NSR-10 pida Aa se usa aSmax de la zona."
+ ],
+ "zonas": [
+  {
+   "zona": 1,
+   "nombre": "Noroccidental",
+   "control_danos": {
+    "a_smax": 0.05,
+    "fa": 4.5,
+    "samax_sobre_i": 0.23,
+    "t0_s": 0.1,
+    "tc_s": 0.5,
+    "alfa": 1.43
+   },
+   "diseno": {
+    "a_smax": 0.27,
+    "fa": 2.6,
+    "samax_sobre_i": 0.7,
+    "t0_s": 0.1,
+    "tc_s": 0.6,
+    "alfa": 1.34
+   }
+  },
+  {
+   "zona": 2,
+   "nombre": "Centro occidental",
+   "control_danos": {
+    "a_smax": 0.08,
+    "fa": 2.8,
+    "samax_sobre_i": 0.22,
+    "t0_s": 0.1,
+    "tc_s": 0.3,
+    "alfa": 1.17
+   },
+   "diseno": {
+    "a_smax": 0.34,
+    "fa": 2.35,
+    "samax_sobre_i": 0.8,
+    "t0_s": 0.1,
+    "tc_s": 0.4,
+    "alfa": 1.17
+   }
+  },
+  {
+   "zona": 3,
+   "nombre": "Suroccidental",
+   "control_danos": {
+    "a_smax": 0.07,
+    "fa": 3.57,
+    "samax_sobre_i": 0.25,
+    "t0_s": 0.1,
+    "tc_s": 0.5,
+    "alfa": 1.48
+   },
+   "diseno": {
+    "a_smax": 0.3,
+    "fa": 2.66,
+    "samax_sobre_i": 0.8,
+    "t0_s": 0.2,
+    "tc_s": 0.7,
+    "alfa": 1.52
+   }
+  },
+  {
+   "zona": 4,
+   "nombre": "Flujos del sector occidental",
+   "control_danos": {
+    "a_smax": 0.05,
+    "fa": 3.6,
+    "samax_sobre_i": 0.18,
+    "t0_s": 0.1,
+    "tc_s": 0.6,
+    "alfa": 1.46
+   },
+   "diseno": {
+    "a_smax": 0.23,
+    "fa": 2.17,
+    "samax_sobre_i": 0.5,
+    "t0_s": 0.1,
+    "tc_s": 0.65,
+    "alfa": 1.22
+   }
+  },
+  {
+   "zona": 5,
+   "nombre": "Depósitos aluviales finos (margen izquierda del río Medellín)",
+   "control_danos": {
+    "a_smax": 0.06,
+    "fa": 3.66,
+    "samax_sobre_i": 0.22,
+    "t0_s": 0.1,
+    "tc_s": 0.5,
+    "alfa": 1.42
+   },
+   "diseno": {
+    "a_smax": 0.2,
+    "fa": 3.0,
+    "samax_sobre_i": 0.6,
+    "t0_s": 0.1,
+    "tc_s": 0.6,
+    "alfa": 1.26
+   }
+  },
+  {
+   "zona": 6,
+   "nombre": "Depósitos aluviales gruesos",
+   "control_danos": {
+    "a_smax": 0.05,
+    "fa": 2.81,
+    "samax_sobre_i": 0.14,
+    "t0_s": 0.1,
+    "tc_s": 0.4,
+    "alfa": 1.11
+   },
+   "diseno": {
+    "a_smax": 0.2,
+    "fa": 2.5,
+    "samax_sobre_i": 0.5,
+    "t0_s": 0.1,
+    "tc_s": 0.5,
+    "alfa": 1.07
+   }
+  },
+  {
+   "zona": 7,
+   "nombre": "Depósitos aluviales finos (sector oriental)",
+   "control_danos": {
+    "a_smax": 0.06,
+    "fa": 3.66,
+    "samax_sobre_i": 0.22,
+    "t0_s": 0.1,
+    "tc_s": 0.5,
+    "alfa": 1.42
+   },
+   "diseno": {
+    "a_smax": 0.2,
+    "fa": 3.0,
+    "samax_sobre_i": 0.6,
+    "t0_s": 0.1,
+    "tc_s": 0.6,
+    "alfa": 1.26
+   }
+  },
+  {
+   "zona": 8,
+   "nombre": "Suelos residuales de dunita, parte baja",
+   "control_danos": {
+    "a_smax": 0.08,
+    "fa": 2.25,
+    "samax_sobre_i": 0.18,
+    "t0_s": 0.1,
+    "tc_s": 0.65,
+    "alfa": 1.52
+   },
+   "diseno": {
+    "a_smax": 0.23,
+    "fa": 2.4,
+    "samax_sobre_i": 0.55,
+    "t0_s": 0.1,
+    "tc_s": 0.75,
+    "alfa": 1.37
+   }
+  },
+  {
+   "zona": 9,
+   "nombre": "Suelos residuales de anfibolita",
+   "control_danos": {
+    "a_smax": 0.06,
+    "fa": 3.75,
+    "samax_sobre_i": 0.23,
+    "t0_s": 0.1,
+    "tc_s": 0.4,
+    "alfa": 1.31
+   },
+   "diseno": {
+    "a_smax": 0.26,
+    "fa": 2.7,
+    "samax_sobre_i": 0.7,
+    "t0_s": 0.1,
+    "tc_s": 0.55,
+    "alfa": 1.28
+   }
+  },
+  {
+   "zona": 10,
+   "nombre": "Suelos residuales de dunita, parte alta",
+   "control_danos": {
+    "a_smax": 0.09,
+    "fa": 2.78,
+    "samax_sobre_i": 0.25,
+    "t0_s": 0.1,
+    "tc_s": 0.4,
+    "alfa": 1.35
+   },
+   "diseno": {
+    "a_smax": 0.38,
+    "fa": 2.1,
+    "samax_sobre_i": 0.8,
+    "t0_s": 0.1,
+    "tc_s": 0.5,
+    "alfa": 1.29
+   }
+  },
+  {
+   "zona": 11,
+   "nombre": "Margen izquierda de la quebrada Santa Elena",
+   "control_danos": {
+    "a_smax": 0.06,
+    "fa": 3.75,
+    "samax_sobre_i": 0.23,
+    "t0_s": 0.1,
+    "tc_s": 0.5,
+    "alfa": 1.43
+   },
+   "diseno": {
+    "a_smax": 0.26,
+    "fa": 2.88,
+    "samax_sobre_i": 0.75,
+    "t0_s": 0.1,
+    "tc_s": 0.65,
+    "alfa": 1.43
+   }
+  },
+  {
+   "zona": 12,
+   "nombre": "Transición de suelos residuales de gabro y anfibolita",
+   "control_danos": {
+    "a_smax": 0.06,
+    "fa": 4.16,
+    "samax_sobre_i": 0.25,
+    "t0_s": 0.1,
+    "tc_s": 0.65,
+    "alfa": 1.67
+   },
+   "diseno": {
+    "a_smax": 0.26,
+    "fa": 3.07,
+    "samax_sobre_i": 0.8,
+    "t0_s": 0.15,
+    "tc_s": 0.7,
+    "alfa": 1.52
+   }
+  },
+  {
+   "zona": 13,
+   "nombre": "Flujos, parte alta de El Poblado",
+   "control_danos": {
+    "a_smax": 0.06,
+    "fa": 4.16,
+    "samax_sobre_i": 0.25,
+    "t0_s": 0.1,
+    "tc_s": 0.4,
+    "alfa": 1.35
+   },
+   "diseno": {
+    "a_smax": 0.26,
+    "fa": 3.07,
+    "samax_sobre_i": 0.8,
+    "t0_s": 0.1,
+    "tc_s": 0.5,
+    "alfa": 1.29
+   }
+  },
+  {
+   "zona": 14,
+   "nombre": "Flujos, parte baja de El Poblado",
+   "control_danos": {
+    "a_smax": 0.05,
+    "fa": 2.81,
+    "samax_sobre_i": 0.14,
+    "t0_s": 0.1,
+    "tc_s": 0.5,
+    "alfa": 1.23
+   },
+   "diseno": {
+    "a_smax": 0.2,
+    "fa": 3.0,
+    "samax_sobre_i": 0.6,
+    "t0_s": 0.1,
+    "tc_s": 0.55,
+    "alfa": 1.21
+   }
+  }
+ ]
+}

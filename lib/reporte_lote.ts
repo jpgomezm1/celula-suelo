@@ -49,6 +49,7 @@ async function datosLote(ref: LoteRef, i: number, area_unidad_m2?: number) {
     advertencia: c.advertencia ?? null, aviso_pot: c.aviso_pot ?? null, valor_suelo_m2: n(p.valor_suelo_m2),
     area_util: an.area_util, semaforo: an.semaforo, restricciones: an.restricciones, cabida: an.cabida, computo: an.computo_indice,
     inventario: an.inventario_zona, actividad: an.usos?.area_de_actividad ?? null,
+    suelo_sismo: an.suelo_sismo?.disponible ? an.suelo_sismo : null,
     pot2026: an.pot_2026_preliminar?.disponible ? { codigo: an.pot_2026_preliminar.codigo_2026, estado: an.pot_2026_preliminar.estado, fuente: an.pot_2026_preliminar.fuente, frente_a_2014: an.pot_2026_preliminar.frente_a_2014 } : null,
     topo: topo?.disponible ? { clase: topo.clase, pendiente_pct: topo.pendiente_pct, pendiente_grados: topo.pendiente_grados, desnivel_m: topo.desnivel_m, cae_hacia: topo.cae_hacia, perfil: topo.perfil, corte_m3: topo.movimiento_tierras?.corte_m3, fuente: topo.fuente?.nombre } : null,
   };
@@ -67,7 +68,7 @@ async function geometriaMapa(ids: string[], munis: string[]) {
     sql`SELECT coalesce(z.attrs->>'categoria', z.subtipo, 'Protección') cat, ${geo(sql`z.geom`)} g FROM zoning_layer z
       WHERE z.capa = 'proteccion' AND z.municipio_dane = ANY(${munis}) AND z.geom && ${env} AND ST_Intersects(z.geom, ${env}) LIMIT 300`,
     sql`SELECT coalesce(z.attrs->>'tipo', 'amenaza') tipo, z.attrs->>'grado' grado, ${geo(sql`z.geom`)} g FROM zoning_layer z
-      WHERE z.capa = 'amenaza' AND z.municipio_dane = ANY(${munis}) AND (z.attrs->>'grado') ~* 'alta|no mitigable' AND z.geom && ${env} AND ST_Intersects(z.geom, ${env}) LIMIT 300`,
+      WHERE z.capa = 'amenaza' AND z.municipio_dane = ANY(${munis}) AND (z.attrs->>'grado') ~* 'alta|media|no mitigable' AND z.geom && ${env} AND ST_Intersects(z.geom, ${env}) LIMIT 300`,
     sql`SELECT r.nombre, ${geo(sql`r.geom`)} g FROM hidro_retiro r WHERE r.geom && ${env} AND ST_Intersects(r.geom, ${env}) LIMIT 300`,
     sql`SELECT c.nombre, coalesce(c.canalizado, false) canalizado, ${geo(sql`c.geom`)} g FROM hidro_cauce c WHERE c.geom && ${env} AND ST_Intersects(c.geom, ${env}) LIMIT 400`,
     sql`SELECT v.nombre, ${geo(sql`v.geom`)} g FROM osm_via v WHERE v.geom && ${env} AND ST_Intersects(v.geom, ${env}) LIMIT 400`,

@@ -98,7 +98,7 @@ function mapaSvg(m: any, lotes: any[]) {
     out.push(`<path d="${path(z.g)}" fill="url(#${agua ? "pAzul" : acuif ? "pVerde" : "pGris"})" stroke="${agua ? AZUL : acuif ? VERDEAGUA : GRIS}" stroke-width="1" stroke-opacity=".7" fill-rule="evenodd"/>`);
   }
   for (const r of m.retiros) out.push(`<path d="${path(r.g)}" fill="url(#pAzul)" stroke="${AZUL}" stroke-width="1" stroke-opacity=".8"/>`);
-  for (const a of m.amenaza) out.push(`<path d="${path(a.g)}" fill="url(#pRojo)" stroke="${ROJO}" stroke-width="1" stroke-opacity=".8"/>`);
+  for (const a of m.amenaza) { const media = /media/i.test(a.grado ?? "") && !/alta/i.test(a.grado ?? ""); out.push(`<path d="${path(a.g)}" fill="url(#${media ? "pAmbar" : "pRojo"})" stroke="${media ? AMBAR : ROJO}" stroke-width="1" stroke-opacity="${media ? ".6" : ".8"}"/>`); }
   for (const c of m.cauces) out.push(`<path d="${path(c.g)}" fill="none" stroke="${c.canalizado ? "#7dd3fc" : "#0284c7"}" stroke-width="${c.canalizado ? 1.5 : 2.4}" ${c.canalizado ? 'stroke-dasharray="4 3"' : ""}/>`);
   for (const p of m.parcelas) if (p.propio) out.push(`<path d="${path(p.g)}" fill="${MORADO}" fill-opacity=".28" stroke="${MORADO}" stroke-width="3" stroke-linejoin="round"/>`);
   for (const v of m.vias) {
@@ -122,9 +122,10 @@ function mapaSvg(m: any, lotes: any[]) {
 <pattern id="pAzul" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="${AZUL}" fill-opacity=".16"/><line x1="0" y1="0" x2="0" y2="8" stroke="${AZUL}" stroke-width="3"/></pattern>
 <pattern id="pVerde" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)"><rect width="8" height="8" fill="${VERDEAGUA}" fill-opacity=".12"/><line x1="0" y1="0" x2="0" y2="8" stroke="${VERDEAGUA}" stroke-width="2.4"/></pattern>
 <pattern id="pRojo" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><rect width="7" height="7" fill="${ROJO}" fill-opacity=".14"/><line x1="0" y1="0" x2="0" y2="7" stroke="${ROJO}" stroke-width="2"/></pattern>
+<pattern id="pAmbar" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(-30)"><rect width="9" height="9" fill="${AMBAR}" fill-opacity=".08"/><line x1="0" y1="0" x2="0" y2="9" stroke="${AMBAR}" stroke-width="1.4" stroke-opacity=".75"/></pattern>
 <pattern id="pGris" width="9" height="9" patternUnits="userSpaceOnUse"><rect width="9" height="9" fill="${GRIS}" fill-opacity=".10"/><circle cx="4.5" cy="4.5" r="1.3" fill="${GRIS}"/></pattern></defs>`;
   const ley = [[`background:${MORADO};opacity:.55;border:2px solid ${MORADO}`, "Lote(s) del reporte"], [`background:repeating-linear-gradient(45deg,${AZUL} 0 3px,#e0f4fe 3px 8px)`, "Retiro o ronda de quebrada"],
-    [`background:repeating-linear-gradient(-45deg,${VERDEAGUA} 0 2px,#e2f7ef 2px 8px)`, "Recarga de acuíferos"], [`background:repeating-linear-gradient(30deg,${ROJO} 0 2px,#ffe4ea 2px 7px)`, "Amenaza alta"],
+    [`background:repeating-linear-gradient(-45deg,${VERDEAGUA} 0 2px,#e2f7ef 2px 8px)`, "Recarga de acuíferos"], [`background:repeating-linear-gradient(30deg,${ROJO} 0 2px,#ffe4ea 2px 7px)`, "Amenaza alta"], ...(m.amenaza.some((a: any) => /media/i.test(a.grado ?? "") && !/alta/i.test(a.grado ?? "")) ? [[`background:repeating-linear-gradient(-30deg,${AMBAR} 0 1.5px,#fff6e6 1.5px 7px)`, "Amenaza media"]] : []),
     [`background:radial-gradient(${GRIS} 1.3px,#f3f2f7 1.5px) 0 0/6px 6px`, "Otra protección"], ["background:#0284c7;height:3px", "Quebrada"], ["background:#fff4dc;border:1px solid #cfcbe0", "Vecino sin construir"], ["background:#efedf9;border:1px solid #cfcbe0", "Vecino construido"]];
   return `<svg viewBox="0 0 ${W} ${H}" class="mapa" role="img" aria-label="Mapa del lote y sus restricciones">${defs}${out.join("")}</svg><div class="ley-mapa">${ley.map(([st, t]) => `<span><i style="${st}"></i>${t}</span>`).join("")}</div>`;
 }
@@ -160,6 +161,21 @@ function perfilSvg(lotes: any[]) {
   }).join("");
   return `<div class="leyenda" style="margin:2px 0 6px">${lotes.filter((l) => l.topo).map((l, i) => `<span><i style="background:${SERIE[i % SERIE.length]}"></i>${esc(l.nombre)} · cae ${num(l.topo.desnivel_m, 1)} m hacia el ${esc(l.topo.cae_hacia)}</span>`).join("")}</div><svg viewBox="0 0 ${PW} ${PH}" class="graf">${ejes}${lineas}</svg>`;
 }
+function espectroSvg(dis: { T: number; Sa: number }[], ctl: { T: number; Sa: number }[]) {
+  const W = 560, H = 260, x0 = 46, y0 = 12, x1 = W - 12, y1 = H - 34;
+  const tmax = 4, smax = Math.max(...dis.map((p) => p.Sa), ...ctl.map((p) => p.Sa)) * 1.12;
+  const X = (t: number) => x0 + (t / tmax) * (x1 - x0), Y = (s: number) => y1 - (s / smax) * (y1 - y0);
+  const linea = (ps: { T: number; Sa: number }[]) => ps.map((p, i) => `${i ? "L" : "M"}${X(p.T).toFixed(1)},${Y(p.Sa).toFixed(1)}`).join("");
+  const ejeY = [0, 0.2, 0.4, 0.6, 0.8, 1].filter((v) => v <= smax);
+  return `<svg viewBox="0 0 ${W} ${H}" class="graf" role="img" aria-label="Espectro de la microzonificación">
+    ${ejeY.map((v) => `<line x1="${x0}" x2="${x1}" y1="${Y(v)}" y2="${Y(v)}" stroke="#e7e5ef"/><text x="${x0 - 6}" y="${Y(v) + 4}" text-anchor="end" class="ax">${num(v, 1)} g</text>`).join("")}
+    ${[0, 0.5, 1, 2, 3, 4].map((t) => `<text x="${X(t)}" y="${y1 + 16}" text-anchor="middle" class="ax">${num(t, 1)} s</text>`).join("")}
+    <path d="${linea(dis)}" fill="none" stroke="${MORADO}" stroke-width="3" stroke-linejoin="round"/>
+    <path d="${linea(ctl)}" fill="none" stroke="${GRIS}" stroke-width="2" stroke-dasharray="5 4"/>
+    <text x="${x1}" y="${y1 + 30}" text-anchor="end" class="ax">Período estructural T</text></svg>
+    <div class="leyenda"><span><i style="background:${MORADO}"></i>Sismo de diseño (5 %)</span><span><i style="background:${GRIS}"></i>Control de daños (2 %)</span></div>`;
+}
+
 function arco(grados: number, c: string, etq: string, sub: string) {
   const r = 62, a = (grados * Math.PI) / 180, x2 = r * Math.cos(a) * 1.45, y2 = -r * Math.sin(a) * 1.45, h = r * 0.5;
   return `<div><svg viewBox="-12 -80 120 96" width="112"><line x1="0" y1="0" x2="100" y2="0" stroke="#cfcbe0" stroke-width="2"/><line x1="0" y1="0" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${c}" stroke-width="5" stroke-linecap="round"/><path d="M${h},0 A${h},${h} 0 0 0 ${(h * Math.cos(a)).toFixed(1)},${(-h * Math.sin(a)).toFixed(1)}" fill="none" stroke="${c}" stroke-width="2"/></svg><div class="pend-v" style="color:${c}">${etq}</div><div class="pend-s">${sub}</div></div>`;
@@ -269,6 +285,25 @@ export function renderReporte(r: any, textos: Textos = {}) {
   const PEND = topos.length ? `<div class="pend">${av?.pendiente_grados ? arco(av.pendiente_grados, ROJO, `${num(av.pendiente_grados, 1)}°`, "lo que dice el avalúo") : ""}${topos.map((l, i) => arco(l.topo.pendiente_grados, SERIE[i % SERIE.length], `${num(l.topo.pendiente_grados, 1)}°`, `${esc(l.nombre)}<br>(${num(l.topo.pendiente_pct)} %)`)).join("")}</div>
     <p class="nota">${topos.map((l) => `${esc(l.nombre)}: ${esc(l.topo.clase)}, ${num(l.topo.desnivel_m, 1)} m de desnivel${l.topo.corte_m3 ? `, unos ${num(l.topo.corte_m3)} m³ de corte para una plataforma` : ""}`).join(". ")}. Fuente: ${esc(topos[0].topo.fuente ?? "modelo de terreno")}.</p>` : "";
 
+  // Suelo y sismo (Medellín): microzona con su espectro, geología e historia de gestión del riesgo
+  const ss = L.find((l) => l.suelo_sismo)?.suelo_sismo ?? null, mz = ss?.microzona;
+  const SUELO = ss ? `<div class="grid2">${mz ? `<div class="card"><h3>Zona ${esc(mz.zona_para_diseno)} · ${esc(mz.nombre_para_diseno)}</h3>${espectroSvg(mz.espectro_diseno, mz.espectro_control)}
+      <table class="tabla espec" style="margin-top:12px"><tr><th></th><th>a máx. suelo</th><th>Fa</th><th>Sa meseta</th><th>T0</th><th>Tc</th><th>α</th></tr>
+      ${[["Diseño", mz.diseno], ["Control de daños", mz.control_danos]].map(([t, c]: any) => `<tr><td>${t}</td><td>${num(c.a_smax, 2)} g</td><td>${num(c.fa, 2)}</td><td>${num(c.samax_sobre_i, 2)} g</td><td>${num(c.t0_s, 2)} s</td><td>${num(c.tc_s, 2)} s</td><td>${num(c.alfa, 2)}</td></tr>`).join("")}</table>
+      <p class="nota">Espectro de la microzonificación sísmica de Medellín para coeficiente de importancia I = 1 (vivienda). ${mz.transicion ? `Franja de transición: a menos de 125 m de la zona ${mz.transicion.zonas_cercanas.map((z: any) => z.zona).join(" y ")}; se usa la más exigente.` : ""}${mz.aviso ? ` ${esc(mz.aviso)}` : ""} Zonas digitalizadas del mapa del POT: preliminar.</p></div>` : `<div class="card"><h3>Microzonificación</h3><p class="nota">El lote está fuera de la microzonificación urbana de Medellín.</p></div>`}
+    <div class="card"><h3>El suelo y su historia</h3><div class="datos">
+      ${ss.geologia?.length ? `<div class="dato"><span>Geología</span><b>${ss.geologia.map((g: any) => `${esc(g.descripcion)}${ss.geologia.length > 1 ? ` (${num(g.pct)} %)` : ""}`).join("; ")}</b></div>` : ""}
+      ${ss.susceptibilidad_sismica ? `<div class="dato"><span>Aceleración esperada (DAGRD)</span><b>${esc(ss.susceptibilidad_sismica)}</b></div>` : ""}
+      <div class="dato"><span>Inspecciones del DAGRD a 100 m</span><b>${num(ss.inspecciones.a_100m)}${ss.inspecciones.movimiento_masa_100m ? ` · ${num(ss.inspecciones.movimiento_masa_100m)} por movimiento en masa` : ""}</b></div>
+      <div class="dato"><span>Inspecciones a 300 m</span><b>${num(ss.inspecciones.a_300m)}${ss.inspecciones.desde ? ` · ${ss.inspecciones.desde}–${ss.inspecciones.hasta}` : ""}</b></div>
+      ${ss.estudios_cercanos?.length ? `<div class="dato"><span>Estudios de riesgo a 500 m</span><b>${num(ss.estudios_cercanos.length)}</b></div>` : ""}
+      ${ss.obras_mitigacion_cercanas?.length ? `<div class="dato"><span>Obras de mitigación a 500 m</span><b>${num(ss.obras_mitigacion_cercanas.length)}</b></div>` : ""}
+      ${ss.monitoreo_cercano?.length ? `<div class="dato"><span>Instrumentos de monitoreo a 500 m</span><b>${num(ss.monitoreo_cercano.length)}</b></div>` : ""}
+    </div>
+    ${ss.inspecciones.por_tipo_300m?.length ? barrasH(ss.inspecciones.por_tipo_300m.slice(0, 5).map((x: any) => ({ t: x.tipo, v: x.n, c: /masa|desliz/i.test(x.tipo) ? ROJO : LILA, etq: num(x.n) })), 400) : ""}
+    <div class="aviso ${ss.semaforo.luz === "rojo" ? "rojo-s" : ""}">${esc(ss.semaforo.lectura)}</div></div></div>
+    ${ss.estudios_cercanos?.length ? `<p class="nota">Estudios del DAGRD cerca: ${ss.estudios_cercanos.slice(0, 3).map((e: any) => `${esc(e.titulo)}${e.anio ? ` (${esc(e.anio)})` : ""}, a ${num(e.d)} m`).join("; ")}.</p>` : ""}` : "";
+
   // Inventario
   const INV = inv ? `<div class="cifras4"><div><b class="num">${num(inv.disponibles)}</b><span>viviendas nuevas disponibles en ${num(inv.proyectos)} proyectos</span></div><div><b class="num">${num(inv.ventas_mes, 1)}</b><span>ventas por mes</span></div><div><b class="num">${num(inv.meses_inventario, 1)}</b><span>meses para venderlas</span></div><div><b class="num">${num(inv.inventario_cerrado?.unidades)}</b><span>terminadas sin vender</span></div></div>
     ${barrasH(Object.entries(inv.por_etapa ?? {}).map(([k, g]: any) => ({ t: ({ sobre_planos: "Sobre planos", construccion: "En construcción", mixto: "Etapas mixtas", terminado: "Terminado", parado: "Desistido o paralizado" } as any)[k] ?? k, v: g.disponibles, c: k === "terminado" ? AMBAR : k === "parado" ? GRIS : MORADO, etq: `${num(g.disponibles)} disp. · ${g.meses_inventario == null ? "sin ventas" : `${num(g.meses_inventario, 1)} meses`}` })))}
@@ -297,10 +332,11 @@ export function renderReporte(r: any, textos: Textos = {}) {
   if (L.some((l) => l.restricciones?.hidrico?.faja_referencia_m2 > 1 || l.restricciones?.hidrico?.cauces?.some((c: any) => c.cruza_el_lote))) auto.push("<b>Plano topográfico con la quebrada dibujada</b>, para medir el retiro real y el área útil.");
   if (L.some((l) => SIN_AMENAZA.has(l.municipio_dane)) || sems.some((s) => s.cat === "Amenaza y riesgo" && s.luz !== "verde")) auto.push("<b>Estudio o plano de amenazas</b> del municipio para el lote.");
   if (L.some((l) => l.restricciones?.planificacion?.instrumentos?.length)) auto.push("<b>Plan parcial o instrumento</b> que cubre el lote: estado, cargas y obligaciones.");
+  if (ss && ss.semaforo.luz !== "verde") auto.push("<b>Estudio geotécnico temprano</b> con exploración en la ladera, diseño de contenciones y, si hace falta, medición de vibración ambiental para el período del suelo.");
   auto.push("<b>Certificados de tradición</b> recientes y <b>estudio de títulos</b>.", "<b>Afectaciones viales</b> en la curaduría (la capa de vías proyectadas no está cargada).");
   const conNegrita = (s: string) => esc(s).replace(/&lt;(\/?)b&gt;/g, "<$1b>"); // solo se permite <b>
   const VER = (textos.verificar?.length ? textos.verificar.map(conNegrita) : auto).map((x) => `<div class="paso">${x}</div>`).join("");
-  const FUENTES = [...(textos.fuentes ?? []), "Catastro y norma del municipio (GeoMedellín, Área Metropolitana, GeoAntioquia, Cornare)", "Red hídrica, retiros y amenazas de los POT; OpenStreetMap", "Modelo de terreno del Valle de Aburrá (AMVA) e IGAC", ...(inv ? ["Galería Inmobiliaria (confidencial) y Fynder"] : []), ...(MERCADO && (constructora || !inv) ? ["Fynder (avisos y pedidos de compradores) y Zonario (proyectos anunciados)"] : []), ...(NORMA26 ? ["Proyecto de Acuerdo 104 de 2026, revisión del POT de Medellín (preliminar)"] : [])];
+  const FUENTES = [...(textos.fuentes ?? []), "Catastro y norma del municipio (GeoMedellín, Área Metropolitana, GeoAntioquia, Cornare)", "Red hídrica, retiros y amenazas de los POT; OpenStreetMap", "Modelo de terreno del Valle de Aburrá (AMVA) e IGAC", ...(inv ? ["Galería Inmobiliaria (confidencial) y Fynder"] : []), ...(MERCADO && (constructora || !inv) ? ["Fynder (avisos y pedidos de compradores) y Zonario (proyectos anunciados)"] : []), ...(NORMA26 ? ["Proyecto de Acuerdo 104 de 2026, revisión del POT de Medellín (preliminar)"] : []), ...(ss ? ["Microzonificación sísmica de Medellín (Grupo de Sismología de Medellín; DAP 2011; mapa de zonas homogéneas del POT) y gestión del riesgo del DAGRD"] : [])];
 
   const titular = textos.titular ?? (L.length > 1 ? `${L.length} lotes en ${mun}` : `${L[0].nombre}, ${mun}`);
   const bajada = textos.bajada ?? `${L[0].barrio ? `${L[0].barrio}, ` : ""}${mun}. Norma, restricciones, terreno${inv ? ", mercado de la zona" : ""}${av ? " y lectura del avalúo" : ""}, con datos públicos al ${fecha}.`;
@@ -311,11 +347,12 @@ export function renderReporte(r: any, textos: Textos = {}) {
 <h1>${esc(titular)}</h1><p class="lead">${esc(bajada)}</p><div class="kpis">${kpis.slice(0, 4).join("")}</div></div></section>
 <main class="wrap">${SIMPLE}
 <div class="bloque"><div class="eyebrow">01 · Semáforo</div><h2>Qué pesa y qué ayuda</h2><p class="sub">Rojo cambia la decisión; ámbar hay que verificarlo; gris no hay dato público.</p><div class="sems">${SEM}</div></div>
-<div class="bloque"><div class="eyebrow">02 · El lote en el mapa</div><h2>Dónde está y qué lo restringe</h2><p class="sub">Predios del catastro, suelo de protección, retiros, quebradas y amenaza alta, a escala real.</p><div class="grid2"><div class="card">${mapaSvg(m, L)}</div><div class="card"><h3>Identificación</h3>${ID}</div></div></div>
+<div class="bloque"><div class="eyebrow">02 · El lote en el mapa</div><h2>Dónde está y qué lo restringe</h2><p class="sub">Predios del catastro, suelo de protección, retiros, quebradas y amenaza alta y media, a escala real.</p><div class="grid2"><div class="card">${mapaSvg(m, L)}</div><div class="card"><h3>Identificación</h3>${ID}</div></div></div>
 <div class="bloque"><div class="eyebrow">03 · Norma</div><h2>Qué permite la norma</h2>${NORMA}${NORMA26 ? `<h3 style="margin:22px 0 8px;font-size:18px">Hoy frente al POT 2026</h3>${NORMA26}` : ""}</div>
 <div class="bloque"><div class="eyebrow">04 · Área y cabida</div><h2>Cuánto se puede usar y cuánto cabe</h2><div class="card"><h3>Composición del área · ${num(total)} m²</h3>${barraApilada(partes)}<p class="nota">Área útil = lote menos suelo de protección, retiro de quebradas y amenaza alta. No descuenta aún vías proyectadas.</p></div>
 <div class="grid2b" style="margin-top:18px"><div class="card"><h3>Viviendas aproximadas por escenario</h3>${CABIDA}</div><div class="card"><h3>Áreas que no cuentan en el índice</h3>${CI || '<p class="nota">La regla de áreas fuera del índice solo está cargada para Medellín.</p>'}</div></div></div>
 ${topos.length ? `<div class="bloque"><div class="eyebrow">05 · Terreno</div><h2>Cómo es el terreno</h2><div class="grid2"><div class="card"><h3>Perfil en la dirección de la pendiente</h3>${perfilSvg(L)}</div><div class="card"><h3>Pendiente</h3>${PEND}</div></div></div>` : ""}
+${SUELO ? `<div class="bloque"><div class="eyebrow">${topos.length ? "05b" : "05"} · Suelo y sismo</div><h2>Qué hay debajo</h2><p class="sub">Microzonificación sísmica, geología y lo que el DAGRD ha registrado alrededor: la primera pista sobre cimentación y contenciones.</p>${SUELO}</div>` : ""}
 ${INV ? `<div class="bloque"><div class="eyebrow">06 · Mercado</div><h2>Vivienda nueva en la zona</h2><div class="card">${INV}</div></div>` : ""}
 ${MERCADO && (constructora || !INV) ? `<div class="bloque"><div class="eyebrow">${INV ? "07" : "06"} · Mercado y competencia</div><h2>${constructora ? "A cuánto se vende y quién compite" : "Mercado de la zona"}</h2>${INCID ? `<div class="grid2b"><div class="card"><h3>Lo que pesa el suelo</h3>${INCID}</div><div class="card"><h3>La zona en cifras</h3>${CIFRAS}</div></div>${PROY ? `<div class="card" style="margin-top:18px"><h3>Proyectos nuevos a ${num(mer.radio_m / 1000, 1)} km</h3>${PROY}<p class="nota">Zonario (proyectos anunciados, precios publicados). Precios de oferta, no de cierre.</p></div>` : ""}` : `<div class="card">${MERCADO}</div>`}</div>` : ""}
 ${AVALUO}
@@ -342,7 +379,7 @@ svg.barra{width:100%;height:auto;display:block;margin-top:8px}.leyenda{display:f
 .tabla{width:100%;border-collapse:separate;border-spacing:0;font-size:14px;overflow:hidden;border-radius:14px;border:1px solid var(--linea);background:#fff}.tabla th{background:var(--oscuro);color:#fff;text-align:left;padding:11px 14px;font:600 13px Poppins,sans-serif}.tabla td{padding:11px 14px;border-top:1px solid var(--linea);vertical-align:top}.tabla td:first-child{font-weight:600;color:var(--oscuro)}
 .pend{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;text-align:center;margin:18px 0 8px}.pend-v{font:800 24px Poppins,sans-serif;margin-top:-4px}.pend-s{font-size:12.5px;color:var(--gris);line-height:1.35}
 .sems{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.sem{background:#fff;border-radius:16px;padding:16px;border:1px solid var(--linea);border-top:5px solid var(--c)}.sem.rojo{--c:var(--rojo)}.sem.ambar{--c:var(--ambar)}.sem.verde{--c:var(--verde)}.sem.gris{--c:#9ca3af}.sem-h{display:flex;align-items:center;gap:8px;font:600 15px Poppins,sans-serif;color:var(--oscuro)}.sem-h i{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}.sem p{margin:8px 0 0;font-size:13.5px}
-.dato b.grande{white-space:nowrap}.cifras2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:6px}.cifras2 div{background:var(--lila-f);border-radius:14px;padding:14px}.cifras2 b{display:block;font-size:21px;color:var(--oscuro)}.cifras2 span{font-size:12.5px;color:var(--gris);line-height:1.35;display:block}
+.dato b.grande{white-space:nowrap}.tabla.espec td,.tabla.espec th{white-space:nowrap;padding:10px 9px}.cifras2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:6px}.cifras2 div{background:var(--lila-f);border-radius:14px;padding:14px}.cifras2 b{display:block;font-size:21px;color:var(--oscuro)}.cifras2 span{font-size:12.5px;color:var(--gris);line-height:1.35;display:block}
 .cifras4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}.cifras4 div{background:var(--lila-f);border-radius:14px;padding:14px}.cifras4 b{display:block;font-size:24px;color:var(--oscuro)}.cifras4 span{font-size:12.5px;color:var(--gris)}
 .obs{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:18px}.ob{background:#fff;border-radius:16px;padding:18px;border:1px solid var(--linea)}.ob .num{font-size:30px;font-weight:800;color:var(--morado);line-height:1}.ob h3{margin:8px 0 4px;font-size:15.5px;color:var(--oscuro)}.ob p{margin:0;font-size:13.8px}
 .pasos{counter-reset:p;display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.paso{background:#fff;border-radius:16px;padding:16px 16px 16px 58px;position:relative;border:1px solid var(--linea);font-size:14px}.paso::before{counter-increment:p;content:counter(p);position:absolute;left:16px;top:16px;width:28px;height:28px;border-radius:50%;background:var(--oscuro);color:#fff;display:grid;place-items:center;font:700 13px Poppins}.paso b{color:var(--oscuro)}
