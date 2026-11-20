@@ -129,7 +129,7 @@ async function torrencial() {
 }
 
 async function planes() {
-  await sql`DELETE FROM instrumento_plan`;
+  await sql`DELETE FROM instrumento_plan WHERE fuente NOT LIKE 'estado_%'`; // las fuentes 'estado_*' las carga ingest/estado_planes.ts
   const capas: [string, string, (p: any) => Record<string, unknown>][] = [
     [`${I}/DISTRITO_MEDELLIN_POT/MapServer/4`, "idem_medellin_planificacion", (p) => ({ instrumento: s(p.INSTRUMENTO), nombre: s(p.SIMBOLOGIA), codigo: s(p.CODIGO_TRATAMIENTO), nivel: s(p.NIVEL), categoria: s(p.CATEGORIA) })],
     [`${I}/POT_Envigado/MapServer/3`, "idem_envigado_planes_parciales", (p) => ({ instrumento: "Plan parcial", nombre: s(p.NOMBRE), codigo: s(p.CODIGO), estado: s(p.ESTADO), categoria: s(p.PERIMETRO) })],

@@ -107,6 +107,8 @@ export async function crearEstudioCabida(input: EstudioCabidaInput) {
     p.lat ? mercadoReporte(Number(p.lat), Number(p.lon)) : null, p.lat ? mercadoZona({ lat: Number(p.lat), lon: Number(p.lon), radio_m: 1500 } as any).catch(() => null) : null,
     ortofotoLote(p.id).catch(() => null),
   ]);
+  const [est]: any = p.lat ? await sql`SELECT nombre, linea, sistema, round(ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(${Number(p.lon)}, ${Number(p.lat)}), 4326)::geography))::int d
+    FROM transporte_estacion WHERE estado = 'Existente' ORDER BY geom <-> ST_SetSRID(ST_MakePoint(${Number(p.lon)}, ${Number(p.lat)}), 4326) LIMIT 1`.catch(() => []) : [];
   const pp = an.plan_parcial;
   const mezcla = input.mezcla?.length ? input.mezcla : pp ? [{ tipologia: "1A", pct: 40 }, { tipologia: "2A", pct: 60 }] : undefined;
   const op = { escenario: "base" as const, mezcla: mezcla as any, estrato: input.estrato, max_torres: input.max_torres };
@@ -143,7 +145,8 @@ export async function crearEstudioCabida(input: EstudioCabidaInput) {
   const resultado = {
     tipo: "estudio_cabida", nombre, generado: new Date().toISOString(), marca,
     lote: { id: p.id, clave: p.clave_local, municipio: p.municipio, municipio_dane: p.municipio_dane, barrio: p.barrio_catastral, clase: p.clase, area_m2: n(p.area_lote), lat: n(p.lat), lon: n(p.lon),
-      matriculas: c.identificacion?.matriculas ?? [], direcciones: c.identificacion?.direcciones ?? [], estrato: r.estrato },
+      matriculas: c.identificacion?.matriculas ?? [], direcciones: c.identificacion?.direcciones ?? [], estrato: r.estrato,
+      estacion: est ? { nombre: est.nombre, linea: est.linea, sistema: est.sistema, distancia_m: est.d } : null },
     norma: { tratamiento: p.tratamiento, codigo: p.codigo_tratamiento, altura_max: n(p.altura_max), ic: n(p.ic_max), ic_total: n(p.ic_total), densidad: n(p.densidad_max), io: n(p.io_max), uso: p.uso,
       acuerdo: p.acuerdo_vigente, fuente: p.norma_fuente, nivel: p.nivel_dato, aviso_pot: c.aviso_pot ?? null, pot2026: an.pot_2026_preliminar?.disponible ? an.pot_2026_preliminar : null },
     plan_parcial: pp, area_util: an.area_util, semaforo: an.semaforo, cabida: an.cabida, cesiones: an.cesiones, usos: an.usos, suelo_sismo: an.suelo_sismo?.disponible ? an.suelo_sismo : null,

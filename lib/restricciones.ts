@@ -44,8 +44,8 @@ export async function restriccionesLote(id: string) {
                 AND NOT EXISTS (SELECT 1 FROM hidro_retiro r WHERE ST_DWithin(r.geom, c.geom, 0.00005)))
       SELECT ST_Area(ST_Intersection(c.b, l.g)) m2, ST_AsGeoJSON(ST_Intersection(c.b, l.g), 2)::json geom FROM c, l WHERE c.b IS NOT NULL`,
     sql`WITH l AS (SELECT geom, ST_Transform(geom, 9377) g FROM parcel WHERE id = ${id})
-      SELECT p.instrumento, p.nombre, p.codigo, p.estado, p.nivel, p.categoria, p.fuente, ST_Area(ST_Intersection(ST_Transform(p.geom, 9377), l.g)) m2
-      FROM instrumento_plan p, l WHERE p.geom && l.geom AND ST_Intersects(p.geom, l.geom) ORDER BY (p.fuente = 'idem_amva_planes_parciales'), m2 DESC`,
+      SELECT p.instrumento, p.nombre, p.codigo, p.estado, p.nivel, p.categoria, p.fuente, p.acto, p.vigencia, p.observacion, ST_Area(ST_Intersection(ST_Transform(p.geom, 9377), l.g)) m2
+      FROM instrumento_plan p, l WHERE p.geom && l.geom AND ST_Intersects(p.geom, l.geom) ORDER BY (p.fuente LIKE 'estado_%') DESC, (p.fuente = 'idem_amva_planes_parciales'), m2 DESC`,
     sql`WITH l AS (SELECT geom FROM parcel WHERE id = ${id})
       SELECT a.especie, a.nombre_comun, a.patrimonial, a.estado, ST_Intersects(a.geom, l.geom) dentro, ST_Distance(a.geom::geography, l.geom::geography) d
       FROM arbol a, l WHERE a.geom && ST_Expand(l.geom, 0.0002) AND ST_DWithin(a.geom::geography, l.geom::geography, 10)`,
@@ -82,12 +82,16 @@ export async function restriccionesLote(id: string) {
   // ---------- Planes parciales e instrumentos ----------
   const generico = (x: any) => !x || /^planes? parcial(es)?$|^planes maestros$/i.test(String(x).trim());
   const municipales = (planes as any[]).some((p) => p.fuente !== 'idem_amva_planes_parciales' && Number(p.m2) / area > 0.05);
-  const pl = (planes as any[]).filter((p) => Number(p.m2) / area > 0.05 && !(municipales && p.fuente === 'idem_amva_planes_parciales')).map((p) => ({ instrumento: p.instrumento, nombre: generico(p.nombre) ? (p.codigo ? `polígono ${p.codigo}` : null) : p.nombre, codigo: p.codigo, estado: p.estado, nivel: p.nivel, categoria: p.categoria, pct_lote: r1((Number(p.m2) / area) * 100) }));
+  // Si hay una fuente con estado y acto de adopción (Medellín, Sabaneta), manda sobre las capas sin estado.
+  const conEstado = (planes as any[]).some((p) => String(p.fuente).startsWith('estado_') && Number(p.m2) / area > 0.05);
+  const pl = (planes as any[]).filter((p) => Number(p.m2) / area > 0.05 && !(municipales && p.fuente === 'idem_amva_planes_parciales') && !(conEstado && !String(p.fuente).startsWith('estado_'))).map((p) => ({ acto: p.acto ?? null, vigencia: p.vigencia ?? null, observacion: p.observacion ?? null, instrumento: p.instrumento, nombre: generico(p.nombre) ? (p.codigo ? `polígono ${p.codigo}` : null) : p.nombre, codigo: p.codigo, estado: p.estado, nivel: p.nivel, categoria: p.categoria, pct_lote: r1((Number(p.m2) / area) * 100) }));
   const pp = pl.find((p) => /parcial/i.test(`${p.instrumento} ${p.nombre}`));
   const otros = pl.filter((p) => p !== pp);
   const planificacion = {
     luz: (pp ? "amarillo" : otros.some((p) => /API|preservaci/i.test(`${p.codigo} ${p.categoria}`)) ? "rojo" : otros.length ? "amarillo" : "verde") as Luz,
-    lectura: pp ? `Dentro del plan parcial${pp.nombre ? ` ${pp.nombre}` : ""}${pp.estado ? ` (${pp.estado.toLowerCase()})` : ""}: el lote no se licencia solo; aplica el reparto de cargas y beneficios y las obligaciones del plan${/aprob|adopt/i.test(pp.estado ?? "") ? " ya adoptado" : "; si no está adoptado, hay que formularlo (o sumarse a su formulación) antes de licenciar"}.`
+    lectura: pp && /vencid/i.test(`${pp.estado} ${pp.vigencia ?? ""} ${pp.observacion ?? ""}`) ? `Plan parcial${pp.nombre ? ` ${pp.nombre}` : ""} vencido${pp.acto ? ` (${pp.acto})` : ""}: hay que reformularlo o pedir concepto a Planeación sobre la norma aplicable antes de licenciar.`
+      : pp && /sin formular|en formulaci/i.test(pp.estado ?? "") ? `Plan parcial${pp.nombre ? ` ${pp.nombre}` : ""} ${pp.estado.toLowerCase()}: el lote no se licencia hasta que se formule y adopte (suele tardar más de un año y costar cientos de millones).`
+      : pp ? `Dentro del plan parcial${pp.nombre ? ` ${pp.nombre}` : ""}${pp.estado ? ` (${pp.estado.toLowerCase()}${pp.acto ? `, ${pp.acto}` : ""})` : ""}: el lote no se licencia solo; aplica el reparto de cargas y beneficios y las obligaciones del plan${/aprob|adopt/i.test(pp.estado ?? "") ? " ya adoptado" : "; si no está adoptado, hay que formularlo (o sumarse a su formulación) antes de licenciar"}.`
       : otros.length ? `Cubierto por ${otros.map((o) => `${o.instrumento ?? "instrumento"}${o.codigo ? ` ${o.codigo}` : ""}`).join(", ")}: revisar sus condiciones antes de licenciar.`
       : "Sin plan parcial ni otro instrumento de planificación complementaria sobre el lote.",
     instrumentos: pl,

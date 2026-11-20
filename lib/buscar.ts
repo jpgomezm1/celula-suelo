@@ -6,7 +6,7 @@ export type BuscarInput = {
   solo_potencial?: boolean; incluir_amenaza_alta?: boolean; construible_min?: number; gana_pot_2026?: boolean; max_construcciones?: number;
   orden?: "construible_restante" | "area" | "valor_suelo"; limite?: number;
   max_pct_retiro?: number; excluir_cauce?: boolean; excluir_arboles_patrimoniales?: boolean; excluir_plan_parcial?: boolean;
-  lat?: number; lon?: number; radio_m?: number;
+  lat?: number; lon?: number; radio_m?: number; estacion?: string;
   plan_parcial?: "sin" | "adoptado" | "sin_o_adoptado" | "cualquiera"; madurez?: "lista" | "lista_o_adoptado";
 };
 
@@ -25,18 +25,27 @@ async function restriccionesEnLote(ids: string[]) {
       (SELECT string_agg(DISTINCT coalesce(CASE WHEN coalesce(p.nombre, '') ~* '^ *(planes? parcial(es)?)? *$' THEN NULL ELSE p.nombre END, p.codigo, 'plan parcial'), ', ') FROM instrumento_plan p
         WHERE p.geom && l.geom AND ST_Intersects(p.geom, l.geom) AND (p.instrumento || ' ' || coalesce(p.nombre, '')) ~* 'parcial'
           AND ST_Area(ST_Intersection(ST_Transform(p.geom, 9377), l.g)) / l.a > 0.05) AS plan_parcial,
+      (SELECT string_agg(DISTINCT p.estado || coalesce(' · ' || p.acto, '') || CASE WHEN coalesce(p.vigencia, '') || coalesce(p.observacion, '') ~* 'vencid' THEN ' · vencido' ELSE '' END, ', ') FROM instrumento_plan p
+        WHERE p.fuente LIKE 'estado_%' AND p.geom && l.geom AND ST_Intersects(p.geom, l.geom) AND p.instrumento ~* 'parcial' AND ST_Area(ST_Intersection(ST_Transform(p.geom, 9377), l.g)) / l.a > 0.05) AS plan_parcial_estado,
       (SELECT pp.plan_id || '|' || pp.uau FROM plan_parcial_predio pp WHERE pp.parcel_id = l.id LIMIT 1) AS adoptado,
       l.a
     FROM l`;
   return new Map(rows.map((r: any) => {
     const m2 = Math.min(Number(r.a), (Number(r.m2_oficial) || 0) + (Number(r.m2_faja) || 0));
-    return [r.id, { pct_en_retiro_hidrico: Math.round((m2 / Number(r.a)) * 1000) / 10, cauce_cruza: r.cauce_cruza, arboles_patrimoniales: r.patrimoniales, plan_parcial: r.plan_parcial, plan_parcial_adoptado: r.adoptado ? { plan: r.adoptado.split('|')[0], uau: r.adoptado.split('|')[1] } : null }];
+    return [r.id, { pct_en_retiro_hidrico: Math.round((m2 / Number(r.a)) * 1000) / 10, cauce_cruza: r.cauce_cruza, arboles_patrimoniales: r.patrimoniales, plan_parcial: r.plan_parcial, plan_parcial_estado: r.plan_parcial_estado ?? null, plan_parcial_adoptado: r.adoptado ? { plan: r.adoptado.split('|')[0], uau: r.adoptado.split('|')[1] } : null }];
   }));
 }
 
 const distM = (la1: number, lo1: number, la2: number, lo2: number) => { const R = 6371000, r = Math.PI / 180, a = Math.sin(((la2 - la1) * r) / 2) ** 2 + Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin(((lo2 - lo1) * r) / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(a)); };
 
 export async function buscarLotes(f: BuscarInput) {
+  let estacion: any = null;
+  if (f.estacion && (f.lat == null || f.lon == null)) {
+    [estacion] = await sql`SELECT nombre, linea, sistema, estado, ST_Y(geom) lat, ST_X(geom) lon FROM transporte_estacion
+      WHERE norm_txt(nombre) LIKE '%' || norm_txt(${f.estacion}) || '%' ORDER BY (estado = 'Existente') DESC, length(nombre) LIMIT 1`;
+    if (!estacion) return { resultados: 0, lotes: [], mensaje: `No encontré la estación "${f.estacion}". Hay estaciones de metro, metrocable, Metroplús y tranvía.` };
+    f = { ...f, lat: Number(estacion.lat), lon: Number(estacion.lon), radio_m: f.radio_m ?? 800 };
+  }
   const mun = await resolverMunicipio(f.municipio);
   if (f.municipio && !mun) return { resultados: 0, lotes: [], mensaje: `"${f.municipio}" no está entre los 17 municipios cargados.` };
   const limite = Math.min(f.limite ?? 20, 50);
@@ -73,6 +82,7 @@ export async function buscarLotes(f: BuscarInput) {
   const rs = await restriccionesEnLote(rows.map((r: any) => r.id));
   const madurez = (r: any) => {
     if (r.plan_parcial_adoptado) return { nivel: "plan parcial adoptado", lectura: "Norma propia del plan parcial; se licencia con su unidad de actuación (hay que integrarse con los demás predios)." };
+    if (r.plan_parcial && /adoptado/i.test(r.plan_parcial_estado ?? "") && !/vencid/i.test(r.plan_parcial_estado ?? "")) return { nivel: "plan parcial adoptado", lectura: `Plan parcial adoptado (${r.plan_parcial_estado}); su norma aún no está cargada en la herramienta: pedir el decreto y el DTS.` };
     if (r.plan_parcial) return { nivel: "plan parcial por adoptar", lectura: "Hay que formular o esperar el plan parcial antes de licenciar: suele tardar más de un año y costar cientos de millones." };
     const dueños = Number(r.construcciones ?? 0);
     if (dueños <= 1 && !r.cauce_cruza && (r.pct_en_retiro_hidrico ?? 0) < 10) return { nivel: "lista", lectura: "Licencia directa: sin plan parcial, sin quebrada que lo cruce y con poca construcción encima." };
@@ -84,11 +94,18 @@ export async function buscarLotes(f: BuscarInput) {
     (!f.excluir_cauce || !r.cauce_cruza) &&
     (!f.excluir_arboles_patrimoniales || !r.arboles_patrimoniales) &&
     (!f.excluir_plan_parcial || !r.plan_parcial) &&
-    (!f.plan_parcial || f.plan_parcial === "cualquiera" || (f.plan_parcial === "sin" ? !r.plan_parcial && !r.plan_parcial_adoptado : f.plan_parcial === "adoptado" ? !!r.plan_parcial_adoptado : !r.plan_parcial || !!r.plan_parcial_adoptado)) &&
+    (!f.plan_parcial || f.plan_parcial === "cualquiera" || (f.plan_parcial === "sin" ? !r.plan_parcial && !r.plan_parcial_adoptado : f.plan_parcial === "adoptado" ? (!!r.plan_parcial_adoptado || r.madurez.nivel === "plan parcial adoptado") : !r.plan_parcial || !!r.plan_parcial_adoptado)) &&
     (!f.madurez || r.madurez.nivel === "lista" || (f.madurez === "lista_o_adoptado" && r.madurez.nivel === "plan parcial adoptado")));
-  const lotes = pasan.slice(0, limite);
+  const lotes: any[] = pasan.slice(0, limite);
+  if (lotes.length) {
+    const est: any = await sql`SELECT x.id, e.nombre, e.linea, e.sistema, round(ST_Distance(e.geom::geography, ST_SetSRID(ST_MakePoint(x.lon, x.lat), 4326)::geography))::int d
+      FROM jsonb_to_recordset(${JSON.stringify(lotes.map((l) => ({ id: l.id, lat: Number(l.lat), lon: Number(l.lon) })))}::jsonb) x(id text, lat float, lon float)
+      CROSS JOIN LATERAL (SELECT nombre, linea, sistema, geom FROM transporte_estacion WHERE estado = 'Existente' ORDER BY geom <-> ST_SetSRID(ST_MakePoint(x.lon, x.lat), 4326) LIMIT 1) e`.catch(() => []);
+    const m = new Map(est.map((e: any) => [e.id, { nombre: e.nombre, linea: e.linea, sistema: e.sistema, distancia_m: e.d }]));
+    for (const l of lotes) l.estacion_mas_cercana = m.get(l.id) ?? null;
+  }
   return {
-    filtro: { municipio: mun?.nombre ?? "todos", ...f },
+    filtro: { municipio: mun?.nombre ?? "todos", ...f, ...(estacion ? { estacion: `${estacion.nombre} (${estacion.sistema} línea ${estacion.linea})` } : {}) },
     resultados: lotes.length,
     ...(filtraFisico ? { revisados: rows.length, descartados_por_restricciones: rows.length - pasan.length } : {}),
     lotes,

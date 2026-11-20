@@ -86,6 +86,7 @@ export function renderEstudioCabida(r: any, imagenes: { tipo?: string; titulo?: 
       ${pp ? `<div><small>Unidad de actuación (UAU ${esc(pp.uau.id)}) · ${num(pp.uau.area_bruta_m2, 2)} m²</small><b>Lote${otros.map((o: any, i: number) => ` + ${i + 1}: ${num(o.area_m2, 0)} m²`).join("")}</b></div>` : ""}
       <div><small>Clasificación</small><b>${L.clase === "R" ? "Rural o expansión" : "Urbano"} · ${esc(N.tratamiento ?? "—")} ${esc(N.codigo ?? "")}</b></div>
       ${r.topografia ? `<div><small>Terreno</small><b>${esc(r.topografia.clase)} · ${num(r.topografia.pendiente_pct, 0)} % · ${num(r.topografia.desnivel_m, 1)} m de desnivel hacia el ${esc(r.topografia.cae_hacia)}</b></div>` : ""}
+      ${L.estacion ? `<div><small>Transporte masivo más cercano</small><b>${esc(L.estacion.sistema)} ${esc(L.estacion.nombre)} (${esc(L.estacion.linea)}) · ${num(L.estacion.distancia_m)} m</b></div>` : ""}
       ${L.estrato ? `<div><small>Estrato de la zona (estimado)</small><b>${esc(L.estrato)}</b></div>` : ""}
       ${r.ortofoto?.disponible ? `<div><small>Imagen</small><b style="font-size:11px;font-weight:500">${esc(r.ortofoto.atribucion)}</b></div>` : ""}
     </div></div>`);

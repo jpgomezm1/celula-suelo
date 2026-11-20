@@ -31,7 +31,8 @@
     "galeria": "node --env-file=.env.local --import tsx ingest/galeria.ts",
     "restricciones": "node --env-file=.env.local --import tsx ingest/restricciones.ts",
     "suelo_sismo": "node --env-file=.env.local --import tsx ingest/suelo_sismo.ts",
-    "planes_parciales": "node --env-file=.env.local --import tsx ingest/planes_parciales.ts"
+    "planes_parciales": "node --env-file=.env.local --import tsx ingest/planes_parciales.ts",
+    "estado_planes": "node --env-file=.env.local --import tsx ingest/estado_planes.ts"
   },
   "keywords": [],
   "author": "",
