@@ -1,3 +1,5 @@
+import { crearEstudioCabida, agregarImagenesEstudio } from "@/lib/estudio_cabida";
+import { planParcialLote, guardarPlanParcial, listarPlanesParciales } from "@/lib/plan_parcial";
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { buscarLotes, cobertura, fuentes } from "@/lib/buscar";
@@ -61,11 +63,13 @@ const seguro = <A,>(fn: (a: A) => Promise<unknown>) => async (a: A) => {
 const LECTURA = { readOnlyHint: true, openWorldHint: false } as const;
 const ESCRITURA = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } as const;
 const INSTRUCCIONES = `Inteligencia de suelo para 17 municipios del Valle de Aburrá y el Oriente antioqueño: catastro, norma del POT, mercado (Fynder), proyectos nuevos (Zonario y Galería Inmobiliaria) y señales de venta de los folios.
-Foco: la decisión sobre un lote (qué se puede hacer, qué lo restringe y cómo se vende la vivienda nueva en su zona). No se ofrecen modelos financieros, planos ni 3D.
+Foco: la decisión sobre un lote (qué se puede hacer, qué lo restringe, qué se le paga al municipio y cómo se vende la vivienda nueva en su zona) y el estudio de cabida para desarrolladores. No se ofrecen modelos financieros.
+PLANES PARCIALES: si consulta_norma trae 'plan_parcial_adoptado', su norma (viviendas por UAU, altura, cargas) manda sobre la del POT: dilo primero. Si el lote cae en un polígono de plan parcial que no está cargado, pide el decreto de adopción y el DTS, transcríbelos y guárdalos con registrar_plan_parcial antes de calcular la cabida.
 Flujos recomendados:
 0. "¿Qué se puede hacer en este lote?" o "dame la ficha" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf. Trae semáforo, área neta, cabida, usos, restricciones (amenazas, quebradas y retiros, suelo de protección, plan parcial, árboles patrimoniales), topografía, inventario de vivienda nueva a 2 km y áreas que no cuentan en el índice. ficha_predio da lo mismo más licencias, mercado de Fynder y proyectos cerca. Detalles puntuales → cabida_lote, usos_permitidos, topografia_lote, suelo_sismo (microzonificación sísmica, geología e inspecciones del DAGRD: clave para constructoras por cimentación y contenciones).
 1. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250). Una zona dibujada → analizar_zona.
-2. Buscar lotes → buscar_lotes (filtros de área, tratamiento, amenaza, % en retiro hídrico, quebrada que cruza, árboles patrimoniales y plan parcial) u oportunidades_por_perfil (producto definido sobre todo un municipio) → consulta_norma de los mejores → contacto_predio.
+2. Buscar lotes → buscar_lotes (radio alrededor de una coordenada o estación, madurez: lista / plan parcial adoptado / por adoptar; filtros de área, tratamiento, amenaza, % en retiro hídrico, quebrada que cruza, árboles patrimoniales y plan parcial) u oportunidades_por_perfil (producto definido sobre todo un municipio) → consulta_norma de los mejores → contacto_predio.
+2a. "Estudio de cabida" o "qué le cabe a este lote" para un desarrollador → consulta_norma (revisa el plan parcial) → estudio_cabida (presentación con norma, lo que se aprovecha frente a lo que se paga, planos, opciones, mercado, potencial de ventas e imágenes) → si no hay OPENAI_API_KEY, genera las imágenes con sus prompts en otra herramienta y agrégalas con agregar_imagenes_estudio → comparte el enlace.
 2b. "Hazme un reporte de este lote" o "revisa este avalúo" → investiga (consulta_norma, ficha_predio, topografia_lote, POT vigente) → reporte_lote con textos en lenguaje no técnico → comparte el enlace.
 3. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 4. Mercado de una zona → mercado_zona, buscar_proyectos, ficha_proyecto, constructora. Lotes que el equipo negocia → negociaciones. POT nuevo → cambio_pot y novedades_normativas.
@@ -81,8 +85,8 @@ const predio = {
   lat: z.number().optional(), lon: z.number().optional(),
 };
 
-// Fuera del foco (decisión sobre el lote): finanzas, planos y 3D. El código sigue, pero el MCP no las ofrece.
-const OCULTAS = new Set(["valor_residual", "prefactibilidad_lote", "prefactibilidad_financiera", "mezcla_optima", "cabida_arquitectonica", "volumen_3d", "fachada_street_view"]);
+// Fuera del foco: finanzas. El código sigue, pero el MCP no las ofrece. Planos y 3D volvieron con el estudio de cabida (nov. 2026).
+const OCULTAS = new Set(["valor_residual", "prefactibilidad_lote", "prefactibilidad_financiera", "mezcla_optima", "fachada_street_view"]);
 
 const mcp = createMcpHandler(
   (server) => {
@@ -114,7 +118,7 @@ const mcp = createMcpHandler(
     server.registerTool("buscar_lotes", {
       annotations: LECTURA,
       title: "Buscar lotes",
-      description: "Busca predios por municipio, barrio, área, tratamiento y área construible restante, y filtra por restricciones físicas: % del lote en retiro hídrico, quebrada que lo cruza, árboles patrimoniales y plan parcial. Por defecto solo los marcados con potencial preliminar (inferencia) y sin amenaza alta. Cada lote trae pct_en_retiro_hidrico, cauce_cruza, arboles_patrimoniales y plan_parcial.",
+      description: "Busca predios por municipio, barrio, radio alrededor de una coordenada, área, tratamiento y área construible restante, y por madurez (lista / plan parcial adoptado / por adoptar / con trabajo previo). Filtra por restricciones físicas: % del lote en retiro hídrico, quebrada que lo cruza, árboles patrimoniales y plan parcial. Por defecto solo los marcados con potencial preliminar (inferencia) y sin amenaza alta. Cada lote trae pct_en_retiro_hidrico, cauce_cruza, arboles_patrimoniales y plan_parcial.",
       inputSchema: z.object({
         municipio: z.string().optional(), barrio: z.string().optional(),
         area_min: z.number().min(0).optional(), area_max: z.number().min(0).optional(),
@@ -126,6 +130,9 @@ const mcp = createMcpHandler(
         excluir_cauce: z.boolean().optional().describe("Excluir lotes que cruza una quebrada natural (no canalizada)"),
         excluir_arboles_patrimoniales: z.boolean().optional().describe("Excluir lotes con árboles patrimoniales dentro (censo solo en Medellín)"),
         excluir_plan_parcial: z.boolean().optional().describe("Excluir lotes dentro de un plan parcial"),
+        lat: z.number().optional(), lon: z.number().optional(), radio_m: z.number().min(100).max(10000).optional().describe("Buscar en un radio alrededor de la coordenada (p. ej. una estación del metro); defecto 1.000 m"),
+        plan_parcial: z.enum(["sin", "adoptado", "sin_o_adoptado", "cualquiera"]).optional().describe("Filtrar por plan parcial: sin (licencia directa), adoptado (norma propia ya vigente), sin_o_adoptado"),
+        madurez: z.enum(["lista", "lista_o_adoptado"]).optional().describe("Solo lotes listos: licencia directa, poca construcción encima y sin quebrada que los cruce (o con plan parcial adoptado)"),
         orden: z.enum(["construible_restante", "area", "valor_suelo"]).optional(), limite: z.number().int().min(1).max(50).optional(),
       }),
     }, seguro(async (a: any) => buscarLotes(a)));
@@ -374,6 +381,47 @@ const mcp = createMcpHandler(
       const an = await analizarLote(p, { costo_lote: a.costo_lote, area_unidad_m2: a.area_unidad_m2, con_mercado: true });
       return { predio: c.predio, barrio: c.barrio, area_lote_m2: c.area_lote_m2, ...an.valor_residual, precio_pedido: a.costo_lote ?? null };
     }));
+
+    server.registerTool("estudio_cabida", {
+      annotations: ESCRITURA,
+      title: "Estudio de cabida (presentación para desarrolladores)",
+      description: "Arma el estudio de cabida de un lote en formato de presentación de arquitecto estructurador y lo guarda: localización (ortofoto o mapa), marco normativo y ficha (si el lote está en un plan parcial ADOPTADO, usa su norma: UAU, viviendas, altura, cargas), el cruce entre lo que el lote permite construir y lo que se paga al municipio (cesiones, vías, equipamiento), retiros y parqueaderos, anteproyecto del motor de cabida (implantación, planta tipo, cuadro de áreas, corte y fachada), dos opciones de cabida alternativas, mercado a 1,5 km con potencial de ventas y techo de precio del lote, imágenes (renders y maqueta) y qué verificar. Si hay OPENAI_API_KEY genera las imágenes; si no, devuelve los prompts para generarlas en otra herramienta (p. ej. Higgsfield) y agregarlas con agregar_imagenes_estudio. Entrega el enlace (se abre con la clave del workspace) y se puede imprimir a PDF desde el botón. Tarda 30–120 s.",
+      inputSchema: z.object({ ...LOTE, nombre: z.string().optional(),
+        mezcla: z.array(z.object({ tipologia: z.enum(["estudio", "1A", "2A", "3A"]), pct: z.number() })).optional(), max_torres: z.number().int().min(1).max(6).optional(), estrato: z.number().int().min(1).max(6).optional(),
+        opciones: z.boolean().optional().describe("Calcular 2 alternativas de cabida (defecto sí)"), renders: z.boolean().optional().describe("Generar imágenes con OpenAI si hay llave (defecto sí)"),
+        estilo: z.string().optional().describe("Estilo arquitectónico para las imágenes, en inglés"),
+        marca: z.object({ cliente: z.string(), logo_url: z.string().optional(), logo_fondo_oscuro_url: z.string().optional() }).optional() }),
+    }, seguro(async (a: any) => {
+      const { cbml, id, matricula, direccion, lat, lon, ...resto } = a;
+      return crearEstudioCabida({ lote: { cbml, id, matricula, direccion, lat, lon }, ...resto });
+    }));
+
+    server.registerTool("agregar_imagenes_estudio", {
+      annotations: ESCRITURA,
+      title: "Agregar imágenes o video a un estudio de cabida",
+      description: "Agrega a un estudio de cabida (id que empieza por c_) imágenes hechas en otra herramienta (URLs https de PNG/JPEG/WebP, con tipo: fachada, acceso, aerea, interior, social o maqueta, y un título) y un video (URL https de MP4). La fachada se usa de portada y la maqueta en su propia lámina.",
+      inputSchema: z.object({ id: z.string(), imagenes: z.array(z.object({ url: z.string(), tipo: z.string().optional(), titulo: z.string().optional() })).optional(), video_url: z.string().optional() }),
+    }, seguro(async (a: any) => agregarImagenesEstudio(a.id, a.imagenes ?? [], a.video_url)));
+
+    server.registerTool("plan_parcial", {
+      annotations: LECTURA,
+      title: "Plan parcial adoptado de un lote",
+      description: "Si el lote está en un plan parcial ADOPTADO cargado en la herramienta, devuelve su norma, que manda sobre la del POT: decreto(s), unidad de actuación urbanística (UAU) con sus predios, viviendas asignadas a la UAU tras el reparto, altura, suelo útil, cargas (vías a ceder y construir, parques, suelo ambiental, cesión en dinero, redes, equipamiento), compensaciones y las viviendas que le corresponderían al lote (estimadas por área más compensaciones). Sin lote, lista los planes parciales cargados. Si el lote cae en un polígono de plan parcial que no está cargado, pide el decreto y el DTS y regístralo con registrar_plan_parcial.",
+      inputSchema: z.object({ ...LOTE, municipio: z.string().optional().describe("Para listar los planes de un municipio (código DANE, p. ej. 05266)") }),
+    }, seguro(async (a: any) => {
+      if (!a.cbml && !a.id && !a.matricula && !a.direccion && a.lat === undefined) return { planes_cargados: await listarPlanesParciales(a.municipio) };
+      const { c, p } = await loteDe(a);
+      if (!p) return c;
+      const pp = await planParcialLote(c.predio);
+      return pp ? { predio: c.predio, ...pp } : { predio: c.predio, disponible: false, mensaje: "El lote no está en un plan parcial adoptado cargado. Revisa en consulta_norma si cae en un polígono de plan parcial: si es así, consigue el decreto de adopción y el DTS y regístralo con registrar_plan_parcial." };
+    }));
+
+    server.registerTool("registrar_plan_parcial", {
+      annotations: ESCRITURA,
+      title: "Registrar un plan parcial adoptado",
+      description: "Guarda la norma de un plan parcial adoptado transcrita de su decreto y su documento técnico (DTS), para que la herramienta la use en la cabida y los reportes de los predios que incluye. Lee el decreto y el DTS y arma: {id: '<dane>-<nombre>', municipio_dane, nombre, estado: 'adoptado'|'en trámite'|'vencido', actos: [{tipo, numero, fecha, objeto}], ambito, area_intervencion_m2, viviendas_total, normas: {uso_principal, otros_usos, densidad, altura, parqueaderos, licencia, vis_vip, retiros, equipamiento}, fuente, verificado (fecha), uaus: [{uau, area_bruta_m2, suelo_util_m2, viviendas (tras el reparto), viviendas_por_densidad, altura_pisos, altura_pisos_max_con_visto_bueno, m2_vivienda_modelo, cargas: {cesion_vias_m2, construccion_vias_m2, vias: [], cesion_parques_equipamiento_m2, adecuacion_parques_m2, suelo_ambiental_ceder_m2, proteccion_en_suelo_privado_m2, espacio_publico_en_dinero_m2, acueducto_ml, alcantarillado_ml, equipamiento_construido_m2}, compensaciones: [{catastro, viviendas, motivo}], predios: [{catastro (número predial sin el código DANE), area_m2}]}]}. No incluyas nombres de propietarios. Reemplaza el plan si ya existe.",
+      inputSchema: z.object({ plan: z.any().describe("El plan parcial en el formato descrito") }),
+    }, seguro(async (a: any) => guardarPlanParcial(typeof a.plan === "string" ? JSON.parse(a.plan) : a.plan)));
 
     server.registerTool("suelo_sismo", {
       annotations: LECTURA,

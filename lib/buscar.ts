@@ -6,6 +6,8 @@ export type BuscarInput = {
   solo_potencial?: boolean; incluir_amenaza_alta?: boolean; construible_min?: number; gana_pot_2026?: boolean; max_construcciones?: number;
   orden?: "construible_restante" | "area" | "valor_suelo"; limite?: number;
   max_pct_retiro?: number; excluir_cauce?: boolean; excluir_arboles_patrimoniales?: boolean; excluir_plan_parcial?: boolean;
+  lat?: number; lon?: number; radio_m?: number;
+  plan_parcial?: "sin" | "adoptado" | "sin_o_adoptado" | "cualquiera"; madurez?: "lista" | "lista_o_adoptado";
 };
 
 /** Restricciones físicas por lote, en lote (mismo criterio que restricciones.ts, simplificado para muchos lotes a la vez). */
@@ -18,24 +20,29 @@ async function restriccionesEnLote(ids: string[]) {
       coalesce((SELECT ST_Area(ST_Intersection(ST_Union(ST_Transform(r.geom, 9377)), l.g)) FROM hidro_retiro r WHERE r.geom && l.geom AND ST_Intersects(r.geom, l.geom)), 0) AS m2_oficial,
       CASE WHEN l.municipio_dane = '05001' THEN 0 ELSE coalesce((SELECT ST_Area(ST_Intersection(ST_Union(ST_Buffer(ST_Transform(c.geom, 9377), 30)), l.g))
         FROM hidro_cauce c WHERE NOT coalesce(c.canalizado, false) AND c.geom && ST_Expand(l.geom, 0.0004) AND ST_DWithin(c.geom::geography, l.geom::geography, 30)
-          AND NOT EXISTS (SELECT 1 FROM hidro_retiro r WHERE r.geom && ST_Expand(c.geom, 0.0001) AND ST_DWithin(r.geom::geography, c.geom::geography, 5))), 0) END AS m2_faja,
+          AND NOT EXISTS (SELECT 1 FROM hidro_retiro r WHERE ST_DWithin(r.geom, c.geom, 0.00005))), 0) END AS m2_faja,
       (SELECT count(*) FROM arbol a WHERE a.patrimonial AND a.geom && l.geom AND ST_Intersects(a.geom, l.geom))::int AS patrimoniales,
       (SELECT string_agg(DISTINCT coalesce(CASE WHEN coalesce(p.nombre, '') ~* '^ *(planes? parcial(es)?)? *$' THEN NULL ELSE p.nombre END, p.codigo, 'plan parcial'), ', ') FROM instrumento_plan p
         WHERE p.geom && l.geom AND ST_Intersects(p.geom, l.geom) AND (p.instrumento || ' ' || coalesce(p.nombre, '')) ~* 'parcial'
           AND ST_Area(ST_Intersection(ST_Transform(p.geom, 9377), l.g)) / l.a > 0.05) AS plan_parcial,
+      (SELECT pp.plan_id || '|' || pp.uau FROM plan_parcial_predio pp WHERE pp.parcel_id = l.id LIMIT 1) AS adoptado,
       l.a
     FROM l`;
   return new Map(rows.map((r: any) => {
     const m2 = Math.min(Number(r.a), (Number(r.m2_oficial) || 0) + (Number(r.m2_faja) || 0));
-    return [r.id, { pct_en_retiro_hidrico: Math.round((m2 / Number(r.a)) * 1000) / 10, cauce_cruza: r.cauce_cruza, arboles_patrimoniales: r.patrimoniales, plan_parcial: r.plan_parcial }];
+    return [r.id, { pct_en_retiro_hidrico: Math.round((m2 / Number(r.a)) * 1000) / 10, cauce_cruza: r.cauce_cruza, arboles_patrimoniales: r.patrimoniales, plan_parcial: r.plan_parcial, plan_parcial_adoptado: r.adoptado ? { plan: r.adoptado.split('|')[0], uau: r.adoptado.split('|')[1] } : null }];
   }));
 }
+
+const distM = (la1: number, lo1: number, la2: number, lo2: number) => { const R = 6371000, r = Math.PI / 180, a = Math.sin(((la2 - la1) * r) / 2) ** 2 + Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin(((lo2 - lo1) * r) / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(a)); };
 
 export async function buscarLotes(f: BuscarInput) {
   const mun = await resolverMunicipio(f.municipio);
   if (f.municipio && !mun) return { resultados: 0, lotes: [], mensaje: `"${f.municipio}" no está entre los 17 municipios cargados.` };
   const limite = Math.min(f.limite ?? 20, 50);
-  const filtraFisico = f.max_pct_retiro != null || f.excluir_cauce || f.excluir_arboles_patrimoniales || f.excluir_plan_parcial;
+  const filtraFisico = f.max_pct_retiro != null || f.excluir_cauce || f.excluir_arboles_patrimoniales || f.excluir_plan_parcial || (f.plan_parcial && f.plan_parcial !== "cualquiera") || !!f.madurez;
+  const radio = f.lat != null && f.lon != null ? Math.min(f.radio_m ?? 1000, 10000) : null;
+  const dLat = radio ? radio / 111320 : 0, dLon = radio ? radio / (111320 * Math.cos(((f.lat ?? 6) * Math.PI) / 180)) : 0;
   const candidatos = filtraFisico ? Math.min(limite * 8, 300) : limite;
   const orden = f.orden ?? "construible_restante";
   const rows = await sql`
@@ -55,6 +62,8 @@ export async function buscarLotes(f: BuscarInput) {
       AND (${f.gana_pot_2026 ?? false} = false OR codigo_tratamiento IN (SELECT e.c14 FROM norma_pot2026_equivalencia e JOIN norma_pot2026 n ON n.codigo = e.c26
            WHERE n.ic_residencial > COALESCE(e.ic_2014, 0)))
       AND (${f.max_construcciones ?? null}::int IS NULL OR COALESCE(construcciones, 0) <= ${f.max_construcciones ?? null})
+      AND (${radio}::float IS NULL OR (lat BETWEEN ${(f.lat ?? 0) - dLat} AND ${(f.lat ?? 0) + dLat} AND lon BETWEEN ${(f.lon ?? 0) - dLon} AND ${(f.lon ?? 0) + dLon}
+        AND ST_DWithin(ST_SetSRID(ST_MakePoint(lon, lat), 4326)::geography, ST_SetSRID(ST_MakePoint(${f.lon ?? 0}, ${f.lat ?? 0}), 4326)::geography, ${radio ?? 0})))
     ORDER BY
       CASE WHEN ${orden} = 'construible_restante' THEN area_construible_restante_inferida END DESC NULLS LAST,
       CASE WHEN ${orden} = 'area' THEN area_lote END DESC NULLS LAST,
@@ -62,12 +71,21 @@ export async function buscarLotes(f: BuscarInput) {
       area_lote DESC
     LIMIT ${candidatos}`;
   const rs = await restriccionesEnLote(rows.map((r: any) => r.id));
-  const conRs = rows.map((r: any) => ({ ...r, ...(rs.get(r.id) ?? {}) }));
+  const madurez = (r: any) => {
+    if (r.plan_parcial_adoptado) return { nivel: "plan parcial adoptado", lectura: "Norma propia del plan parcial; se licencia con su unidad de actuación (hay que integrarse con los demás predios)." };
+    if (r.plan_parcial) return { nivel: "plan parcial por adoptar", lectura: "Hay que formular o esperar el plan parcial antes de licenciar: suele tardar más de un año y costar cientos de millones." };
+    const dueños = Number(r.construcciones ?? 0);
+    if (dueños <= 1 && !r.cauce_cruza && (r.pct_en_retiro_hidrico ?? 0) < 10) return { nivel: "lista", lectura: "Licencia directa: sin plan parcial, sin quebrada que lo cruce y con poca construcción encima." };
+    return { nivel: "licencia directa con trabajo previo", lectura: `Licencia directa, pero ${dueños > 1 ? `tiene ${dueños} construcciones (posibles varios dueños)` : "tiene retiros o quebrada que restan área"}.` };
+  };
+  const conRs = rows.map((r: any) => { const x = { ...r, ...(rs.get(r.id) ?? {}) }; return { ...x, ...(radio ? { distancia_m: Math.round(distM(f.lat!, f.lon!, Number(r.lat), Number(r.lon))) } : {}), madurez: madurez(x) }; });
   const pasan = conRs.filter((r: any) =>
     (f.max_pct_retiro == null || (r.pct_en_retiro_hidrico ?? 0) <= f.max_pct_retiro) &&
     (!f.excluir_cauce || !r.cauce_cruza) &&
     (!f.excluir_arboles_patrimoniales || !r.arboles_patrimoniales) &&
-    (!f.excluir_plan_parcial || !r.plan_parcial));
+    (!f.excluir_plan_parcial || !r.plan_parcial) &&
+    (!f.plan_parcial || f.plan_parcial === "cualquiera" || (f.plan_parcial === "sin" ? !r.plan_parcial && !r.plan_parcial_adoptado : f.plan_parcial === "adoptado" ? !!r.plan_parcial_adoptado : !r.plan_parcial || !!r.plan_parcial_adoptado)) &&
+    (!f.madurez || r.madurez.nivel === "lista" || (f.madurez === "lista_o_adoptado" && r.madurez.nivel === "plan parcial adoptado")));
   const lotes = pasan.slice(0, limite);
   return {
     filtro: { municipio: mun?.nombre ?? "todos", ...f },

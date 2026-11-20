@@ -66,7 +66,8 @@ export async function anteproyecto(id: string, o: OpcionesProyecto = {}) {
   const F = o.crujia_m ?? 7.6, pas = o.pasillo_m ?? 1.6;
   const hPiso = o.altura_piso_m ?? 2.9, hPrimero = o.altura_primer_piso_m ?? 3.4;
   const pp = Math.max(0, Math.min(3, o.pisos_plataforma ?? 0));
-  const tope = p.altura_max ? Number(p.altura_max) : null;
+  // Con plan parcial adoptado manda su altura (y sus viviendas, que ya vienen en el escenario base del análisis).
+  const tope = an.plan_parcial?.uau?.altura_pisos ? Number(an.plan_parcial.uau.altura_pisos) : p.altura_max ? Number(p.altura_max) : null;
 
   // La norma volumétrica depende de la altura y la altura de la implantación: se itera hasta estabilizar.
   let pisos = Math.max(3, Number(esc.pisos_sobre_rasante) || 5);
@@ -235,6 +236,7 @@ export async function anteproyecto(id: string, o: OpcionesProyecto = {}) {
   };
   return {
     encontrado: true as const, disponible: true as const, predio: id, barrio: p.barrio_catastral ?? null, municipio: p.municipio ?? null, municipio_dane: p.municipio_dane,
+    plan_parcial: an.plan_parcial ? { nombre: an.plan_parcial.plan.nombre, actos: an.plan_parcial.plan.actos_texto, uau: an.plan_parcial.uau.id, viviendas_uau: an.plan_parcial.uau.viviendas, viviendas_lote: an.plan_parcial.lote.viviendas_estimadas, altura_pisos: an.plan_parcial.uau.altura_pisos } : null,
     marco: { ...marco, srid: 9377 }, norma, edificable: res.edificable, sotano_poligono: res.sotano, torres, primer_piso: primerPiso, sotanos, niveles, resumen,
     opciones: { ...o, mezcla, crujia_m: F, pasillo_m: pas, altura_piso_m: hPiso, altura_primer_piso_m: hPrimero },
     aviso: "Anteproyecto esquemático generado automáticamente para prefactibilidad. La norma volumétrica cargada está digitalizada y pendiente de validar; el arquitecto debe verificar retiros, aislamientos, NSR-10 (evacuación y estructura), norma de parqueaderos y redes, y desarrollar el diseño.",

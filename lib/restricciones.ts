@@ -41,7 +41,7 @@ export async function restriccionesLote(id: string) {
     completa ? Promise.resolve([]) : sql`WITH l AS (SELECT geom, ST_Transform(geom, 9377) g FROM parcel WHERE id = ${id}),
         c AS (SELECT ST_Union(ST_Buffer(ST_Transform(c.geom, 9377), ${FAJA_REFERENCIA_M})) b FROM hidro_cauce c, l
               WHERE NOT COALESCE(c.canalizado, false) AND c.geom && ST_Expand(l.geom, 0.0008) AND ST_DWithin(c.geom::geography, l.geom::geography, ${FAJA_REFERENCIA_M})
-                AND NOT EXISTS (SELECT 1 FROM hidro_retiro r WHERE r.geom && ST_Expand(c.geom, 0.0001) AND ST_DWithin(r.geom::geography, c.geom::geography, 5)))
+                AND NOT EXISTS (SELECT 1 FROM hidro_retiro r WHERE ST_DWithin(r.geom, c.geom, 0.00005)))
       SELECT ST_Area(ST_Intersection(c.b, l.g)) m2, ST_AsGeoJSON(ST_Intersection(c.b, l.g), 2)::json geom FROM c, l WHERE c.b IS NOT NULL`,
     sql`WITH l AS (SELECT geom, ST_Transform(geom, 9377) g FROM parcel WHERE id = ${id})
       SELECT p.instrumento, p.nombre, p.codigo, p.estado, p.nivel, p.categoria, p.fuente, ST_Area(ST_Intersection(ST_Transform(p.geom, 9377), l.g)) m2

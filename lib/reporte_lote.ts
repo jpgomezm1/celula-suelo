@@ -84,7 +84,7 @@ async function geometriaMapa(ids: string[], munis: string[]) {
 }
 
 /** Descarga un logo y lo guarda como data URI dentro del reporte (no depende del sitio del cliente ni va al repo público). */
-async function logoDataUri(url?: string) {
+export async function logoDataUri(url?: string) {
   if (!url || !/^https:\/\//.test(url)) return null;
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
@@ -97,7 +97,7 @@ async function logoDataUri(url?: string) {
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
 /** Mercado de la zona para una constructora: oferta y demanda de Fynder y proyectos nuevos anunciados (Zonario), a 1,5 km. */
-async function mercadoReporte(lat: number, lon: number) {
+export async function mercadoReporte(lat: number, lon: number) {
   const [m, proyectos]: any = await Promise.all([
     mercadoZona({ lat, lon, radio_m: 1500, tipo: "apartamento" }).catch(() => null),
     sql`SELECT q.nombre, k.nombre constructora, q.precio_desde, q.precio_m2_desde, q.area_min, q.area_max, q.entrega, q.etapa,

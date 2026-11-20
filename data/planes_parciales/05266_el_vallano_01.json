@@ -1,0 +1,342 @@
+{
+ "id": "05266-el-vallano-01",
+ "municipio_dane": "05266",
+ "nombre": "Plan Parcial El Vallano 01",
+ "ambito": "Polígonos DES-13 y DES-30, subpolígono 1 (vereda El Vallano), desarrollo en suelo de expansión urbana",
+ "estado": "adoptado",
+ "actos": [
+  {
+   "tipo": "Decreto",
+   "numero": "634",
+   "fecha": "2019-12-30",
+   "objeto": "Adopta el plan parcial"
+  },
+  {
+   "tipo": "Decreto",
+   "numero": "116",
+   "fecha": "2020-03-03",
+   "objeto": "Modifica el artículo 42 (viviendas por UAU)"
+  }
+ ],
+ "soporte": [
+  "Acuerdo 010 de 2011 (POT de Envigado)",
+  "Resolución 8588 de 2017 (determinantes urbanísticos)",
+  "Determinantes ambientales de Corantioquia",
+  "Documento técnico de soporte del plan parcial (2019)"
+ ],
+ "area_intervencion_m2": 84136.75,
+ "viviendas_total": 573,
+ "normas": {
+  "uso_principal": "Residencial",
+  "otros_usos": "Hasta 5 % del área construida en vivienda, sobre la malla vial pública; 5 pisos en UAU 1, 4 y 5 y 3 pisos en las demás",
+  "densidad": "DES-13: 30 viv/ha; DES-30: 70 viv/ha + 70 adicionales (140 viv/ha) por integración en unidades mayores a 2.000 m²",
+  "altura": "12 niveles para multifamiliar en UAU 1, 4 y 5 (hasta 16 con visto bueno de Planeación); 5 niveles en las demás; máximo 3,50 m por nivel",
+  "parqueaderos": "1 por vivienda y 1 de visitantes por cada 3 viviendas (Acuerdo 056 de 2001, art. 160)",
+  "licencia": "Una licencia de urbanización única por UAU; puede ejecutarse por etapas",
+  "vis_vip": "25 % del suelo útil para VIS o 20 % para VIP: en el mismo proyecto, trasladada a otro proyecto del urbanizador o compensada",
+  "retiros": "Retiros de construcción según la norma vigente al licenciar; 7,5 m a cada lado de las líneas de alta tensión del centro del plan y 32 m a las del costado sur",
+  "equipamiento": "3 m² o 5,5 SMMLV por vivienda licenciada (POT, art. 207)"
+ },
+ "fuente": "Decretos 634 de 2019 y 116 de 2020 de Envigado y DTS del Plan Parcial El Vallano 01 (entregados por un arquitecto estructurador, nov. 2026)",
+ "verificado": "2026-11-20",
+ "uaus": [
+  {
+   "uau": "1",
+   "area_bruta_m2": 11018.59,
+   "area_des13_m2": 6564.72,
+   "area_des30_m2": 4453.87,
+   "suelo_util_m2": 4922.49,
+   "viviendas": 78,
+   "viviendas_por_densidad": 82,
+   "altura_pisos": 12,
+   "altura_pisos_max_con_visto_bueno": 16,
+   "m2_vivienda_modelo": 5743.38,
+   "cargas": {
+    "cesion_vias_m2": 2098.1,
+    "construccion_vias_m2": 2098.1,
+    "vias": [
+     "Carrera 24B",
+     "Vía de ingreso UAU 1"
+    ],
+    "cesion_parques_equipamiento_m2": 1000.5,
+    "adecuacion_parques_m2": 1000.5,
+    "suelo_ambiental_ceder_m2": 2651.0,
+    "proteccion_en_suelo_privado_m2": 346.5,
+    "espacio_publico_en_dinero_m2": 163.97,
+    "construccion_fuera_area_m2": 32.4,
+    "acueducto_ml": 174.82,
+    "alcantarillado_ml": 174.82,
+    "equipamiento_construido_m2": 0
+   },
+   "compensaciones": [],
+   "predios": [
+    {
+     "catastro": "2661001004000400076",
+     "area_m2": 1418.51
+    },
+    {
+     "catastro": "2662001301000100265",
+     "area_m2": 3343.31,
+     "partes": 2
+    },
+    {
+     "catastro": "2661001004000200047",
+     "area_m2": 226.32
+    },
+    {
+     "catastro": "2662001301000100239",
+     "area_m2": 4070.34
+    },
+    {
+     "catastro": "2662001301000100263",
+     "area_m2": 422.91
+    },
+    {
+     "catastro": "2662001301000100268",
+     "area_m2": 625.39
+    },
+    {
+     "catastro": "2662001301000100855",
+     "area_m2": 911.81
+    }
+   ]
+  },
+  {
+   "uau": "2",
+   "area_bruta_m2": 33873.33,
+   "area_des13_m2": 32336.63,
+   "area_des30_m2": 1536.7,
+   "suelo_util_m2": 16316.03,
+   "viviendas": 106,
+   "viviendas_por_densidad": 119,
+   "altura_pisos": 5,
+   "altura_pisos_max_con_visto_bueno": null,
+   "m2_vivienda_modelo": 17185.94,
+   "cargas": {
+    "cesion_vias_m2": 4368.34,
+    "construccion_vias_m2": 4368.34,
+    "vias": [
+     "Calle 45B Sur",
+     "Carrera 24B",
+     "Vía Longitudinal Oriental"
+    ],
+    "cesion_parques_equipamiento_m2": 930.86,
+    "adecuacion_parques_m2": 930.86,
+    "suelo_ambiental_ceder_m2": 5816.6,
+    "proteccion_en_suelo_privado_m2": 6441.5,
+    "espacio_publico_en_dinero_m2": 4913.5,
+    "construccion_fuera_area_m2": 0,
+    "acueducto_ml": 530.85,
+    "alcantarillado_ml": 530.85,
+    "equipamiento_construido_m2": 296.31
+   },
+   "compensaciones": [],
+   "predios": [
+    {
+     "catastro": "2662001301000100653",
+     "area_m2": 9197.96
+    },
+    {
+     "catastro": "2662001301000100654",
+     "area_m2": 1915.81
+    },
+    {
+     "catastro": "2662001301000100655",
+     "area_m2": 11992.65
+    },
+    {
+     "catastro": "2662001301000100656",
+     "area_m2": 10766.9
+    }
+   ]
+  },
+  {
+   "uau": "3",
+   "area_bruta_m2": 27113.27,
+   "area_des13_m2": 15795.97,
+   "area_des30_m2": 11317.3,
+   "suelo_util_m2": 9991.19,
+   "viviendas": 195,
+   "viviendas_por_densidad": 206,
+   "altura_pisos": 5,
+   "altura_pisos_max_con_visto_bueno": null,
+   "m2_vivienda_modelo": 14408.11,
+   "cargas": {
+    "cesion_vias_m2": 2167.12,
+    "construccion_vias_m2": 2167.12,
+    "vias": [
+     "Calle 45B Sur",
+     "Carrera 24B"
+    ],
+    "cesion_parques_equipamiento_m2": 538.8,
+    "adecuacion_parques_m2": 538.8,
+    "suelo_ambiental_ceder_m2": 9614.8,
+    "proteccion_en_suelo_privado_m2": 4801.36,
+    "espacio_publico_en_dinero_m2": 5180.61,
+    "construccion_fuera_area_m2": 413.0,
+    "acueducto_ml": 438.56,
+    "alcantarillado_ml": 438.56,
+    "equipamiento_construido_m2": 514.58
+   },
+   "compensaciones": [],
+   "predios": [
+    {
+     "catastro": "2662001301000100232",
+     "area_m2": 2781.6
+    },
+    {
+     "catastro": "2662001301000100233",
+     "area_m2": 1671.23
+    },
+    {
+     "catastro": "2662001301000100234",
+     "area_m2": 2512.32
+    },
+    {
+     "catastro": "2662001301000100246",
+     "area_m2": 4652.81
+    },
+    {
+     "catastro": "2662001301000100249",
+     "area_m2": 270.15
+    },
+    {
+     "catastro": "2662001301000100250",
+     "area_m2": 346.72
+    },
+    {
+     "catastro": "2662001301000100436",
+     "area_m2": 6500.15
+    },
+    {
+     "catastro": "2662001301000100474",
+     "area_m2": 5870.51
+    },
+    {
+     "catastro": "2662001301000100510",
+     "area_m2": 344.31
+    },
+    {
+     "catastro": "2662001301000100823",
+     "area_m2": 436.94
+    },
+    {
+     "catastro": "2662001301000100904",
+     "area_m2": 334.38
+    },
+    {
+     "catastro": "2662001301000100938",
+     "area_m2": 1392.16
+    }
+   ]
+  },
+  {
+   "uau": "4",
+   "area_bruta_m2": 8501.96,
+   "area_des13_m2": 0,
+   "area_des30_m2": 8501.96,
+   "suelo_util_m2": 3753.4,
+   "viviendas": 148,
+   "viviendas_por_densidad": 119,
+   "altura_pisos": 12,
+   "altura_pisos_max_con_visto_bueno": 16,
+   "m2_vivienda_modelo": 8331.92,
+   "cargas": {
+    "cesion_vias_m2": 1153.69,
+    "construccion_vias_m2": 1153.69,
+    "vias": [
+     "Calle 45B Sur"
+    ],
+    "cesion_parques_equipamiento_m2": 867.6,
+    "adecuacion_parques_m2": 867.6,
+    "suelo_ambiental_ceder_m2": 1969.97,
+    "proteccion_en_suelo_privado_m2": 757.3,
+    "espacio_publico_en_dinero_m2": 905.6,
+    "construccion_fuera_area_m2": 0,
+    "acueducto_ml": 253.61,
+    "alcantarillado_ml": 253.61,
+    "equipamiento_construido_m2": 502.69
+   },
+   "compensaciones": [
+    {
+     "catastro": "2662001301000100877",
+     "viviendas": 29.41,
+     "motivo": "Aporte de $364 millones para la formulación del plan parcial (DTS, tablas 63 y 64): las viviendas de compensación pertenecen a este predio."
+    }
+   ],
+   "predios": [
+    {
+     "catastro": "2662001301000100257",
+     "area_m2": 2661.83
+    },
+    {
+     "catastro": "2662001301000100877",
+     "area_m2": 3518.72
+    },
+    {
+     "catastro": "2662001301000100878",
+     "area_m2": 1774.8
+    },
+    {
+     "catastro": "2662001301000100880",
+     "area_m2": 546.61
+    }
+   ]
+  },
+  {
+   "uau": "5",
+   "area_bruta_m2": 3629.6,
+   "area_des13_m2": 260.9,
+   "area_des30_m2": 3368.7,
+   "suelo_util_m2": 629.77,
+   "viviendas": 46,
+   "viviendas_por_densidad": 48,
+   "altura_pisos": 12,
+   "altura_pisos_max_con_visto_bueno": 16,
+   "m2_vivienda_modelo": 3356.11,
+   "cargas": {
+    "cesion_vias_m2": 117.03,
+    "construccion_vias_m2": 117.03,
+    "vias": [
+     "Calle 45B Sur"
+    ],
+    "cesion_parques_equipamiento_m2": 46.63,
+    "adecuacion_parques_m2": 46.63,
+    "suelo_ambiental_ceder_m2": 1901.87,
+    "proteccion_en_suelo_privado_m2": 934.3,
+    "espacio_publico_en_dinero_m2": 1180.12,
+    "construccion_fuera_area_m2": 631.66,
+    "acueducto_ml": 102.16,
+    "alcantarillado_ml": 102.16,
+    "equipamiento_construido_m2": 119.86
+   },
+   "compensaciones": [],
+   "predios": [
+    {
+     "catastro": "2662001301000100252",
+     "area_m2": 1007.22
+    },
+    {
+     "catastro": "2662001301000100253",
+     "area_m2": 183.81
+    },
+    {
+     "catastro": "2662001301000100255",
+     "area_m2": 878.31
+    },
+    {
+     "catastro": "2662001301000100829",
+     "area_m2": 96.85
+    },
+    {
+     "catastro": "2662001301000100830",
+     "area_m2": 667.88
+    },
+    {
+     "catastro": "2662001301000100906",
+     "area_m2": 795.53
+    }
+   ]
+  }
+ ]
+}

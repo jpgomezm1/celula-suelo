@@ -30,7 +30,8 @@
     "osm:poi": "node --env-file=.env.local --import tsx ingest/osm_poi.ts",
     "galeria": "node --env-file=.env.local --import tsx ingest/galeria.ts",
     "restricciones": "node --env-file=.env.local --import tsx ingest/restricciones.ts",
-    "suelo_sismo": "node --env-file=.env.local --import tsx ingest/suelo_sismo.ts"
+    "suelo_sismo": "node --env-file=.env.local --import tsx ingest/suelo_sismo.ts",
+    "planes_parciales": "node --env-file=.env.local --import tsx ingest/planes_parciales.ts"
   },
   "keywords": [],
   "author": "",

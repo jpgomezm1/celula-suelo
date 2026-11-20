@@ -1,5 +1,6 @@
 // Consulta de norma: qué se puede hacer en un lote. Entrada por CBML, id, matrícula, dirección de Medellín, coordenada
 // o un archivo KML/KMZ con uno o varios lotes (puntos o polígonos). Respuesta corta y directa.
+import { planParcialLote } from "./plan_parcial";
 import { sql } from "./db";
 import { encontrarPredio } from "./ficha";
 import { geocodificarMedellin } from "./estudio";
@@ -64,6 +65,7 @@ export async function consultaNorma(f: ConsultaNormaInput) {
   return {
     encontrado: true, buscado_por: via,
     identificacion: { predio: p.id, cbml: p.municipio_dane === "05001" ? String(p.id).split(":")[1] : null, matriculas, direcciones: dirs.map((d: any) => d.direccion) },
+    ...(await (async () => { const pp = await planParcialLote(p.id).catch(() => null); return pp ? { plan_parcial_adoptado: { ...pp, aviso_importante: "Este predio está en un plan parcial adoptado: su norma (viviendas por UAU, altura, cargas) manda sobre la norma general del POT que aparece abajo." } } : {}; })()),
     ...resumenNorma(p, f.area_unidad_m2, await normas2026([p.codigo_tratamiento])),
   };
 }

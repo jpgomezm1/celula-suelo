@@ -9,6 +9,7 @@ import { restriccionesLote } from "./restricciones";
 import { inventarioLote } from "./inventario";
 import { sueloSismoLote } from "./suelo_sismo";
 import { computoIndice } from "./computo_indice";
+import { planParcialLote, cabidaPlanParcial } from "./plan_parcial";
 
 export const AVISO_LEGAL = "Análisis automático sobre información pública (catastro, POT y capas oficiales). Es orientativo: no reemplaza el concepto de norma, la consulta a la curaduría ni el estudio de títulos.";
 
@@ -157,7 +158,7 @@ export function usosPermitidos(p: any, actividad?: string) {
 
 /** Análisis completo de un predio de parcel_profile. */
 export async function analizarLote(p: any, opts: { area_unidad_m2?: number; tipo_vivienda?: "VIS" | "NO VIS"; actividad?: string; costo_lote?: number; con_mercado?: boolean; con_inventario?: boolean } = {}) {
-  const [af, n26, rs, inv, ss]: any = await Promise.all([afectaciones(p), normas2026([p.codigo_tratamiento]), restriccionesLote(p.id).catch(() => null), opts.con_inventario === false ? null : inventarioLote(p.id).catch(() => null), sueloSismoLote(p.id).catch(() => null)]);
+  const [af, n26, rs, inv, ss, ppl]: any = await Promise.all([afectaciones(p), normas2026([p.codigo_tratamiento]), restriccionesLote(p.id).catch(() => null), opts.con_inventario === false ? null : inventarioLote(p.id).catch(() => null), sueloSismoLote(p.id).catch(() => null), planParcialLote(p.id).catch(() => null)]);
   // Fuera de Medellín los retiros hídricos no vienen en la capa de protección: se descuentan aquí (oficial o faja de referencia).
   if (rs?.hidrico && p.municipio_dane !== "05001" && (rs.hidrico.area_en_retiro_m2 ?? 0) > 0) {
     const extra = Math.min(Number(rs.hidrico.area_en_retiro_m2) || 0, Math.max(0, af.area_util_m2 ?? 0));
@@ -167,7 +168,15 @@ export async function analizarLote(p: any, opts: { area_unidad_m2?: number; tipo
   const b26 = bloque2026(p, n26.get(p.codigo_tratamiento), opts.area_unidad_m2 ?? 65);
   const cab = cabida(p, b26, { area_unidad_m2: opts.area_unidad_m2, area_util_m2: af.area_util_m2 ?? 0, tipo_vivienda: opts.tipo_vivienda });
   const esBase = cab.escenarios[1] as any;
-  const ces = cesiones(p, esBase?.unidades ?? null, af.area_util_m2 ?? 0);
+  let ces: any = cesiones(p, esBase?.unidades ?? null, af.area_util_m2 ?? 0);
+  // Plan parcial adoptado: su norma manda sobre la del POT (viviendas por UAU, altura, cargas).
+  if (ppl) {
+    const general = { ...(cab.escenarios.find((e: any) => /^base/i.test(e.escenario) && e.disponible) ?? cab.escenarios.find((e: any) => e.disponible) ?? cab.escenarios[0]) as any, escenario: "Sin plan parcial: norma general del polígono (referencia)" };
+    (cab as any).escenarios = [general, ...cabidaPlanParcial(ppl)];
+    (cab as any).nota = `Plan parcial ${ppl.plan.nombre} (${ppl.plan.actos_texto}): manda sobre la norma general. ${ppl.lote.calculo}. ${(cab as any).nota ?? ""}`;
+    ces = { plan_parcial: true, uau: ppl.uau.id, cargas: ppl.uau.cargas, suelo_util_uau_m2: ppl.uau.suelo_util_m2, equipamiento: ppl.normas?.equipamiento ?? null, vis_vip: ppl.normas?.vis_vip ?? null,
+      nota: `Cargas de la UAU ${ppl.uau.id} según el reparto del plan parcial; se reparten entre los predios de la unidad.` };
+  }
   let valor: any = null;
   if (opts.con_mercado === true && p.lat && p.lon) { // residual financiero: solo bajo pedido
     const mercado = await mercadoZona({ lat: Number(p.lat), lon: Number(p.lon), radio_m: 1500 });
@@ -180,6 +189,7 @@ export async function analizarLote(p: any, opts: { area_unidad_m2?: number; tipo
     } else valor = { disponible: false, motivo: pf.motivo };
   }
   const sem = semaforo(p, af, rs);
+  if (ppl) for (const it of sem.items as any[]) if (it.categoria === "Planificación complementaria") { it.luz = "amarillo"; it.lectura = ppl.lectura; }
   if (ss?.disponible) { sem.items.splice(1, 0, { categoria: ss.semaforo.categoria, luz: ss.semaforo.luz, lectura: ss.semaforo.lectura }); if (ss.semaforo.luz === "rojo") sem.general = "rojo"; else if (ss.semaforo.luz === "amarillo" && sem.general === "verde") sem.general = "amarillo"; }
-  return { area_util: af, semaforo: sem, suelo_sismo: ss, restricciones: rs ? { ...rs, hidrico: { ...rs.hidrico, geometria_9377: undefined } } : null, cabida: cab, computo_indice: computoIndice(p, esBase, af.area_util_m2 ?? 0, Math.min(n(p.area_lote) ?? 0, af.area_util_m2 ?? Infinity), opts.area_unidad_m2 ?? cab.supuestos.area_unidad_m2), inventario_zona: inv, cesiones: ces, usos: usosPermitidos(p, opts.actividad), valor_residual: valor, pot_2026_preliminar: b26, aviso_legal: AVISO_LEGAL };
+  return { area_util: af, semaforo: sem, suelo_sismo: ss, restricciones: rs ? { ...rs, hidrico: { ...rs.hidrico, geometria_9377: undefined } } : null, cabida: cab, computo_indice: computoIndice(p, esBase, af.area_util_m2 ?? 0, Math.min(n(p.area_lote) ?? 0, af.area_util_m2 ?? Infinity), opts.area_unidad_m2 ?? cab.supuestos.area_unidad_m2), inventario_zona: inv, cesiones: ces, usos: usosPermitidos(p, opts.actividad), valor_residual: valor, pot_2026_preliminar: b26, plan_parcial: ppl, aviso_legal: AVISO_LEGAL };
 }
