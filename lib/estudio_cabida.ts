@@ -220,7 +220,10 @@ export async function agregarImagenesEstudio(id: string, imagenes: { url: string
       const mime = (r.headers.get("content-type") ?? "").split(";")[0];
       const buf = Buffer.from(await r.arrayBuffer());
       if (!r.ok || !/^image\/(png|jpeg|webp)$/.test(mime) || buf.length > 9_000_000) { errores.push(`${im.url}: no es una imagen válida (≤ 9 MB)`); continue; }
-      await sql`INSERT INTO estudio_imagen (estudio_id, n, tipo, titulo, mime, datos, fuente) VALUES (${id}, ${k++}, ${im.tipo ?? null}, ${im.titulo ?? null}, ${mime}, ${buf}, ${new URL(im.url).hostname})`;
+      // Imágenes pesadas: se reducen a 1920 px en JPEG para que la presentación cargue rápido
+      let datos = buf, tipoMime = mime;
+      if (buf.length > 1_500_000) { const sharp = (await import("sharp")).default; datos = await sharp(buf).resize({ width: 1920, withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer(); tipoMime = "image/jpeg"; }
+      await sql`INSERT INTO estudio_imagen (estudio_id, n, tipo, titulo, mime, datos, fuente) VALUES (${id}, ${k++}, ${im.tipo ?? null}, ${im.titulo ?? null}, ${tipoMime}, ${datos}, ${new URL(im.url).hostname})`;
       ok++;
     } catch (err: any) { errores.push(`${im.url}: ${err?.message ?? err}`); }
   }
