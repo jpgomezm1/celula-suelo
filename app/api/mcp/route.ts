@@ -1,4 +1,5 @@
-import { crearEstudioCabida, agregarImagenesEstudio } from "@/lib/estudio_cabida";
+import { crearEstudioCabida, agregarImagenesEstudio, estiloEstudio } from "@/lib/estudio_cabida";
+import { listarEstilos, verEstilo, guardarEstilo, agregarReferente, analizarEstilo, referentesDatos } from "@/lib/estilo";
 import { planParcialLote, guardarPlanParcial, listarPlanesParciales } from "@/lib/plan_parcial";
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
@@ -69,7 +70,7 @@ Flujos recomendados:
 0. "¿Qué se puede hacer en este lote?" o "dame la ficha" → consulta_norma (CBML, matrícula, dirección o coordenada) y comparte su ficha_pdf. Trae semáforo, área neta, cabida, usos, restricciones (amenazas, quebradas y retiros, suelo de protección, plan parcial, árboles patrimoniales), topografía, inventario de vivienda nueva a 2 km y áreas que no cuentan en el índice. ficha_predio da lo mismo más licencias, mercado de Fynder y proyectos cerca. Detalles puntuales → cabida_lote, usos_permitidos, topografia_lote, suelo_sismo (microzonificación sísmica, geología e inspecciones del DAGRD: clave para constructoras por cimentación y contenciones).
 1. Varios lotes → comparar_lotes (2–5) o analizar_cartera (KMZ o lista, hasta 250). Una zona dibujada → analizar_zona.
 2. Buscar lotes → buscar_lotes (radio alrededor de una coordenada o estación, madurez: lista / plan parcial adoptado / por adoptar; filtros de área, tratamiento, amenaza, % en retiro hídrico, quebrada que cruza, árboles patrimoniales y plan parcial) u oportunidades_por_perfil (producto definido sobre todo un municipio) → consulta_norma de los mejores → contacto_predio.
-2a. "Estudio de cabida" o "qué le cabe a este lote" para un desarrollador → consulta_norma (revisa el plan parcial) → estudio_cabida (presentación con norma, lo que se aprovecha frente a lo que se paga, planos, opciones, mercado, potencial de ventas e imágenes) → si no hay OPENAI_API_KEY, genera las imágenes con sus prompts en otra herramienta y agrégalas con agregar_imagenes_estudio → comparte el enlace.
+2a. "Estudio de cabida" o "qué le cabe a este lote" para un desarrollador → consulta_norma (revisa el plan parcial) → estudio_cabida (presentación con norma, lo que se aprovecha frente a lo que se paga, planos, opciones, mercado, potencial de ventas e imágenes) → si no hay OPENAI_API_KEY, genera las imágenes con sus prompts en otra herramienta y agrégalas con agregar_imagenes_estudio → comparte el enlace. Antes de las imágenes, pregunta si hay un perfil de estilo del arquitecto (estilo_arquitectonico); si lo hay, pásalo como estilo_id para que las imágenes salgan con su lenguaje y usa sus referentes como referencia de estilo en la otra herramienta. Si el arquitecto quiere crear su perfil, envíalo a /estilo del workspace o créalo con guardar_estilo.
 2b. "Hazme un reporte de este lote" o "revisa este avalúo" → investiga (consulta_norma, ficha_predio, topografia_lote, POT vigente) → reporte_lote con textos en lenguaje no técnico → comparte el enlace.
 3. "Estudio de competencia de este lote" → estudio_competencia → redacta territorio, recomendaciones y conclusión con los hechos devueltos → completar_estudio → comparte el enlace al Excel.
 4. Mercado de una zona → mercado_zona, buscar_proyectos, ficha_proyecto, constructora. Lotes que el equipo negocia → negociaciones. POT nuevo → cambio_pot y novedades_normativas.
@@ -390,7 +391,8 @@ const mcp = createMcpHandler(
       inputSchema: z.object({ ...LOTE, nombre: z.string().optional(),
         mezcla: z.array(z.object({ tipologia: z.enum(["estudio", "1A", "2A", "3A"]), pct: z.number() })).optional(), max_torres: z.number().int().min(1).max(6).optional(), estrato: z.number().int().min(1).max(6).optional(),
         opciones: z.boolean().optional().describe("Calcular 2 alternativas de cabida (defecto sí)"), renders: z.boolean().optional().describe("Generar imágenes con OpenAI si hay llave (defecto sí)"),
-        estilo: z.string().optional().describe("Estilo arquitectónico para las imágenes, en inglés"),
+        estilo_id: z.string().optional().describe("Perfil de estilo del arquitecto (id e_…, de estilo_arquitectonico): sus referentes y su descripción guían las imágenes. Pregunta por él antes de generar imágenes si el usuario es o trabaja con un arquitecto."),
+        estilo: z.string().optional().describe("Estilo arquitectónico adicional para las imágenes, en inglés (se suma al perfil)"),
         marca: z.object({ cliente: z.string(), logo_url: z.string().optional(), logo_fondo_oscuro_url: z.string().optional() }).optional() }),
     }, seguro(async (a: any) => {
       const { cbml, id, matricula, direccion, lat, lon, ...resto } = a;
@@ -401,8 +403,55 @@ const mcp = createMcpHandler(
       annotations: ESCRITURA,
       title: "Agregar imágenes o video a un estudio de cabida",
       description: "Agrega a un estudio de cabida (id que empieza por c_) imágenes hechas en otra herramienta (URLs https de PNG/JPEG/WebP, con tipo: fachada, acceso, aerea, interior, social o maqueta, y un título) y un video (URL https de MP4). La fachada se usa de portada y la maqueta en su propia lámina.",
-      inputSchema: z.object({ id: z.string(), imagenes: z.array(z.object({ url: z.string(), tipo: z.string().optional(), titulo: z.string().optional() })).optional(), video_url: z.string().optional() }),
-    }, seguro(async (a: any) => agregarImagenesEstudio(a.id, a.imagenes ?? [], a.video_url)));
+      inputSchema: z.object({ id: z.string(), imagenes: z.array(z.object({ url: z.string(), tipo: z.string().optional(), titulo: z.string().optional() })).optional(), video_url: z.string().optional(),
+        reemplazar: z.boolean().optional().describe("Borra las imágenes anteriores del estudio antes de agregar estas") }),
+    }, seguro(async (a: any) => agregarImagenesEstudio(a.id, a.imagenes ?? [], a.video_url, a.reemplazar)));
+
+    server.registerTool("estilo_arquitectonico", {
+      annotations: LECTURA,
+      title: "Perfiles de estilo de arquitectos",
+      description: "Perfiles de estilo de arquitectos o estudios: fotos de sus obras (referentes) y la descripción de su lenguaje (materiales, paleta, rasgos, lo que evitan). El estudio de cabida los usa para que las imágenes salgan con el lenguaje del arquitecto y no con uno genérico. Sin id, lista los perfiles. Con id, devuelve el perfil y muestra hasta 6 referentes como imágenes: míralos y, si falta la síntesis (prompt_en) o la descripción, propónla y guárdala con guardar_estilo. El arquitecto sube sus fotos en la página /estilo del workspace.",
+      inputSchema: z.object({ id: z.string().optional(), ver_imagenes: z.boolean().optional().describe("Mostrar los referentes como imágenes (defecto sí)") }),
+    }, async (a: any) => {
+      try {
+        if (!a.id) return json({ perfiles: await listarEstilos(), pagina_para_subir_referentes: `${process.env.URL_BASE ?? "https://celula-suelo.vercel.app"}/estilo` });
+        const e: any = await verEstilo(a.id);
+        if (!e) return json({ error: "Perfil de estilo no encontrado." });
+        const content: any[] = [{ type: "text", text: JSON.stringify(e, null, 2) }];
+        if (a.ver_imagenes !== false) {
+          const sharp = (await import("sharp")).default;
+          for (const r of await referentesDatos(a.id, 6)) content.push({ type: "image", mimeType: "image/jpeg", data: (await sharp(r.datos).resize({ width: 768, height: 768, fit: "inside" }).jpeg({ quality: 76 }).toBuffer()).toString("base64") });
+        }
+        return { content };
+      } catch (e) {
+        return { content: [{ type: "text" as const, text: `Error: ${(e as Error).message}` }], isError: true };
+      }
+    });
+
+    server.registerTool("guardar_estilo", {
+      annotations: ESCRITURA,
+      title: "Crear o actualizar un perfil de estilo",
+      description: "Crea (sin id) o actualiza (con id) el perfil de estilo de un arquitecto o estudio: nombre, estudio, descripción con sus palabras, materiales, paleta, rasgos, lo que evita y la síntesis en inglés para el generador de imágenes (prompt_en, máx. ~90 palabras, solo lenguaje arquitectónico: sin sitio ni tamaño del edificio). Respeta lo que escribió el arquitecto: no reemplaces su descripción sin que lo pida. Puede agregar referentes desde URLs https de imagen (obras del arquitecto, con el nombre del proyecto). analizar: true los lee con IA si hay OPENAI_API_KEY. No guardes datos personales de terceros.",
+      inputSchema: z.object({ id: z.string().optional(), nombre: z.string().optional(), estudio: z.string().optional(), descripcion: z.string().optional(), materiales: z.string().optional(),
+        paleta: z.string().optional(), rasgos: z.string().optional(), evitar: z.string().optional(), prompt_en: z.string().optional(),
+        referentes: z.array(z.object({ url: z.string(), proyecto: z.string().optional(), titulo: z.string().optional() })).optional(), analizar: z.boolean().optional() }),
+    }, seguro(async (a: any) => {
+      const { referentes, analizar, ...campos } = a;
+      const e: any = await guardarEstilo(campos);
+      if (e?.error) return e;
+      const errores: string[] = [];
+      for (const r of referentes ?? []) { const x: any = await agregarReferente(e.id, r); if (x.error) errores.push(x.error); }
+      const an: any = analizar ? await analizarEstilo(e.id) : null;
+      const final: any = await verEstilo(e.id);
+      return { ...final, referentes: final.referentes.map((r: any) => ({ n: r.n, proyecto: r.proyecto, titulo: r.titulo })), errores_referentes: errores, analisis: an?.error ?? (an ? "hecho" : undefined) };
+    }));
+
+    server.registerTool("estilo_estudio", {
+      annotations: ESCRITURA,
+      title: "Aplicar un perfil de estilo a un estudio de cabida",
+      description: "Aplica el perfil de estilo de un arquitecto (estilo_id) a un estudio de cabida ya hecho (id c_…): agrega la lámina de lenguaje arquitectónico con sus referentes y rehace las imágenes con ese lenguaje (con OPENAI_API_KEY, usando los referentes como imágenes de referencia). Sin llave, devuelve los prompts y las URLs de los referentes para generarlas en otra herramienta (p. ej. Higgsfield, con las URLs como referencia de estilo) y reemplazarlas con agregar_imagenes_estudio (reemplazar: true).",
+      inputSchema: z.object({ id: z.string(), estilo_id: z.string().optional(), estilo: z.string().optional() }),
+    }, seguro(async (a: any) => estiloEstudio(a.id, a.estilo_id, a.estilo)));
 
     server.registerTool("plan_parcial", {
       annotations: LECTURA,

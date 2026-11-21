@@ -23,6 +23,12 @@ export async function proxy(request: NextRequest) {
     const t = await verificar<{ est: string }>(request.nextUrl.searchParams.get("t"), "earth");
     if (t && t.est === kmz[1]) return NextResponse.next();
   }
+  // Referente de un perfil de estilo: token firmado de 7 días para pasarlo como imagen de referencia a otra herramienta.
+  const ref = pathname.match(/^\/api\/estilo\/([^/]+)\/referente\/(\d+)$/);
+  if (ref && request.method === "GET") {
+    const t = await verificar<{ est: string; n: number }>(request.nextUrl.searchParams.get("t"), "ref");
+    if (t && t.est === ref[1] && t.n === Number(ref[2])) return NextResponse.next();
+  }
   if (pathname.startsWith("/api/") && !pathname.match(/^\/api\/estudio\/[^/]+\/xlsx$/)) {
     return NextResponse.json({ error: "Sesión vencida: vuelve a iniciar sesión." }, { status: 401 });
   }
@@ -31,4 +37,4 @@ export async function proxy(request: NextRequest) {
   return NextResponse.redirect(login);
 }
 
-export const config = { matcher: ["/mapa/:path*", "/api/tiles/:path*", "/api/datos/:path*", "/api/estudio/:path*", "/api/estudio", "/api/perfil", "/api/norma", "/api/ficha", "/api/analisis/:path*", "/api/kmz", "/api/fachada", "/api/elevacion", "/api/cabida", "/api/finanzas", "/api/comite", "/api/mezcla", "/api/escenarios", "/api/seguimiento", "/api/seguimiento/:path*", "/api/constructora/:path*", "/api/constructora"] };
+export const config = { matcher: ["/mapa/:path*", "/estilo", "/api/estilo", "/api/estilo/:path*", "/api/tiles/:path*", "/api/datos/:path*", "/api/estudio/:path*", "/api/estudio", "/api/perfil", "/api/norma", "/api/ficha", "/api/analisis/:path*", "/api/kmz", "/api/fachada", "/api/elevacion", "/api/cabida", "/api/finanzas", "/api/comite", "/api/mezcla", "/api/escenarios", "/api/seguimiento", "/api/seguimiento/:path*", "/api/constructora/:path*", "/api/constructora"] };

@@ -369,7 +369,7 @@ export default function Mapa() {
             onChange={(e) => { setBusqueda(e.target.value); setErrorBusqueda(null); }} onKeyDown={(e) => { if (e.key === "Enter") buscar(); }} />
           {errorBusqueda && <div className="error-busqueda">{errorBusqueda}</div>}
         </div>
-        <div className="derecha"><a href="/que-puedo-hacer.html" target="_blank">Guía</a><a href="/api/logout">Salir</a></div>
+        <div className="derecha"><a href="/estilo">Estilo del arquitecto</a><a href="/que-puedo-hacer.html" target="_blank">Guía</a><a href="/api/logout">Salir</a></div>
         <div className="franja" />
       </header>
 

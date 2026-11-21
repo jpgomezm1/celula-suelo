@@ -54,7 +54,7 @@ document.getElementById("ant").onclick=()=>ir(i-1);document.getElementById("sig"
 document.getElementById("escena").addEventListener("click",e=>{if(e.target.closest("video,a"))return;ir(e.clientX>innerWidth/2?i+1:i-1)});
 ajustar();ir(Math.max(0,(parseInt((location.hash||"").replace("#s",""))||1)-1));`;
 
-export function renderEstudioCabida(r: any, imagenes: { tipo?: string; titulo?: string; mime: string; b64: string; fuente?: string }[] = []) {
+export function renderEstudioCabida(r: any, imagenes: { tipo?: string; titulo?: string; mime: string; b64: string; fuente?: string }[] = [], referentes: { titulo?: string; proyecto?: string; mime: string; b64: string }[] = []) {
   const L = r.lote, N = r.norma, pp = r.plan_parcial, A = r.anteproyecto, M = r.mercado ?? {}, mk = r.marca;
   const img = (t: string) => imagenes.find((x) => x.tipo === t);
   const uri = (x: any) => `data:${x.mime};base64,${x.b64}`;
@@ -182,10 +182,22 @@ export function renderEstudioCabida(r: any, imagenes: { tipo?: string; titulo?: 
       ${(M.proyectos ?? []).slice(0, 6).map((q: any) => `<tr><td class="l">${esc(q.nombre)}<br><small style="color:var(--mute)">${esc(q.constructora ?? "")}</small></td><td>${q.precio_m2_desde ? `$${num(q.precio_m2_desde / 1e6, 1)} M/m²` : "—"}</td><td>${num(q.distancia_m)} m</td></tr>`).join("") || "<tr><td>Sin proyectos anunciados cerca.</td></tr>"}</tbody></table>
       <div style="color:var(--mute);font-size:10.5px;margin-top:6px">Fuentes: Fynder (oferta y pedidos) y Zonario. Precios de oferta, no de cierre.</div></div></div>`);
 
-  // 13+. Maqueta, renders y video
+  // 13. Lenguaje arquitectónico del perfil de estilo (referentes del arquitecto que guían las imágenes)
+  const ES = r.estilo;
+  if (ES?.id) {
+    const quien = ES.estudio ?? ES.nombre;
+    const filas = [["Cómo lo describe", ES.descripcion], ["Materiales", ES.materiales], ["Paleta", ES.paleta], ["Rasgos", ES.rasgos]].filter((x) => x[1]);
+    const refs = referentes.slice(0, 4);
+    hoja("Lenguaje arquitectónico", `Las imágenes siguen el lenguaje de ${quien}`, `<div class="grid" style="grid-template-columns:${refs.length ? "1.25fr 1fr" : "1fr"};gap:26px;margin-top:16px">
+      ${refs.length ? `<div class="grid" style="grid-template-columns:repeat(${refs.length > 1 ? 2 : 1},1fr);gap:10px">${refs.map((x) => `<figure style="margin:0"><div class="lam" style="height:${refs.length > 2 ? 232 : 480}px"><img src="data:${x.mime};base64,${x.b64}" alt="" style="width:100%;height:100%;object-fit:cover"></div>${x.proyecto || x.titulo ? `<figcaption style="font-size:10.5px;color:var(--mute);margin-top:4px">${esc(x.proyecto ?? x.titulo)}</figcaption>` : ""}</figure>`).join("")}</div>` : ""}
+      <div>${filas.map(([k, v]) => `<div style="margin-bottom:14px"><div class="eb" style="margin:0 0 3px">${esc(k)}</div><div style="font-size:13.5px;line-height:1.5">${esc(v)}</div></div>`).join("")}
+      <div class="nota" style="margin-top:10px">Referentes de obras de ${esc(quien)}. Se usan solo como lenguaje (materiales, ritmo de fachada, vanos, balcones, paisajismo); la volumetría sale del anteproyecto y de la norma.</div></div></div>`);
+  }
+
+  // 14+. Maqueta, renders y video
   const maq = img("maqueta");
   if (maq) hoja("Propuesta arquitectónica", "Maqueta conceptual de volumetría", `<div class="lam" style="margin-top:16px;height:510px;background:#f4f4f2"><img src="${uri(maq)}" alt="" style="object-fit:cover"></div>`);
-  for (const x of imagenes.filter((x) => x.tipo !== "maqueta")) slides.push(`<section class="s full"><img src="${uri(x)}" alt=""><div class="sh"></div><div class="tt"><div class="eb">Propuesta arquitectónica</div><h2>${esc(x.titulo ?? "Imagen ilustrativa")}</h2></div><img class="logo" src="${IRRB}" alt="irrelevant"><div class="cap">Imagen ilustrativa generada con IA a partir del anteproyecto${x.fuente ? ` (${esc(x.fuente)})` : ""}.</div></section>`);
+  for (const x of imagenes.filter((x) => x.tipo !== "maqueta")) slides.push(`<section class="s full"><img src="${uri(x)}" alt=""><div class="sh"></div><div class="tt"><div class="eb">Propuesta arquitectónica</div><h2>${esc(x.titulo ?? "Imagen ilustrativa")}</h2></div><img class="logo" src="${IRRB}" alt="irrelevant"><div class="cap">Imagen ilustrativa generada con IA a partir del anteproyecto${ES?.id ? ` y del lenguaje de ${esc(ES.estudio ?? ES.nombre)}` : ""}${x.fuente ? ` (${esc(x.fuente)})` : ""}.</div></section>`);
   if (r.video_url) slides.push(`<section class="s" style="background:#000"><video src="${esc(r.video_url)}" playsinline controls preload="metadata"></video></section>`);
 
   // Última: qué verificar

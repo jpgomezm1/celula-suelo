@@ -15,6 +15,7 @@ import { mercadoReporte, logoDataUri } from "./reporte_lote";
 import { topografiaLote } from "./topografia";
 import { consultaNorma } from "./consulta_norma";
 import { ortofotoLote } from "./ortofoto";
+import { verEstilo, textoEstilo, referentesDatos, urlReferente } from "./estilo";
 
 const n = (v: unknown) => (v == null || v === "" ? null : Number(v));
 const base = () => process.env.URL_BASE ?? "https://celula-suelo.vercel.app";
@@ -26,7 +27,8 @@ export type EstudioCabidaInput = {
   max_torres?: number; estrato?: number;
   opciones?: boolean;            // calcula 2 alternativas de cabida además de la principal (defecto true)
   renders?: boolean;             // genera imágenes con OpenAI si hay llave (defecto true)
-  estilo?: string;               // estilo arquitectónico para las imágenes
+  estilo?: string;               // estilo arquitectónico para las imágenes (texto libre, se suma al perfil)
+  estilo_id?: string;            // perfil de estilo del arquitecto (referentes y descripción, ver lib/estilo.ts)
   marca?: { cliente: string; logo_url?: string; logo_fondo_oscuro_url?: string };
 };
 
@@ -97,6 +99,9 @@ function resumenAnte(m: any) {
 
 export async function crearEstudioCabida(input: EstudioCabidaInput) {
   await esquema();
+  const est: any = input.estilo_id ? await verEstilo(input.estilo_id, false) : null;
+  if (input.estilo_id && !est) return { error: `Perfil de estilo ${input.estilo_id} no encontrado (lista los perfiles con estilo_arquitectonico).` };
+  const estiloTxt = [textoEstilo(est), input.estilo].filter(Boolean).join(". ") || undefined;
   const c: any = await consultaNorma(input.lote as any);
   if (!c.encontrado) return c;
   const id0 = c.predio ?? c.identificacion?.predio;
@@ -107,7 +112,7 @@ export async function crearEstudioCabida(input: EstudioCabidaInput) {
     p.lat ? mercadoReporte(Number(p.lat), Number(p.lon)) : null, p.lat ? mercadoZona({ lat: Number(p.lat), lon: Number(p.lon), radio_m: 1500 } as any).catch(() => null) : null,
     ortofotoLote(p.id).catch(() => null),
   ]);
-  const [est]: any = p.lat ? await sql`SELECT nombre, linea, sistema, round(ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(${Number(p.lon)}, ${Number(p.lat)}), 4326)::geography))::int d
+  const [estac]: any = p.lat ? await sql`SELECT nombre, linea, sistema, round(ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(${Number(p.lon)}, ${Number(p.lat)}), 4326)::geography))::int d
     FROM transporte_estacion WHERE estado = 'Existente' ORDER BY geom <-> ST_SetSRID(ST_MakePoint(${Number(p.lon)}, ${Number(p.lat)}), 4326) LIMIT 1`.catch(() => []) : [];
   const pp = an.plan_parcial;
   const mezcla = input.mezcla?.length ? input.mezcla : pp ? [{ tipologia: "1A", pct: 40 }, { tipologia: "2A", pct: 60 }] : undefined;
@@ -146,7 +151,7 @@ export async function crearEstudioCabida(input: EstudioCabidaInput) {
     tipo: "estudio_cabida", nombre, generado: new Date().toISOString(), marca,
     lote: { id: p.id, clave: p.clave_local, municipio: p.municipio, municipio_dane: p.municipio_dane, barrio: p.barrio_catastral, clase: p.clase, area_m2: n(p.area_lote), lat: n(p.lat), lon: n(p.lon),
       matriculas: c.identificacion?.matriculas ?? [], direcciones: c.identificacion?.direcciones ?? [], estrato: r.estrato,
-      estacion: est ? { nombre: est.nombre, linea: est.linea, sistema: est.sistema, distancia_m: est.d } : null },
+      estacion: estac ? { nombre: estac.nombre, linea: estac.linea, sistema: estac.sistema, distancia_m: estac.d } : null },
     norma: { tratamiento: p.tratamiento, codigo: p.codigo_tratamiento, altura_max: n(p.altura_max), ic: n(p.ic_max), ic_total: n(p.ic_total), densidad: n(p.densidad_max), io: n(p.io_max), uso: p.uso,
       acuerdo: p.acuerdo_vigente, fuente: p.norma_fuente, nivel: p.nivel_dato, aviso_pot: c.aviso_pot ?? null, pot2026: an.pot_2026_preliminar?.disponible ? an.pot_2026_preliminar : null },
     plan_parcial: pp, area_util: an.area_util, semaforo: an.semaforo, cabida: an.cabida, cesiones: an.cesiones, usos: an.usos, suelo_sismo: an.suelo_sismo?.disponible ? an.suelo_sismo : null,
@@ -155,18 +160,22 @@ export async function crearEstudioCabida(input: EstudioCabidaInput) {
       mezcla: m.opciones?.mezcla ?? mezcla, svgs, aviso: m.aviso },
     alternativas,
     mercado: { ...merc, mix_habitaciones: mz?.oferta?.mix_habitaciones ?? [], ventas_estimadas: ventas, techo_lote_15: ventas ? Math.round(ventas * 0.15) : null, techo_lote_20: ventas ? Math.round(ventas * 0.2) : null },
+    estilo: est ? { id: est.id, nombre: est.nombre, estudio: est.estudio, descripcion: est.descripcion, materiales: est.materiales, paleta: est.paleta, rasgos: est.rasgos, referentes: est.referentes.length, texto: estiloTxt } : estiloTxt ? { texto: estiloTxt } : null,
     ortofoto: orto, mapa_svg: await mapaContexto(p.id, pp?.uau?.otros_predios ?? []).catch(() => null), imagenes: [] as any[], video_url: null as string | null,
   };
   await sql`INSERT INTO estudio (id, nombre, entrada, resultado) VALUES (${id}, ${nombre}, ${JSON.stringify(input)}, ${JSON.stringify(resultado)})`;
   let imgs: any = null;
-  if (input.renders !== false && process.env.OPENAI_API_KEY) imgs = await generarRenders(id, resultado, input.estilo).catch((e) => ({ error: String(e?.message ?? e) }));
+  if (input.renders !== false && process.env.OPENAI_API_KEY) imgs = await generarRenders(id, resultado, estiloTxt, est ? await referentesDatos(est.id, 4) : []).catch((e) => ({ error: String(e?.message ?? e) }));
   return {
     id, nombre, estudio: `${base()}/api/estudio/${id}/cabida`,
     plan_parcial: pp ? { nombre: pp.plan.nombre, uau: pp.uau.id, viviendas_uau: pp.uau.viviendas, viviendas_lote: pp.lote.viviendas_estimadas } : null,
     cabida: { torres: r.torres, pisos: r.pisos, unidades: r.unidades, area_vendible_m2: r.area_vendible_m2, parqueaderos: `${r.parqueaderos_dibujados} de ${r.parqueaderos_exigidos} exigidos` },
     alternativas: alternativas.map((a) => ({ nombre: a.nombre, torres: a.torres, pisos: a.pisos, unidades: a.unidades, area_vendible_m2: a.area_vendible_m2 })),
     potencial_ventas: ventas, imagenes: imgs ?? (process.env.OPENAI_API_KEY ? "sin generar" : "Sin OPENAI_API_KEY: genera las imágenes en otra herramienta (p. ej. Higgsfield) y agrégalas con agregar_imagenes_estudio."),
-    prompts_imagenes: promptsRenders(resultado, input.estilo),
+    prompts_imagenes: promptsRenders(resultado, estiloTxt),
+    ...(est ? { estilo: { id: est.id, nombre: est.nombre, referentes: est.referentes.length,
+      referentes_urls: await Promise.all(est.referentes.slice(0, 4).map((x: any) => urlReferente(est.id, x.n))),
+      uso: "Si generas las imágenes en otra herramienta, pasa estas URLs como imágenes de referencia de estilo (no de volumen) junto con cada prompt, salvo en la maqueta." } } : {}),
   };
 }
 
@@ -174,32 +183,46 @@ export async function crearEstudioCabida(input: EstudioCabidaInput) {
 export function promptsRenders(res: any, estilo?: string) {
   const a = res.anteproyecto, t = a.huellas?.[0], lugar = `${res.lote.municipio ?? "Valle de Aburrá"}, Antioquia, Colombia`;
   const vol = `${a.torres > 1 ? `${a.torres} contemporary residential towers` : "a single contemporary residential tower"} of ${a.pisos} storeys${t ? `, ${Math.round(t.largo_m)} m long and ${Math.round(t.ancho_m)} m deep` : ""}`;
-  const est = estilo ?? "warm off-white concrete with horizontal slab bands, light wood-tone balconies and large windows";
+  // Con perfil del arquitecto, su lenguaje manda sobre el estilo genérico (fachada, acceso, interior y zona social)
+  const est = estilo ? `the architect's own design language: ${estilo}` : "warm off-white concrete with horizontal slab bands, light wood-tone balconies and large windows";
   const terreno = res.topografia?.pendiente_pct > 12 ? "on a green sloping hillside" : "on a gently sloping site";
   const tip = (a.por_tipologia ?? []).map((x: any) => x.tipologia).join(" and ");
   return [
     { tipo: "fachada", titulo: "Imagen ilustrativa del anteproyecto", prompt: `Photorealistic architectural render, eye level at golden hour: ${vol}, facade in ${est}, ${terreno} in ${lugar}, lush Andean vegetation, landscaped front garden, mountains in the background. No text, no logos.` },
-    { tipo: "acceso", titulo: "Acceso al proyecto", prompt: `Photorealistic architectural render at dusk from the street: entrance of ${vol} in ${lugar}, glass lobby, small guardhouse, vehicle ramp to basement parking, planted front garden with warm uplights, new sidewalk with trees. No text, no logos.` },
-    { tipo: "aerea", titulo: "El conjunto en su entorno", prompt: `Photorealistic aerial drone render, late afternoon: ${vol} occupying about ${Math.round((a.io ?? 0.2) * 100)}% of a ${Math.round(res.lote.area_m2 ?? 3000)} m2 lot ${terreno} in ${lugar}; the rest landscaped with lawns, native trees, paths and a social terrace; the Aburrá valley in the background. Realistic scale, no text.` },
-    { tipo: "interior", titulo: "Interior de un apartamento", prompt: `Photorealistic interior render of a ${tip || "2-bedroom"} apartment living-dining room in a new residential tower in ${lugar}, floor-to-ceiling window and balcony with a view over the green valley at sunset, light oak floors, open kitchen, warm contemporary Colombian furniture. No people, no text.` },
-    { tipo: "social", titulo: "Zona social", prompt: `Photorealistic render at twilight of the social area at the foot of ${vol} in ${lugar}: landscaped terrace, small pool, wooden deck, BBQ pergola, native gardens, city lights of the valley below. No people, no text.` },
+    { tipo: "acceso", titulo: "Acceso al proyecto", prompt: `Photorealistic architectural render at dusk from the street: entrance of ${vol} in ${lugar}${estilo ? `, designed in ${est}` : ""}, glass lobby, small guardhouse, vehicle ramp to basement parking, planted front garden with warm uplights, new sidewalk with trees. No text, no logos.` },
+    { tipo: "aerea", titulo: "El conjunto en su entorno", prompt: `Photorealistic aerial drone render, late afternoon: ${vol}${estilo ? ` in ${est},` : ""} occupying about ${Math.round((a.io ?? 0.2) * 100)}% of a ${Math.round(res.lote.area_m2 ?? 3000)} m2 lot ${terreno} in ${lugar}; the rest landscaped with lawns, native trees, paths and a social terrace; the Aburrá valley in the background. Realistic scale, no text.` },
+    { tipo: "interior", titulo: "Interior de un apartamento", prompt: `Photorealistic interior render of a ${tip || "2-bedroom"} apartment living-dining room in a new residential tower in ${lugar}, floor-to-ceiling window and balcony with a view over the green valley at sunset, ${estilo ? `interior finishes and furniture in ${est}` : "light oak floors, open kitchen, warm contemporary Colombian furniture"}. No people, no text.` },
+    { tipo: "social", titulo: "Zona social", prompt: `Photorealistic render at twilight of the social area at the foot of ${vol} in ${lugar}${estilo ? `, in ${est}` : ""}: landscaped terrace, small pool, wooden deck, BBQ pergola, native gardens, city lights of the valley below. No people, no text.` },
     { tipo: "maqueta", titulo: "Maqueta conceptual de volumetría", prompt: `Clean conceptual white architectural massing model on a white table, soft studio light, 3/4 aerial view: an irregular ${res.topografia?.pendiente_pct > 12 ? "sloping site with contour terraces" : "site"} with ${vol.replace("contemporary residential", "simple white")}, small entrance road, white model trees. Minimalist, monochrome. No text.` },
   ];
 }
 
-async function generarRenders(id: string, res: any, estilo?: string) {
+async function generarRenders(id: string, res: any, estilo?: string, refs: { mime: string; datos: Buffer }[] = []) {
   const ps = promptsRenders(res, estilo);
   const modelo = process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1";
+  const GUIA = "Use the attached reference photos ONLY as the architect's design language (materials, facade rhythm, openings, balconies, colors, landscaping, interior finishes). Do not copy their massing, number of floors, site or surroundings. Generate: ";
   const hechos = await Promise.all(ps.map(async (q, i) => {
-    const r = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST", headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "content-type": "application/json" },
-      body: JSON.stringify({ model: modelo, prompt: q.prompt, size: "1536x1024", quality: "medium", output_format: "jpeg", output_compression: 82, n: 1 }),
-      signal: AbortSignal.timeout(180000),
-    });
+    // Con referentes del arquitecto se usa el endpoint de edición (imágenes de referencia); la maqueta blanca va sin ellos
+    const conRefs = refs.length > 0 && q.tipo !== "maqueta";
+    let r: Response;
+    if (conRefs) {
+      const fd = new FormData();
+      fd.append("model", modelo); fd.append("prompt", GUIA + q.prompt); fd.append("size", "1536x1024"); fd.append("quality", "medium"); fd.append("n", "1");
+      fd.append("output_format", "jpeg"); fd.append("output_compression", "82");
+      refs.forEach((x, k) => fd.append("image[]", new Blob([new Uint8Array(x.datos)], { type: x.mime }), `referente_${k}.jpg`));
+      r = await fetch("https://api.openai.com/v1/images/edits", { method: "POST", headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: fd, signal: AbortSignal.timeout(240000) });
+    } else {
+      r = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST", headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: modelo, prompt: q.prompt, size: "1536x1024", quality: "medium", output_format: "jpeg", output_compression: 82, n: 1 }),
+        signal: AbortSignal.timeout(180000),
+      });
+    }
     const j: any = await r.json().catch(() => ({}));
     const b64 = j?.data?.[0]?.b64_json;
     if (!r.ok || !b64) return { tipo: q.tipo, error: j?.error?.message ?? `HTTP ${r.status}` };
-    await sql`INSERT INTO estudio_imagen (estudio_id, n, tipo, titulo, mime, datos, fuente) VALUES (${id}, ${i}, ${q.tipo}, ${q.titulo}, 'image/jpeg', decode(${b64}, 'base64'), ${`OpenAI ${modelo}`})
+    const fuente = `OpenAI ${modelo}${conRefs ? " con referentes del arquitecto" : ""}`;
+    await sql`INSERT INTO estudio_imagen (estudio_id, n, tipo, titulo, mime, datos, fuente) VALUES (${id}, ${i}, ${q.tipo}, ${q.titulo}, 'image/jpeg', decode(${b64}, 'base64'), ${fuente})
       ON CONFLICT (estudio_id, n) DO UPDATE SET datos = EXCLUDED.datos, tipo = EXCLUDED.tipo, titulo = EXCLUDED.titulo, fuente = EXCLUDED.fuente`;
     return { tipo: q.tipo, ok: true };
   }));
@@ -207,10 +230,11 @@ async function generarRenders(id: string, res: any, estilo?: string) {
 }
 
 /** Agrega imágenes (URLs https de imagen) y un video (URL) hechos en otra herramienta. */
-export async function agregarImagenesEstudio(id: string, imagenes: { url: string; tipo?: string; titulo?: string }[] = [], video_url?: string) {
+export async function agregarImagenesEstudio(id: string, imagenes: { url: string; tipo?: string; titulo?: string }[] = [], video_url?: string, reemplazar = false) {
   await esquema();
   const [e]: any = await sql`SELECT resultado FROM estudio WHERE id = ${id}`;
   if (!e || e.resultado?.tipo !== "estudio_cabida") return { error: "Estudio de cabida no encontrado." };
+  if (reemplazar && imagenes.length) await sql`DELETE FROM estudio_imagen WHERE estudio_id = ${id}`;
   const [mx]: any = await sql`SELECT coalesce(max(n), -1)::int n FROM estudio_imagen WHERE estudio_id = ${id}`;
   let k = mx.n + 1, ok = 0; const errores: string[] = [];
   for (const im of imagenes) {
@@ -237,4 +261,23 @@ export async function agregarImagenesEstudio(id: string, imagenes: { url: string
 export async function imagenesEstudio(id: string) {
   await esquema();
   return (await sql`SELECT n, tipo, titulo, mime, encode(datos, 'base64') b64, fuente FROM estudio_imagen WHERE estudio_id = ${id} ORDER BY n`) as any[];
+}
+
+/** Aplica un perfil de estilo a un estudio ya hecho: guarda el estilo y rehace las imágenes (OpenAI) o devuelve prompts y referentes. */
+export async function estiloEstudio(id: string, estilo_id?: string, estilo?: string) {
+  await esquema();
+  const [e]: any = await sql`SELECT resultado FROM estudio WHERE id = ${id}`;
+  if (!e || e.resultado?.tipo !== "estudio_cabida") return { error: "Estudio de cabida no encontrado." };
+  const est: any = estilo_id ? await verEstilo(estilo_id, false) : null;
+  if (estilo_id && !est) return { error: `Perfil de estilo ${estilo_id} no encontrado.` };
+  const estiloTxt = [textoEstilo(est), estilo].filter(Boolean).join(". ") || undefined;
+  const bloque = est ? { id: est.id, nombre: est.nombre, estudio: est.estudio, descripcion: est.descripcion, materiales: est.materiales, paleta: est.paleta, rasgos: est.rasgos, referentes: est.referentes.length, texto: estiloTxt } : estiloTxt ? { texto: estiloTxt } : null;
+  await sql`UPDATE estudio SET resultado = jsonb_set(resultado, '{estilo}', ${JSON.stringify(bloque)}::jsonb) WHERE id = ${id}`;
+  const res = { ...e.resultado, estilo: bloque };
+  const urls = est ? await Promise.all(est.referentes.slice(0, 4).map((x: any) => urlReferente(est.id, x.n))) : [];
+  if (!process.env.OPENAI_API_KEY) return { id, estudio: `${base()}/api/estudio/${id}/cabida`, imagenes: "Sin OPENAI_API_KEY: genera las imágenes con estos prompts y referentes en otra herramienta y reemplázalas con agregar_imagenes_estudio (reemplazar: true).",
+    prompts_imagenes: promptsRenders(res, estiloTxt), referentes_urls: urls };
+  await sql`DELETE FROM estudio_imagen WHERE estudio_id = ${id}`;
+  const imgs = await generarRenders(id, res, estiloTxt, est ? await referentesDatos(est.id, 4) : []);
+  return { id, estudio: `${base()}/api/estudio/${id}/cabida`, imagenes: imgs };
 }
